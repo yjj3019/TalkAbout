@@ -2,6 +2,8 @@
 !Containerfile
 !pyproject.toml
 !requirements.lock.txt
+!LICENSE
+!THIRD_PARTY_NOTICES.md
 !talkabout/
 !talkabout/*.py
 !talkabout/schema.sql

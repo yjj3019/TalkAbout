@@ -1,5 +1,7 @@
 # TalkAbout
 
+[MIT License](LICENSE) · Copyright (c) 2026 yjj3019. [제3자 라이선스·고지](THIRD_PARTY_NOTICES.md)는 별도로 보존합니다.
+
 **운영 배포 준비됨 / 사용자 인증 입력·사용 가능한 loopback 포트 결정 대기 — 2026-10-13**
 
 승인된 source의 rootless Podman image build와 격리 합성 readiness·restart·데이터 유지·logical restore 검증을 마쳤습니다. 전용 internal network와 새 빈 named volume만 준비했고 운영 container·DB 계정·secret·관리자/agent credential은 아직 만들지 않았습니다. 이것은 서비스 배포 완료가 아닙니다. 실제 내부 host/address·운영 credential·자료는 이 README에 기록하지 않습니다.

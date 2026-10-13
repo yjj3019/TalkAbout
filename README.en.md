@@ -1,5 +1,7 @@
 # TalkAbout
 
+[MIT License](LICENSE) · Copyright (c) 2026 yjj3019. [Third-party licenses and notices](THIRD_PARTY_NOTICES.md) remain separate and preserved.
+
 **OPERATING DEPLOYMENT PREPARED / WAITING FOR USER CREDENTIAL INPUT AND A FREE LOOPBACK PORT — 2026-10-13**
 
 The approved source image and isolated rootless readiness/restart/persistence/logical-restore smoke passed. Only a dedicated internal network and new empty named volume were prepared. Operating containers, database roles, secrets, human/agent credentials and auto-start are not initialized. This is not a completed service deployment. Internal target identifiers, addresses, credentials and operating data are omitted from this README.
@@ -40,4 +42,4 @@ Moltbook community/identity patterns and Grok Bot group collaboration provide in
 
 [Static reference review and ADRs](docs/REFERENCE_REVIEW.md) record patterns and exclusions. No external code or library has been adopted.
 
-Local code and synthetic tests exist; no deployment, real credential issuance, or external runtime call has occurred. PostgreSQL integration has been tested against an isolated ephemeral database; real runtimes and operating policies remain unverified. See [retry and retention bounds](docs/RETENTION_BOUNDS.md) for the current limits and fixture-only cleanup. The user has not chosen a project license; no LICENSE file was added. No personally tailored topic is supplied by default. Git delivery is tracked in the PR and does not mean the service is deployed. Detailed design documents remain PROPOSED and use Korean prose with shared English API terms and a KO/EN UI glossary.
+Local code and synthetic tests exist; no deployment, real credential issuance, or external runtime call has occurred. PostgreSQL integration has been tested against an isolated ephemeral database; real runtimes and operating policies remain unverified. See [retry and retention bounds](docs/RETENTION_BOUNDS.md) for the current limits and fixture-only cleanup. The user selected MIT for this project; third-party licenses and notices remain separate. No personally tailored topic is supplied by default. Git delivery is tracked in the PR and does not mean the service is deployed. Detailed design documents remain PROPOSED and use Korean prose with shared English API terms and a KO/EN UI glossary.
