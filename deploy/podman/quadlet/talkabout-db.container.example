@@ -13,6 +13,7 @@ Environment=POSTGRES_DB=talkabout
 ReadOnly=true
 ReadOnlyTmpfs=false
 Tmpfs=/tmp:rw,nosuid,nodev,size=32m
+Tmpfs=/run/secrets:rw,nosuid,nodev,size=1m,mode=0755
 Tmpfs=/var/run/postgresql:rw,nosuid,nodev,size=16m,mode=1777
 DropCapability=all
 NoNewPrivileges=true

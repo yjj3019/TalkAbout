@@ -14,7 +14,9 @@ def run(args, data=None, check=True):
     if check and result.returncode:
         if args[0] == 'run':
             # Run argv carries only secret references; never emit SQL/secret stdin.
-            print(json.dumps({'fixture_engine_error': result.stderr.decode(errors='replace')[-1200:]}))
+            message = result.stderr.decode(errors='replace').lower()
+            categories = ['read-only file system', 'unknown mount option', 'permission denied', 'no space left', 'connection refused', 'error mounting']
+            print(json.dumps({'fixture_engine_error_categories': [c for c in categories if c in message]}))
         raise RuntimeError('podman_operation_failed_' + args[0])
     return result
 
@@ -53,7 +55,7 @@ def smoke(image):
         if run([kind, 'inspect', name], check=False).returncode == 0:
             raise RuntimeError('fixture_name_collision')
     result = {'status': 'FAIL', 'fixture_only': True, 'fixture_id': identifier, 'published_ports': False, 'checks': []}
-    common = [*labels, '--network', network, '--cap-drop=all', '--security-opt=no-new-privileges', '--read-only', '--read-only-tmpfs=false', '--tmpfs=/tmp:rw,nosuid,nodev,size=32m', '--memory=512m', '--memory-swap=512m', '--cpus=1', '--pids-limit=128']
+    common = [*labels, '--network', network, '--cap-drop=all', '--security-opt=no-new-privileges', '--read-only', '--read-only-tmpfs=false', '--tmpfs=/tmp:rw,nosuid,nodev,size=32m', '--tmpfs=/run/secrets:rw,nosuid,nodev,size=1m,mode=0755', '--memory=512m', '--memory-swap=512m', '--cpus=1', '--pids-limit=128']
     def sql(statement, database='talkabout'):
         return run(['exec', '-i', db, 'psql', '-U', 'talkabout_owner', '-d', database, '-At', '-v', 'ON_ERROR_STOP=1'], statement.encode()).stdout.strip()
     def db_ready():

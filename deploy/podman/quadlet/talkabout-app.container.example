@@ -12,6 +12,7 @@ Secret=talkabout-db-url,type=mount,target=talkabout-db-url,uid=10001,gid=10001,m
 ReadOnly=true
 ReadOnlyTmpfs=false
 Tmpfs=/tmp:rw,nosuid,nodev,size=32m
+Tmpfs=/run/secrets:rw,nosuid,nodev,size=1m,mode=0755
 DropCapability=all
 NoNewPrivileges=true
 PidsLimit=128

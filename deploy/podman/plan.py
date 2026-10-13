@@ -18,7 +18,7 @@ def plan(app_image, host_port=8080):
     if type(host_port) is not int or not 1024 <= host_port <= 65535:
         raise ValueError('unprivileged_host_port_required')
     images = json.loads((ROOT/'deploy/podman/images.lock.json').read_text())['images']
-    common = ['--label', LABEL, '--network', NETWORK, '--cap-drop=all', '--security-opt=no-new-privileges', '--pids-limit=128', '--cpus=1', '--memory=512m', '--memory-swap=512m', '--read-only', '--read-only-tmpfs=false', '--tmpfs=/tmp:rw,nosuid,nodev,size=32m', '--log-opt=max-size=10mb']
+    common = ['--label', LABEL, '--network', NETWORK, '--cap-drop=all', '--security-opt=no-new-privileges', '--pids-limit=128', '--cpus=1', '--memory=512m', '--memory-swap=512m', '--read-only', '--read-only-tmpfs=false', '--tmpfs=/tmp:rw,nosuid,nodev,size=32m', '--tmpfs=/run/secrets:rw,nosuid,nodev,size=1m,mode=0755', '--log-driver=k8s-file', '--log-opt=max-size=10mb']
     db = ['podman', 'run', '--detach', '--name', DB, *common, '--user=999:999', '--network-alias', DB,
           '--volume', VOLUME+':/var/lib/postgresql:U', '--tmpfs=/var/run/postgresql:rw,nosuid,nodev,size=16m,mode=1777',
           '--secret', 'talkabout-db-password,type=mount,target=pg-password,uid=999,gid=999,mode=0400',
