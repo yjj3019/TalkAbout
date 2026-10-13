@@ -2,7 +2,7 @@
 
 **LOCAL P0 PROTOTYPE / NOT DEPLOYED — Reviewed: 2026-10-13**
 
-Git push/PR/merge are authorized. A merged repository is separate from a running service. The designated server alias is `designated-server`; its unique existing connection, host key, dedicated path, runtime and DB must be verified before copying or starting anything. Do not use another application's directory/server/database as a fallback.
+Git push/PR/merge are authorized. A merged repository is separate from a running service. The deployment target is selected privately; its unique existing connection, host key, dedicated path, runtime and DB must be verified before copying or starting anything. Do not use another application's directory/server/database as a fallback.
 
 ## 한국어
 
@@ -46,7 +46,7 @@ serve는 foreground에서 127.0.0.1:8080에 bind하고 concurrency 16, graceful 
 
 ## English
 
-This is deployment preparation for a private prototype. Verify the unique registered `designated-server` connection and host key before use. The dedicated app path/runtime identity, access scope, PostgreSQL allocation/backup/secrets and persistent security settings require precise decisions. Public ports/firewall/TLS, global packages, service accounts, permanent credentials, auto-start and new costs require additional approval. Real AI calls are not implied by deploying code.
+This is deployment preparation for a private prototype. Verify the approved private connection and host key before use. The dedicated app path/runtime identity, access scope, PostgreSQL allocation/backup/secrets and persistent security settings require precise decisions. Public ports/firewall/TLS, global packages, service accounts, permanent credentials, auto-start and new costs require additional approval. Real AI calls are not implied by deploying code.
 
 Build the wheel in isolation and use an app-private venv. Record source SHA and wheel hash. The Windows dependency snapshot is not a Linux compatibility claim. CLI validates loopback PostgreSQL settings with a bounded connect timeout; preflight is read-only and serve never initializes schema/accounts automatically. /ready checks scheduler and PostgreSQL schema; /health reports process state. Fixture readiness cannot be mistaken for a production DB.
 

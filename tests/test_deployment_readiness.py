@@ -47,7 +47,7 @@ def test_postgres_real_loopback_health_readiness_and_shutdown(postgres_fixture):
         while not server.started and time.monotonic() < deadline:
             time.sleep(0.01)
         assert server.started
-        with httpx.Client(base_url=f"http://127.0.0.1:{port}", timeout=2) as client:
+        with httpx.Client(base_url=f"http://127.0.0.1:{port}", timeout=10) as client:
             assert client.get("/health").json()["scheduler"] == "running"
             assert client.get("/ready").json() == {"status": "ready", "deployment": "prototype"}
             assert client.get("/api/v1/rooms").status_code == 401

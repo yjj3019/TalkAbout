@@ -51,15 +51,22 @@ def test_mcp_scope_pause_idempotency_and_stdio(fixture):
 
 
 def test_bounded_runtime_timeout_cancellation_and_error():
+    release, finished = threading.Event(), threading.Event()
     class IgnoresCancel:
         def run(self, context, cancel):
-            time.sleep(0.08)
+            release.wait(2)
+            finished.set()
             return "late"
     cancel = threading.Event()
-    start = time.monotonic()
-    with pytest.raises(RuntimeTimeout):
-        bounded_call(IgnoresCancel(), {}, cancel, 0.02)
-    assert cancel.is_set() and time.monotonic() - start < 0.07
+    try:
+        with pytest.raises(RuntimeTimeout) as error:
+            bounded_call(IgnoresCancel(), {}, cancel, 0.02)
+        # Prove the caller returns while an uncooperative runtime is still active,
+        # instead of asserting a brittle 70ms Windows thread-scheduling threshold.
+        assert cancel.is_set() and not finished.is_set() and not error.value.runtime_stopped
+    finally:
+        release.set()
+        assert finished.wait(1)
     class Fails:
         def run(self, context, cancel): raise ValueError("fixture error")
     with pytest.raises(ValueError): bounded_call(Fails(), {}, threading.Event(), 1)
