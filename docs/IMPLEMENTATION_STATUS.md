@@ -1,5 +1,11 @@
 ## Final feature checkpoint — 2026-10-13
 
+### Git delivery and deployment preparation update
+
+Git push/PR/merge are now authorized; earlier no-push statements below are historical checkpoints. The service remains NOT DEPLOYED. [Deployment runbook](DEPLOYMENT_RUNBOOK.md) records the designated target, unsupported production scope and required allocation/security approvals. No operating credentials or external AI calls were made.
+
+Added read-only CLI preflight, sanitized loopback DB configuration validation, bounded connection timeout, PostgreSQL/schema/scheduler readiness, foreground concurrency/shutdown limits and wheel packaging validation. The updated local aggregate passed 95 Python cases including 11 real isolated PostgreSQL cases and the stdio MCP process; UI logic passed 5. A real synthetic loopback HTTP server returned health/ready and rejected unauthenticated room access, then shut down. This is a private smoke test, not a deployed user service. Browser/AI/product MCP remain NOTRUN. Build resources, pip check, local links and syntax/diff checks passed.
+
 LOCAL PROTOTYPE / NOT DEPLOYED. [Final feature matrix](FEATURE_MATRIX.md) is the current requirement-level status. [Owner handover and mode contract](MODE_HANDOVER.md) supersedes older entries saying handover/modes are unimplemented or only round-robin labels. [Retry/retention bounds](RETENTION_BOUNDS.md) still defines the previous safety bundle.
 
 The final code aggregate passed 86 Python tests, including 10 real isolated PostgreSQL cases and a separate local stdio MCP client/process test. Node UI state logic passed 5 cases; Python/JavaScript syntax, local document links and git diff --check passed. The same complete aggregate is rerun at the final committed head for the final report and review manifest. These are synthetic local tests, not operating AI/browser verification. One existing Starlette/httpx deprecation warning remains.

@@ -6,6 +6,7 @@ import time
 from pathlib import Path
 
 from .api import create_app
+from .config import database_config
 from .store import PostgresStore
 from .worker import APIClient, Journal, SyntheticRuntime, Worker
 
@@ -15,6 +16,7 @@ def main():
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("init-db")
     sub.add_parser("serve")
+    sub.add_parser("preflight", help="Validate loopback configuration and existing schema; never initialize accounts or data")
     bootstrap = sub.add_parser("bootstrap-human", help="Explicit operator action; never performed automatically")
     bootstrap.add_argument("--workspace", required=True)
     bootstrap.add_argument("--name", required=True)
@@ -27,13 +29,22 @@ def main():
             command.add_argument("--synthetic", action="store_true")
             command.add_argument("--max-seconds", type=int, default=60)
     args = parser.parse_args()
-    if args.command in {"init-db", "serve", "bootstrap-human"}:
+    if args.command in {"init-db", "serve", "bootstrap-human", "preflight"}:
         dsn = os.environ.get("TALKABOUT_DATABASE_URL")
         if not dsn:
             parser.error("Set TALKABOUT_DATABASE_URL separately; never put credentials in command arguments")
+        try:
+            dsn = database_config(dsn)
+        except ValueError as error:
+            parser.error(str(error))
         store = PostgresStore(dsn)
         if args.command == "init-db":
             store.initialize()
+        elif args.command == "preflight":
+            ready = store.ready()
+            print(json.dumps({"configuration": "loopback_valid", "database_schema": "ready" if ready else "not_ready", "deployment": "NOT_DEPLOYED"}))
+            if not ready:
+                raise SystemExit(1)
         elif args.command == "bootstrap-human":
             from .auth import bootstrap_human
             password = getpass.getpass("Initial human password (never logged): ")
@@ -43,7 +54,7 @@ def main():
             print(json.dumps(bootstrap_human(store, args.workspace, args.name, args.handle, password)))
         else:
             import uvicorn
-            uvicorn.run(create_app(store), host="127.0.0.1", port=8080, access_log=False)
+            uvicorn.run(create_app(store), host="127.0.0.1", port=8080, access_log=False, limit_concurrency=16, timeout_graceful_shutdown=10)
         return
     config = json.loads(args.config.read_text(encoding="utf-8"))
     if args.command == "mcp":

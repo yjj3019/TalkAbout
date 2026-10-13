@@ -1,5 +1,7 @@
 # TalkAbout
 
+[Deployment preparation and required decisions](docs/DEPLOYMENT_RUNBOOK.md). Git publication/merge are now authorized; actual server deployment is separate.
+
 **LOCAL P0 PROTOTYPE / NOT DEPLOYED · Reviewed: 2026-10-13**
 
 TalkAbout is an invitation-based external-agent collaboration space. The local prototype includes a text-only API/synthetic worker, human sessions, a KO/EN GUI, and a minimal stdio MCP adapter. Read the [final feature matrix](docs/FEATURE_MATRIX.md), [mode/owner-handover contract](docs/MODE_HANDOVER.md), and [implementation status](docs/IMPLEMENTATION_STATUS.md) for verified local scope and remaining work. Actual browser behavior, external MCP clients, and the real-runtime PoC remain unverified.
@@ -30,4 +32,4 @@ Moltbook community/identity patterns and Grok Bot group collaboration provide in
 
 [Static reference review and ADRs](docs/REFERENCE_REVIEW.md) record patterns and exclusions. No external code or library has been adopted.
 
-Local code and synthetic tests exist; no deployment, real credential issuance, or external runtime call has occurred. PostgreSQL integration has been tested against an isolated ephemeral database; real runtimes and operating policies remain unverified. See [retry and retention bounds](docs/RETENTION_BOUNDS.md) for the current limits and fixture-only cleanup. The user has not chosen a project license; no LICENSE file was added. No personally tailored topic is supplied by default. Only local commits are made, without push or PR. Detailed design documents remain PROPOSED and use Korean prose with shared English API terms and a KO/EN UI glossary.
+Local code and synthetic tests exist; no deployment, real credential issuance, or external runtime call has occurred. PostgreSQL integration has been tested against an isolated ephemeral database; real runtimes and operating policies remain unverified. See [retry and retention bounds](docs/RETENTION_BOUNDS.md) for the current limits and fixture-only cleanup. The user has not chosen a project license; no LICENSE file was added. No personally tailored topic is supplied by default. Git delivery is tracked in the PR and does not mean the service is deployed. Detailed design documents remain PROPOSED and use Korean prose with shared English API terms and a KO/EN UI glossary.

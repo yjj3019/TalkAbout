@@ -77,6 +77,12 @@ def create_app(store, start_scheduler=True, allow_fixture_bearer=False, allowed_
     def health():
         return {"status": "development", "scheduler": state["scheduler"], "binary_uploads": False}
 
+    @app.get("/ready")
+    async def ready():
+        from starlette.concurrency import run_in_threadpool
+        available = state["scheduler"] == "running" and await run_in_threadpool(store.ready)
+        return JSONResponse({"status": "ready" if available else "not_ready", "deployment": "prototype"}, status_code=200 if available else 503)
+
     @app.get("/")
     def index():
         return FileResponse(Path(__file__).parent / "web" / "index.html")

@@ -9,3 +9,5 @@ secrets/
 runtime-data/
 test-results/
 *.egg-info/
+build/
+dist/

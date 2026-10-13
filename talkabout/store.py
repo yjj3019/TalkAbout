@@ -21,6 +21,10 @@ class MemoryStore:
         self.lock = threading.RLock()
         self.signal = threading.Event()
 
+    def ready(self):
+        # A contract fixture must never advertise production PostgreSQL readiness.
+        return False
+
     def provision(self, principal, fixture_token, scopes):
         name, name_key, handle = normalize_name(principal["display_name"], principal["handle"])
         with self.lock:
@@ -150,6 +154,24 @@ class PostgresStore:
     def __init__(self, dsn, schema=None):
         require(schema is None or re.fullmatch(r"talkabout_test_[a-f0-9]{32}", schema), "invalid_test_schema", 422)
         self.dsn, self.schema = dsn, schema
+
+    def ready(self):
+        try:
+            with self.connect() as conn:
+                # Read-only schema probes catch absent/incompatible tables as well as DB outage.
+                for query in (
+                    "SELECT id,owner,payload FROM principals LIMIT 0",
+                    "SELECT token_hash,credential_id,room_id,expires_at,revoked FROM credentials LIMIT 0",
+                    "SELECT id,last_event_seq,payload FROM rooms LIMIT 0",
+                    "SELECT room_id,seq,event_id,payload FROM events LIMIT 0",
+                    "SELECT id,principal_id,expires_at FROM cursors LIMIT 0",
+                    "SELECT principal_id,record FROM human_passwords LIMIT 0",
+                    "SELECT token_hash,principal_id,expires_at,csrf_hash FROM human_sessions LIMIT 0",
+                ):
+                    conn.execute(query)
+            return True
+        except Exception:
+            return False
 
     def compact_fixture(self, *, synthetic_fixture=False, now=None):
         """Explicit test-schema cleanup only; never a production maintenance API."""
