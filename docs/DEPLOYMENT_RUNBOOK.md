@@ -1,5 +1,7 @@
 # TalkAbout deployment preparation
 
+The [Podman package](../deploy/podman/README.md) defines a separate private-container contract: non-root app, mounted DB URL secret, fixed private DB alias, separated PostgreSQL persistence, and host loopback-only publish. It does not enable services or issue operating credentials. The original host CLI below remains loopback-only.
+
 **LOCAL P0 PROTOTYPE / NOT DEPLOYED — Reviewed: 2026-10-13**
 
 Git push/PR/merge are authorized. A merged repository is separate from a running service. The deployment target is selected privately; its unique existing connection, host key, dedicated path, runtime and DB must be verified before copying or starting anything. Do not use another application's directory/server/database as a fallback.
