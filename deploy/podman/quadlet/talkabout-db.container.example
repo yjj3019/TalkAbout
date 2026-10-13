@@ -1,0 +1,29 @@
+# Example only. No Install section: no boot/linger activation.
+[Container]
+Image=docker.io/library/postgres:18.6-bookworm@sha256:afc7e2d441324c0388fa80c3d24f733b4194a4eb7f47dd8ee2b08eb1a24a647c
+ContainerName=talkabout-db
+Network=talkabout-private.network
+NetworkAlias=talkabout-db
+Volume=talkabout-pg18-data.volume:/var/lib/postgresql:U
+User=999:999
+Secret=talkabout-db-password,type=mount,target=pg-password,uid=999,gid=999,mode=0400
+Environment=POSTGRES_PASSWORD_FILE=/run/secrets/pg-password
+Environment=POSTGRES_USER=talkabout_owner
+Environment=POSTGRES_DB=talkabout
+ReadOnly=true
+ReadOnlyTmpfs=false
+Tmpfs=/tmp:rw,nosuid,nodev,size=32m
+Tmpfs=/run/secrets:rw,nosuid,nodev,size=1m,mode=0755
+Tmpfs=/var/run/postgresql:rw,nosuid,nodev,size=16m,mode=1777
+DropCapability=all
+NoNewPrivileges=true
+PidsLimit=128
+Label=io.talkabout.project=talkabout
+HealthCmd=pg_isready -U talkabout_owner -d talkabout
+HealthInterval=30s
+HealthTimeout=5s
+HealthRetries=3
+Exec=-c max_connections=30 -c shared_buffers=64MB
+PodmanArgs=--cpus=1 --memory=512m --memory-swap=512m --log-opt=max-size=10mb
+[Service]
+Restart=no

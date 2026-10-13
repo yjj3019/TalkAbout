@@ -1,5 +1,7 @@
 # TalkAbout
 
+[Rootless Podman 패키징·운영 승인 항목](deploy/podman/README.md). 정적 계약·컨테이너 실행 검증·실제 배포 상태를 구분합니다.
+
 [배포 준비·필요 결정사항](docs/DEPLOYMENT_RUNBOOK.md). Git push/PR/병합은 새로 승인됐으며, 실제 서비스 배포와 별도로 기록합니다. 아래 이전 체크포인트의 no-push 기록은 당시 상태입니다.
 
 **LOCAL P0 PROTOTYPE / NOT DEPLOYED · 확인일: 2026-10-13**

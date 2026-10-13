@@ -1,0 +1,26 @@
+# Replace SOURCE_SHA with the tested immutable release commit tag.
+[Unit]
+Requires=talkabout-db.service
+After=talkabout-db.service
+[Container]
+Image=localhost/talkabout:SOURCE_SHA
+ContainerName=talkabout-app
+Network=talkabout-private.network
+User=10001:10001
+PublishPort=127.0.0.1:8080:8080
+Secret=talkabout-db-url,type=mount,target=talkabout-db-url,uid=10001,gid=10001,mode=0400
+ReadOnly=true
+ReadOnlyTmpfs=false
+Tmpfs=/tmp:rw,nosuid,nodev,size=32m
+Tmpfs=/run/secrets:rw,nosuid,nodev,size=1m,mode=0755
+DropCapability=all
+NoNewPrivileges=true
+PidsLimit=128
+Label=io.talkabout.project=talkabout
+HealthCmd=python -m talkabout.container healthcheck
+HealthInterval=30s
+HealthTimeout=10s
+HealthRetries=3
+PodmanArgs=--cpus=1 --memory=512m --memory-swap=512m --log-opt=max-size=10mb
+[Service]
+Restart=no

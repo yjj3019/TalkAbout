@@ -1,0 +1,5 @@
+# Reference only. Copy/install only after dedicated-resource approval.
+[Network]
+NetworkName=talkabout-private
+Internal=true
+Label=io.talkabout.project=talkabout

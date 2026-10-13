@@ -1,0 +1,17 @@
+**
+!Containerfile
+!pyproject.toml
+!requirements.lock.txt
+!talkabout/
+!talkabout/*.py
+!talkabout/schema.sql
+!talkabout/web/
+!talkabout/web/*.html
+!talkabout/web/*.mjs
+!talkabout/web/*.css
+talkabout/**/__pycache__/
+talkabout/**/*.pyc
+talkabout/**/*.local.json
+talkabout/**/.env*
+talkabout/**/*.sqlite*
+talkabout/**/secrets/

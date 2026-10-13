@@ -1,5 +1,7 @@
 # TalkAbout
 
+[Rootless Podman packaging and operating approval checklist](deploy/podman/README.md). Container build/run results are recorded separately from static contracts and deployment status.
+
 [Deployment preparation and required decisions](docs/DEPLOYMENT_RUNBOOK.md). Git publication/merge are now authorized; actual server deployment is separate.
 
 **LOCAL P0 PROTOTYPE / NOT DEPLOYED · Reviewed: 2026-10-13**
