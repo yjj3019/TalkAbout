@@ -9,6 +9,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from .domain import Problem, ident, normalize_name, require, token_hash
+from .retention import DEFAULT_RETENTION
 
 
 class MemoryStore:
@@ -111,11 +112,13 @@ class MemoryStore:
             return self.auth(token), copy.deepcopy(self.rooms), copy.deepcopy(self.principals)
 
     def cursor(self, cursor_id):
-        return copy.deepcopy(self.cursors.get(cursor_id))
+        with self.lock:
+            saved = self.cursors.get(cursor_id)
+            return copy.deepcopy(saved) if saved and saved.get("expires_at", 0) > time.time() else None
 
     def save_cursor(self, cursor_id, payload):
         with self.lock:
-            self.cursors[cursor_id] = copy.deepcopy(payload)
+            self.cursors[cursor_id] = {**copy.deepcopy(payload), "expires_at": time.time() + DEFAULT_RETENTION.cursor_seconds}
 
     def tick_all(self):
         from .domain import schedule
@@ -137,6 +140,31 @@ class PostgresStore:
     def __init__(self, dsn, schema=None):
         require(schema is None or re.fullmatch(r"talkabout_test_[a-f0-9]{32}", schema), "invalid_test_schema", 422)
         self.dsn, self.schema = dsn, schema
+
+    def compact_fixture(self, *, synthetic_fixture=False, now=None):
+        """Explicit test-schema cleanup only; never a production maintenance API."""
+        require(synthetic_fixture is True and self.schema is not None, "synthetic_fixture_required", 403)
+        from .retention import compact_room_fixture, retire_responses
+        from psycopg.types.json import Jsonb
+        now = time.time() if now is None else now
+        counts = {"events": 0, "response_payloads": 0, "cursors": 0}
+        with self.connect() as conn:
+            for row in conn.execute("SELECT id,payload FROM rooms ORDER BY id FOR UPDATE").fetchall():
+                room = row["payload"]
+                room["events"] = [r["payload"] for r in conn.execute("SELECT payload FROM events WHERE room_id=%s ORDER BY seq", (row["id"],)).fetchall()]
+                result = compact_room_fixture(room, synthetic_fixture=True, now=now)
+                for key, value in result.items():
+                    counts[key] += value
+                floor = room.get("first_retained_seq", 1)
+                room.pop("events")
+                conn.execute("UPDATE rooms SET payload=%s WHERE id=%s", (Jsonb(room), row["id"]))
+                conn.execute("DELETE FROM events WHERE room_id=%s AND seq<%s", (row["id"], floor))
+            for row in conn.execute("SELECT id,payload FROM principals ORDER BY id FOR UPDATE").fetchall():
+                principal = row["payload"]
+                counts["response_payloads"] += retire_responses(principal.get("identity_operations", {}), now)
+                conn.execute("UPDATE principals SET payload=%s WHERE id=%s", (Jsonb(principal), row["id"]))
+            counts["cursors"] = conn.execute("DELETE FROM cursors WHERE expires_at<=%s", (now,)).rowcount
+        return counts
 
     def connect(self, autocommit=False):
         import psycopg
@@ -297,7 +325,7 @@ class PostgresStore:
     def save_cursor(self, cursor_id, payload):
         from psycopg.types.json import Jsonb
         with self.connect() as conn:
-            conn.execute("INSERT INTO cursors(id,principal_id,payload,expires_at) VALUES(%s,%s,%s,%s)", (cursor_id, payload["principal"], Jsonb(payload), time.time() + 3600))
+            conn.execute("INSERT INTO cursors(id,principal_id,payload,expires_at) VALUES(%s,%s,%s,%s)", (cursor_id, payload["principal"], Jsonb(payload), time.time() + DEFAULT_RETENTION.cursor_seconds))
 
     def tick_all(self):
         from .domain import schedule

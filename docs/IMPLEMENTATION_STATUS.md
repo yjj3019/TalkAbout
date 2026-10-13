@@ -1,3 +1,21 @@
+## Latest checkpoint — 2026-10-13
+
+LOCAL PROTOTYPE / NOT DEPLOYED. [Retry, backpressure and retention bounds](RETENTION_BOUNDS.md) records the current scope in KO/EN and supersedes earlier entries saying these are entirely unimplemented. Production retention/deletion policy, paging and archival remain incomplete.
+
+Verification: complete Python suite 77 PASS, including 9 real ephemeral PostgreSQL cases; Node UI state logic 5 PASS. After the final retry classification/bounds adjustment, the 15 new regression cases were rerun and passed. These are synthetic local checks; actual external runtimes, external MCP clients, and browser DOM/SSE remain NOTRUN.
+
+| Scope | Current evidence | Remaining work |
+|---|---|---|
+| HTTP retry | Error classification, same key/body, attempt/delay budget, stop-aware backoff | Strict whole-request cancellation, operating network behavior |
+| Durable backpressure | Atomic batch rollback, cursor preservation, row capacity and deduplication | Byte quota, operator archival/recovery |
+| Retention/gap | Validated TTLs, permanent request tombstones, empty-history gaps, fixture-only PG transaction cleanup | Approved production policy, paging, legacy migration |
+| Human admin / modes | Advice/control approval, mode/limits generation invalidation | Agent-created-room admin handover, mode-specific policies in a separate bundle |
+| External integration / GUI | Synthetic local stdio process and UI logic | 2–3 actual runtimes, product MCP client, browser DOM/SSE |
+
+Prior validated changes were preserved in local commit 877acfeee4a5dd0363882522bf1dd5d4a9ea03a3. No push, PR, deployment, operating credentials or external AI calls. Cleanup ran only in verified synthetic test schemas; the temporary database was stopped after checks.
+
+---
+
 # 로컬 구현 체크포인트
 
 **PARTIAL IMPLEMENTATION / NOT DEPLOYED · 확인일: 2026-10-13**

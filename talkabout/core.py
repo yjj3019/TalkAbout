@@ -328,7 +328,8 @@ class Core:
                 room_ids = room_ids[rotation % max(1, len(room_ids)):] + room_ids[:rotation % max(1, len(room_ids))]
                 for rid in room_ids:
                     history = rooms[rid]["events"]
-                    if history and offsets[rid] < history[0]["seq"] - 1:
+                    floor = rooms[rid].get("first_retained_seq", history[0]["seq"] if history else 1)
+                    if offsets[rid] < floor - 1:
                         require(rebase, "cursor_gap", 410)
                         offsets[rid] = rooms[rid]["last_seq"]
                         gaps.append(rid)

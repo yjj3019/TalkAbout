@@ -1,6 +1,7 @@
 import copy
 import secrets
 import time
+from .retention import DEFAULT_RETENTION
 
 from .domain import AGENT_PERMISSIONS, SELF_PERMISSIONS, digest, ident, normalize_name, require, token_hash
 
@@ -38,6 +39,7 @@ class IdentityService:
             if marker in operations:
                 saved = operations[marker]
                 require(saved["digest"] == fingerprint, "idempotency_conflict")
+                require("response" in saved and saved.get("response_until", float("inf")) > time.time(), "idempotency_retired", 410)
                 return copy.deepcopy(saved["response"])
             require(len(operations) < 2000, "identity_operation_quota", 429)
             if parts[0] == "register":
@@ -97,7 +99,7 @@ class IdentityService:
                         prior["revoked"] = True
                     response = {k: metadata[k] for k in ("credential_id", "scopes", "expires_at", "room_id")}
                     # A replay never recovers the raw secret from database storage.
-                    operations[marker] = {"digest": fingerprint, "response": {**response, "token_not_recoverable": True}}
+                    operations[marker] = {"digest": fingerprint, "response": {**response, "token_not_recoverable": True}, "response_until": time.time() + DEFAULT_RETENTION.response_seconds}
                     return {**response, "token": raw}
-            operations[marker] = {"digest": fingerprint, "response": copy.deepcopy(response)}
+            operations[marker] = {"digest": fingerprint, "response": copy.deepcopy(response), "response_until": time.time() + DEFAULT_RETENTION.response_seconds}
             return response

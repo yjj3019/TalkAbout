@@ -4,6 +4,10 @@ import json
 import sqlite3
 import threading
 import time
+import random
+import math
+from dataclasses import dataclass
+from email.utils import parsedate_to_datetime
 from urllib.parse import urlsplit
 
 import httpx
@@ -12,8 +16,31 @@ from .domain import digest
 from .runtime import RuntimeTimeout, bounded_call, validate_adapter_policy
 
 
+class StopRequested(Exception):
+    pass
+
+
+class Backpressure(Exception):
+    pass
+
+
+@dataclass(frozen=True)
+class RetryPolicy:
+    attempts: int = 3
+    base_seconds: float = 0.25
+    max_seconds: float = 2
+    budget_seconds: float = 5
+
+    def __post_init__(self):
+        if type(self.attempts) is not int or not 1 <= self.attempts <= 5:
+            raise ValueError("retry_attempts_must_be_1_to_5")
+        values = (self.base_seconds, self.max_seconds, self.budget_seconds)
+        if any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) for v in values) or not (0 <= self.base_seconds <= self.max_seconds <= self.budget_seconds <= 30 and self.budget_seconds > 0):
+            raise ValueError("invalid_retry_bounds")
+
+
 class APIClient:
-    def __init__(self, base_url, token, allowed_origin, transport=None):
+    def __init__(self, base_url, token, allowed_origin, transport=None, retry_policy=None):
         parsed = urlsplit(base_url)
         origin = f"{parsed.scheme}://{parsed.netloc}"
         if origin != allowed_origin or parsed.username or parsed.password or parsed.query or parsed.fragment:
@@ -22,19 +49,55 @@ class APIClient:
             raise ValueError("https_required")
         self.client = httpx.Client(base_url=base_url.rstrip("/") + "/api/v1/", headers={"Authorization": "Bearer " + token},
                                    follow_redirects=False, timeout=15, transport=transport)
+        self.retry_policy = retry_policy or RetryPolicy()
+        self.should_stop = lambda: False
 
     def request(self, method, path, body=None, key=None, params=None):
         headers = {"Idempotency-Key": key} if key else {}
-        response = self.client.request(method, path, json=body, headers=headers, params=params)
-        response.raise_for_status()
-        return response.json()
+        policy, started = self.retry_policy, time.monotonic()
+        safe = method.upper() == "GET" or bool(key)
+        for attempt in range(policy.attempts):
+            if self.should_stop():
+                raise StopRequested()
+            try:
+                remaining = max(0.001, policy.budget_seconds - (time.monotonic() - started))
+                response = self.client.request(method, path, json=body, headers=headers, params=params, timeout=min(15, remaining))
+                response.raise_for_status()
+                return response.json()
+            except (httpx.TimeoutException, httpx.NetworkError, httpx.RemoteProtocolError, httpx.HTTPStatusError) as error:
+                retry_after = 0
+                if isinstance(error, httpx.HTTPStatusError):
+                    if error.response.status_code not in {429, 500, 502, 503, 504}:
+                        raise
+                    value = error.response.headers.get("Retry-After")
+                    if value:
+                        try:
+                            retry_after = float(value)
+                        except ValueError:
+                            try:
+                                retry_after = parsedate_to_datetime(value).timestamp() - time.time()
+                            except (TypeError, ValueError, OverflowError):
+                                raise error
+                        if not math.isfinite(retry_after) or retry_after > policy.max_seconds:
+                            raise error
+                delay = max(0, retry_after, min(policy.max_seconds, policy.base_seconds * 2 ** attempt) * random.uniform(0.8, 1))
+                if not safe or attempt + 1 >= policy.attempts or time.monotonic() - started + delay >= policy.budget_seconds:
+                    raise
+                until = time.monotonic() + delay
+                while time.monotonic() < until:
+                    if self.should_stop():
+                        raise StopRequested()
+                    time.sleep(min(0.02, max(0, until - time.monotonic())))
 
     def close(self):
         self.client.close()
 
 
 class Journal:
-    def __init__(self, path):
+    def __init__(self, path, inbox_limit=4096, queue_limit=1024, pending_limit=64):
+        if any(type(v) is not int or not 1 <= v <= 100000 for v in (inbox_limit, queue_limit, pending_limit)) or pending_limit > queue_limit:
+            raise ValueError("invalid_journal_bounds")
+        self.inbox_limit, self.queue_limit, self.pending_limit = inbox_limit, queue_limit, pending_limit
         self.path = str(path)
         if self.path == ":memory:":
             raise ValueError("durable_journal_required")
@@ -67,6 +130,11 @@ class Journal:
                             self.db.execute("UPDATE queue SET state='ready',payload=? WHERE id=?", (json.dumps({"event": event, "runtime_started": False}), event["task_id"]))
                     else:
                         self.db.execute("INSERT INTO queue VALUES(?,?,?)", (event["task_id"], "ready", json.dumps({"event": event, "runtime_started": False})))
+            inbox = self.db.execute("SELECT count(*) FROM inbox").fetchone()[0]
+            queue = self.db.execute("SELECT count(*) FROM queue").fetchone()[0]
+            pending = self.db.execute("SELECT count(*) FROM queue WHERE state NOT IN ('done','failed','uncertain','cancelled','stopped_before_submit')").fetchone()[0]
+            if inbox > self.inbox_limit or queue > self.queue_limit or pending > self.pending_limit:
+                raise Backpressure("journal_capacity")
             self.set_setting("cursor", response["next_cursor"])
 
     def save(self, task_id, state, payload):
@@ -102,6 +170,8 @@ class SyntheticRuntime:
 class Worker:
     def __init__(self, client, journal, runtime, heartbeat_interval=3, runtime_timeout=30, adapter_policy=None):
         self.client, self.journal, self.runtime = client, journal, runtime
+        if isinstance(client, APIClient):
+            client.should_stop = journal.stop_requested
         self.heartbeat_interval = heartbeat_interval
         self.runtime_timeout = runtime_timeout
         validate_adapter_policy(adapter_policy or {"external": False, "allowed_tools": []})
@@ -130,7 +200,14 @@ class Worker:
             unknown = status.get("uncertain", 0) or status.get("call_started", 0)
             self.journal.stop_state("unreachable" if unknown else "stopped")
             return "stop_unconfirmed" if unknown else "stopped"
-        self.poll()
+        try:
+            self.poll()
+        except StopRequested:
+            self.journal.stop_state("stopped")
+            return "stopped"
+        except Backpressure:
+            if not self.journal.next():
+                return "backpressure"
         entry = self.journal.next()
         if not entry:
             return "waiting"
@@ -254,8 +331,12 @@ class Worker:
             self.client.request("POST", prefix + "/complete", payload["complete"], payload["complete_key"])
             self.journal.save(tid, "done", payload)
             return "completed"
+        except StopRequested:
+            # Pending claim/result stays durable; no further submission after stop.
+            self.journal.stop_state("stopped")
+            return "stopped"
         except httpx.HTTPStatusError as exc:
-            if exc.response.status_code in {401, 403, 404, 409, 422}:
+            if exc.response.status_code in {401, 403, 404, 409, 410, 422}:
                 self.journal.save(tid, "failed", payload)
             raise
         # Transport failures preserve claim_pending/result_saved for same-key recovery.

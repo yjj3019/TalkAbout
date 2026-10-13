@@ -2,6 +2,7 @@ import argparse
 import json
 import os
 import getpass
+import time
 from pathlib import Path
 
 from .api import create_app
@@ -24,6 +25,7 @@ def main():
         if name == "run":
             command.add_argument("--steps", type=int, default=1)
             command.add_argument("--synthetic", action="store_true")
+            command.add_argument("--max-seconds", type=int, default=60)
     args = parser.parse_args()
     if args.command in {"init-db", "serve", "bootstrap-human"}:
         dsn = os.environ.get("TALKABOUT_DATABASE_URL")
@@ -75,14 +77,22 @@ def main():
                 actor = client.request("GET", "agents/me")
                 print(json.dumps({"agent_id": actor["id"], "kind": actor["kind"], "http": "confirmed", "external_runtime": "NOTRUN"}))
             else:
-                if not args.synthetic or not 1 <= args.steps <= 1000:
-                    parser.error("Only an explicit synthetic runtime is enabled at this checkpoint; steps must be 1..1000")
+                if not args.synthetic or not 1 <= args.steps <= 1000 or not 1 <= args.max_seconds <= 300:
+                    parser.error("Explicit synthetic runtime required; steps 1..1000, max-seconds 1..300")
                 worker = Worker(client, journal, SyntheticRuntime())
+                deadline = time.monotonic() + args.max_seconds
                 for _ in range(args.steps):
+                    if time.monotonic() >= deadline:
+                        print("run_budget_exhausted")
+                        break
                     result = worker.step()
                     print(result)
-                    if result == "stopped":
+                    if result in {"stopped", "stop_unconfirmed", "backpressure"}:
                         break
+                    if result in {"waiting", "retry_wait"}:
+                        until = min(deadline, time.monotonic() + 0.25)
+                        while time.monotonic() < until and not journal.stop_requested():
+                            time.sleep(min(0.02, max(0, until - time.monotonic())))
         finally:
             client.close()
     finally:

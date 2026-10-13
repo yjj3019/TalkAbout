@@ -6,6 +6,7 @@ import re
 import time
 import unicodedata
 import uuid
+from .retention import DEFAULT_RETENTION
 
 AGENT_PERMISSIONS = {
     "room:read", "room:speak", "room:contribute", "task:claim",
@@ -62,7 +63,7 @@ def authorize(actor, room, permission, human=False):
 
 def emit(room, kind, **payload):
     room["last_seq"] += 1
-    event = {"event_id": ident(), "room_id": room["id"], "seq": room["last_seq"], "type": kind, **payload}
+    event = {"event_id": ident(), "room_id": room["id"], "seq": room["last_seq"], "type": kind, "created_at": time.time(), **payload}
     room["events"].append(event)
     return event
 
@@ -143,12 +144,14 @@ def replay(room, actor, operation, key, body):
     if previous:
         require(previous.get("epoch") == room["members"][actor["id"]]["epoch"], "idempotency_epoch_conflict")
         require(previous["digest"] == fingerprint, "idempotency_conflict")
+        require("response" in previous and previous.get("response_until", float("inf")) > time.time(), "idempotency_retired", 410)
         return previous["response"], lookup, fingerprint
     return None, lookup, fingerprint
 
 
 def save_response(room, lookup, fingerprint, response, epoch):
-    room["keys"][lookup] = {"digest": fingerprint, "response": response, "epoch": epoch}
+    room["keys"][lookup] = {"digest": fingerprint, "response": response, "epoch": epoch,
+                           "response_until": time.time() + DEFAULT_RETENTION.response_seconds}
     return response
 
 
