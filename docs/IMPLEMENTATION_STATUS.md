@@ -22,6 +22,31 @@ DB 준비 wrapper는 Windows child output handle 대기로 timeout을 반환했�
 
 ## 작성한 코드
 
+## 독립 리뷰 수정·MCP 프로세스 체크포인트
+
+최종 aggregate: Python 51개 PASS(실제 PostgreSQL 7개·별도 MCP process 시험 1개 포함), Node UI 로직 5개 PASS, compileall·diff 검사 PASS입니다. stop 회귀의 최초 기대값은 callback이 이미 끝나 제출만 막은 stopped_before_submit 경우를 제외해 1건 실패했으며, 취소/완료 후 제출 차단을 구분해 재실행했습니다. 최종 FAIL 0입니다. 추가 모델 호출이나 운영 credential은 없고 임시 DB는 종료했습니다.
+
+b6f29d7 이후 네 리뷰 결함을 수정했습니다. (1) viewer_member/listed_member를 분리해 순회 순서가 history·membership_revision을 바꾸지 않게 했습니다. (2) room idempotency와 client_message_id 응답을 membership epoch에 묶고 old/누락 epoch는 409로 거절합니다. 동일 epoch 정상 retry는 유지합니다. (3) 모든 queued 이벤트에 assignee/attempt/generation/member revision을 포함하고 pre-call임이 확실한 lease 만료만 새 claim key로 재시도합니다. call_started·uncertain 결과는 자동 재실행하지 않습니다. (4) CLI stop은 독립 SQLite connection watcher가 관찰하고 cancel을 전달하며 claim/complete 직전에 재검사합니다. stop_requested/stopped/unreachable을 구분하고 late 결과는 게시하지 않습니다. 이미 전송돼 commit된 요청의 회수는 보장하지 않습니다.
+
+별도 로컬 합성 client가 실제 CLI MCP stdio child process와 연결했습니다. initialize/initialized/tools/list/read_room/propose_text/ping, 중복 요청·잘못된 인자·타 방 접근·pause 거절과 UTF-8 텍스트를 시험했습니다. 공식 SDK client 인증이나 외부 AI/실계정 연결은 아닙니다. child와 loopback fixture는 시험 종료 시 정리했습니다. 별도 지원 browser automation 도구는 발견하지 못했으며 기존 플랫폼 디렉터리 오류를 우회하지 않았습니다. 실제 browser 실측 NOTRUN은 유지합니다.
+
+### 필수 남은 계약 격차
+
+| 관문 | 현재 코드와 격차 | 완료 조건 |
+| --- | --- | --- |
+| P0 실제 runtime 2개 | CLI는 synthetic만 활성화. actual provider CLI·도구 sandbox·실제 취소/연결 미검증 | 대상/실행 계획 별도 승인 후 서로 다른 실제 runtime의 자기 환경 PoC |
+| 운영 human 인증 | fixture bootstrap/session 코드만 시험. 복구·MFA·분산 rate limit·관리자 추가 정책 미완료 | 운영 계정 생성 승인·정책·보안 검토와 실환경 인증 시험 |
+| 자율 생성 관리 정책 | creator 최소 membership은 있으나 human admin을 어떻게 사전 배정할지 운영 절차 미완료 | membership 우회 없이 human 관리자 배정·고지·인수 절차 확정 |
+| 진행 모드·한도 | P0 round-robin과 고정 한도. mode/limits control·정식 라운드 정책은 미구현 | generation invalidation과 공정성·상한 회귀 포함 구현 |
+| 영속 데이터 규모·수명 | JSONB room history 로드, inbox/cursor/idempotency cleanup·worker queue backpressure 미완료 | paged query·내구 unique 제약·보존/gap/부하 시험 |
+| 방별 선택 API·SSE | 통합 inbox는 있으나 문서의 per-room events/snapshot/SSE·전체 intervention 화면 미완료 | 동일 ACL·seq·재연결 계약으로 구현·시험 |
+| 산출물/관리 정책 | text 버전/채택 API는 있으나 채택 GUI·출처/요약 패널·신고/휴지통/보존 정책 미완료 | P1/P2 범위 결정과 ACL·복원·provenance 시험 |
+| GUI 실측 | UI 상태 로직만 검증. 실제 DOM/history/키보드/접근성 미검증 | 지원 browser 경로 복구 후 실제 회귀 |
+| MCP 범위 | 최소 stdio 합성 client만 시험. 외부 client·HTTP transport·human MCP는 미지원/미검증 | 요구 client별 실제 상호운용 승인·검증 |
+| P2/P3 | binary upload·이미지·publish·공개 회수 비활성 | 별도 단계 승인 후 quarantine/권리/동의/보안 관문 |
+
+프로젝트 license는 아직 사용자가 선택하지 않았습니다. 이 표는 미완료 항목을 구현·검증 완료로 오해하지 않도록 기록한 것이며 추가 승인이나 외부 실행을 자동으로 허용하지 않습니다.
+
 ## 세션·GUI·MCP 후속 체크포인트
 
 최종 검증: Python 39개 PASS(합성 32개 + 실제 PostgreSQL 7개), UI 상태 로직 Node 시험 5개 PASS, Python/JavaScript 구문 및 git diff --check PASS입니다. 최초 회귀에서 방 목록의 변수 참조 오류 1건을 발견해 수정 후 전체 재통과했습니다. PostgreSQL launcher의 Windows process-tree 대기는 launcher만 정리하고 별도 시험 명령으로 실행했습니다. 임시 DB와 GUI fixture는 종료했습니다. 실제 브라우저·외부 MCP client·실제 모델 호출은 NOTRUN입니다.

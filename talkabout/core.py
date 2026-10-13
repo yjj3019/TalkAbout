@@ -9,18 +9,18 @@ from .domain import (AGENT_PERMISSIONS, HUMAN_PERMISSIONS, Problem, active, auth
 
 
 def public_room(room, actor, principals=None):
-    member = authorize(actor, room, "room:read")
+    viewer_member = authorize(actor, room, "room:read")
     tasks = [copy.deepcopy(t) for t in room["tasks"].values() if actor["kind"] == "human" or t["assignee"] == actor["id"]]
     members = copy.deepcopy(room["members"])
     if principals:
-        for pid, member in members.items():
+        for pid, listed_member in members.items():
             principal = principals.get(pid, {})
-            member.update({k: principal.get(k) for k in ("display_name", "handle", "identity_revision")})
+            listed_member.update({k: principal.get(k) for k in ("display_name", "handle", "identity_revision")})
     return {k: copy.deepcopy(room[k]) for k in ("id", "topic", "mode", "state", "generation", "room_revision", "limits", "last_seq")} | {"members": members,
-        "messages": [m for m in room["messages"].values() if m["seq"] >= member["read_start_seq"]], "tasks": tasks,
-        "artifacts": [{**a, "versions": [v for v in a["versions"] if v["seq"] >= member["read_start_seq"]]}
-                      for a in room["artifacts"].values() if any(v["seq"] >= member["read_start_seq"] for v in a["versions"])],
-        "membership_revision": member["revision"]}
+        "messages": [m for m in room["messages"].values() if m["seq"] >= viewer_member["read_start_seq"]], "tasks": tasks,
+        "artifacts": [{**a, "versions": [v for v in a["versions"] if v["seq"] >= viewer_member["read_start_seq"]]}
+                      for a in room["artifacts"].values() if any(v["seq"] >= viewer_member["read_start_seq"] for v in a["versions"])],
+        "membership_revision": viewer_member["revision"]}
 
 
 class Core:
@@ -114,9 +114,10 @@ class Core:
                     marker = actor["id"] + ":" + str(result.get("client_message_id"))
                     prior = room["client_ids"].get(marker)
                     if prior:
+                        require(prior.get("epoch") == member["epoch"], "client_message_epoch_conflict")
                         require(prior["digest"] == fingerprint, "client_message_conflict")
                         response = {"message": room["messages"][prior["id"]], "task": copy.deepcopy(task)}
-                        return save_response(room, lookup, fingerprint, response)
+                        return save_response(room, lookup, fingerprint, response, member["epoch"])
                 if verb == "claim":
                     active(room)
                     require(task["state"] == "queued" and now < task["deadline"], "task_unavailable")
@@ -232,7 +233,7 @@ class Core:
                 emit(room, "artifact.changed", artifact_id=artifact["id"], actor_id=actor["id"])
                 response = copy.deepcopy(artifact)
                 response["versions"] = [v for v in response["versions"] if v["seq"] >= member["read_start_seq"]]
-            return save_response(room, lookup, fingerprint, copy.deepcopy(response))
+            return save_response(room, lookup, fingerprint, copy.deepcopy(response), member["epoch"])
 
     def accept(self, token, room_id, key, body):
         _, _, principals = self.store.snapshot(token)
@@ -251,7 +252,7 @@ class Core:
             member["read_start_seq"] = room["last_seq"] + 1
             emit(room, "membership.accepted", principal_id=actor["id"])
             schedule(room, principals)
-            return save_response(room, lookup, fingerprint, copy.deepcopy(member))
+            return save_response(room, lookup, fingerprint, copy.deepcopy(member), member["epoch"])
 
     @staticmethod
     def scope(actor, rooms):

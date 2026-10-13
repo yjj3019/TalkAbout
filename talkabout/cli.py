@@ -58,11 +58,12 @@ def main():
     journal = Journal(config["journal_path"])
     try:
         if args.command == "status":
-            print(json.dumps(journal.status()))
+            print(json.dumps({"queue": journal.status(), "stop_state": journal.setting("stop_state", "running")}))
             return
         if args.command == "stop":
             with journal.db:
                 journal.set_setting("stop", True)
+                journal.set_setting("stop_state", "stop_requested")
             print("stop_requested")
             return
         token = os.environ.get(config.get("token_env", "TALKABOUT_TOKEN"))

@@ -114,7 +114,7 @@ def schedule(room, principals, now=None):
             emit(room, "task.expired", task_id=task["id"])
         elif task["state"] == "leased" and now >= task["lease_expires_at"]:
             task["state"] = "queued"
-            emit(room, "task.queued", task_id=task["id"])
+            emit(room, "task.queued", task_id=task["id"], assignee=task["assignee"], attempt=task["attempt"], generation=task["generation"], membership_revision=task["membership_revision"])
     if any(t["state"] in {"queued", "leased"} for t in room["tasks"].values()):
         return
     eligible = sorted(pid for pid, m in room["members"].items() if m["status"] == "active"
@@ -131,7 +131,7 @@ def schedule(room, principals, now=None):
             "generation": room["generation"], "membership_revision": member["revision"],
             "deadline": min(room["deadline"], now + room["limits"]["task_seconds"]), "lease_expires_at": 0}
     room["tasks"][task_id] = task
-    emit(room, "task.queued", task_id=task_id, assignee=pid)
+    emit(room, "task.queued", task_id=task_id, assignee=pid, attempt=0, generation=task["generation"], membership_revision=task["membership_revision"])
 
 
 def replay(room, actor, operation, key, body):
@@ -141,13 +141,14 @@ def replay(room, actor, operation, key, body):
     lookup = f"{actor['id']}:{operation}:{key}"
     previous = room["keys"].get(lookup)
     if previous:
+        require(previous.get("epoch") == room["members"][actor["id"]]["epoch"], "idempotency_epoch_conflict")
         require(previous["digest"] == fingerprint, "idempotency_conflict")
         return previous["response"], lookup, fingerprint
     return None, lookup, fingerprint
 
 
-def save_response(room, lookup, fingerprint, response):
-    room["keys"][lookup] = {"digest": fingerprint, "response": response}
+def save_response(room, lookup, fingerprint, response, epoch):
+    room["keys"][lookup] = {"digest": fingerprint, "response": response, "epoch": epoch}
     return response
 
 
@@ -174,11 +175,12 @@ def message(room, actor, body, now, task=None, fingerprint=None):
     fingerprint = fingerprint or digest(body)
     prior = room["client_ids"].get(marker)
     if prior:
+        require(prior.get("epoch") == room["members"][actor["id"]]["epoch"], "client_message_epoch_conflict")
         require(prior["digest"] == fingerprint, "client_message_conflict")
         return room["messages"][prior["id"]]
     msg = {"id": ident(), "actor_id": actor["id"], "actor_kind": actor["kind"], "display_name": actor["display_name"],
            "text": text, "kind": "contribution" if task else body["kind"], "reply_to": reply, "mentions": mentions, "created_at": now}
     room["messages"][msg["id"]] = msg
-    room["client_ids"][marker] = {"digest": fingerprint, "id": msg["id"]}
+    room["client_ids"][marker] = {"digest": fingerprint, "id": msg["id"], "epoch": room["members"][actor["id"]]["epoch"]}
     msg["seq"] = emit(room, "message.created", message_id=msg["id"])["seq"]
     return msg

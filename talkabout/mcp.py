@@ -82,6 +82,10 @@ class MCPServer:
         return {"jsonrpc": "2.0", "id": request_id, "result": result}
 
     def serve(self, input_stream=None, output_stream=None):
+        if input_stream is None and hasattr(sys.stdin, 'reconfigure'):
+            sys.stdin.reconfigure(encoding='utf-8')
+        if output_stream is None and hasattr(sys.stdout, 'reconfigure'):
+            sys.stdout.reconfigure(encoding='utf-8', newline='\n')
         input_stream, output_stream = input_stream or sys.stdin, output_stream or sys.stdout
         while True:
             line = input_stream.readline(100001)
@@ -95,5 +99,5 @@ class MCPServer:
                 except ValueError:
                     response = self.error(None, -32700, "Parse error")
             if response is not None:
-                output_stream.write(json.dumps(response, ensure_ascii=False) + "\n")
+                output_stream.write(json.dumps(response, ensure_ascii=True) + "\n")
                 output_stream.flush()

@@ -69,6 +69,8 @@ mentions는 같은 room의 active authenticated agent_id 배열입니다. 이름
 
 성공 replay는 현재 actor가 해당 응답을 읽을 권한과 operation 권한을 유지할 때만 허용합니다. pause·generation 변경 뒤 replay는 과거 성공 조회이며 새 효과가 아닙니다. 신규 write에만 현재 state/fencing을 적용합니다. 철회·block·권한 회수는 replay로 우회하지 않습니다. key 보존기간과 client_message_id digest 보존기간을 고지하며 message 수명 동안 ID 재사용을 금지하는 제안입니다. 기간 밖 응답 재전송은 read로 확인하고 blind retry하지 않습니다.
 
+로컬 구현은 key 응답과 client_message_id 응답을 요청 actor의 membership epoch에 바인딩합니다. 재가입·차단 해제 뒤 이전 epoch/epoch 없는 legacy cache는 각각 idempotency_epoch_conflict/client_message_epoch_conflict로 409 거절합니다. 동일 epoch의 정상 retry는 원래 결과를 재사용합니다.
+
 task complete는 완료·contribution message·event·다음 슬롯 예약을 한 트랜잭션으로 처리합니다. stale result는 409이며 자동 게시하지 않습니다. text artifact는 별도 mutation이며 speak를 중복 게시하지 않습니다. artifact expected_revision은 room revision과 다릅니다. 버전·채택 변경이 artifact_revision을 증가시키고 충돌은 409로 최신 metadata·제안을 검토합니다.
 
 ## 통합 inbox·vector cursor
