@@ -8,10 +8,15 @@ from .domain import (AGENT_PERMISSIONS, HUMAN_PERMISSIONS, Problem, active, auth
                      replay, require, save_response, schedule)
 
 
-def public_room(room, actor):
+def public_room(room, actor, principals=None):
     member = authorize(actor, room, "room:read")
     tasks = [copy.deepcopy(t) for t in room["tasks"].values() if actor["kind"] == "human" or t["assignee"] == actor["id"]]
-    return {k: copy.deepcopy(room[k]) for k in ("id", "topic", "mode", "state", "generation", "room_revision", "limits", "members", "last_seq")} | {
+    members = copy.deepcopy(room["members"])
+    if principals:
+        for pid, member in members.items():
+            principal = principals.get(pid, {})
+            member.update({k: principal.get(k) for k in ("display_name", "handle", "identity_revision")})
+    return {k: copy.deepcopy(room[k]) for k in ("id", "topic", "mode", "state", "generation", "room_revision", "limits", "last_seq")} | {"members": members,
         "messages": [m for m in room["messages"].values() if m["seq"] >= member["read_start_seq"]], "tasks": tasks,
         "artifacts": [{**a, "versions": [v for v in a["versions"] if v["seq"] >= member["read_start_seq"]]}
                       for a in room["artifacts"].values() if any(v["seq"] >= member["read_start_seq"] for v in a["versions"])],
@@ -28,7 +33,7 @@ class Core:
         return {k: actor.get(k) for k in ("id", "display_name", "handle", "kind", "identity_revision", "scopes", "capabilities", "model")} | {"agent_id": actor["id"] if actor["kind"] == "agent" else None}
 
     def invitations(self, token):
-        actor, rooms, _ = self.store.snapshot(token)
+        actor, rooms, principals = self.store.snapshot(token)
         require("agent:self_read" in actor["scopes"] or actor["kind"] == "human", "forbidden", 403)
         return [{"room_id": rid, "membership_id": actor["id"], "topic": r["topic"], "mode": r["mode"],
                  "membership_revision": r["members"][actor["id"]]["revision"],
@@ -37,11 +42,11 @@ class Core:
                 and (not actor.get("room_id") or actor["room_id"] == rid)]
 
     def rooms(self, token):
-        actor, rooms, _ = self.store.snapshot(token)
+        actor, rooms, principals = self.store.snapshot(token)
         result = []
         for room in rooms.values():
             try:
-                result.append(public_room(room, actor))
+                result.append(public_room(room, actor, principals))
             except Problem as exc:
                 if exc.status not in {403, 404}:
                     raise
@@ -55,17 +60,17 @@ class Core:
         room_id = digest([actor["id"], "create", key])[:32]
         if room_id in rooms:
             require(rooms[room_id]["create_digest"] == digest(body), "idempotency_conflict")
-            return public_room(rooms[room_id], actor)
+            return public_room(rooms[room_id], actor, principals)
         room = new_room(actor, room_id, body.get("topic"), body.get("mode", "bounded_rounds"))
         room["create_digest"] = digest(body)
         schedule(room, principals)
         room = self.store.create(token, room)
-        return public_room(room, actor)
+        return public_room(room, actor, principals)
 
     def read(self, token, room_id):
-        actor, rooms, _ = self.store.snapshot(token)
+        actor, rooms, principals = self.store.snapshot(token)
         require(room_id in rooms, "not_found", 404)
-        return public_room(rooms[room_id], actor)
+        return public_room(rooms[room_id], actor, principals)
 
     def tick(self, token, room_id):
         _, _, principals = self.store.snapshot(token)

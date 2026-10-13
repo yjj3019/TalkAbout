@@ -22,6 +22,20 @@ DB 준비 wrapper는 Windows child output handle 대기로 timeout을 반환했�
 
 ## 작성한 코드
 
+## 세션·GUI·MCP 후속 체크포인트
+
+최종 검증: Python 39개 PASS(합성 32개 + 실제 PostgreSQL 7개), UI 상태 로직 Node 시험 5개 PASS, Python/JavaScript 구문 및 git diff --check PASS입니다. 최초 회귀에서 방 목록의 변수 참조 오류 1건을 발견해 수정 후 전체 재통과했습니다. PostgreSQL launcher의 Windows process-tree 대기는 launcher만 정리하고 별도 시험 명령으로 실행했습니다. 임시 DB와 GUI fixture는 종료했습니다. 실제 브라우저·외부 MCP client·실제 모델 호출은 NOTRUN입니다.
+
+human bootstrap 코드는 명시 CLI operator 동작이며 앱 startup은 계정·admin·credential을 자동 생성하지 않습니다. 이번 시험은 합성 ephemeral 계정만 사용했습니다. 비밀번호는 PBKDF2-HMAC-SHA256 salt/verifier로 저장하며 로그인은 HttpOnly·SameSite=Strict cookie, 15분 absolute expiry와 요청 시 재인가를 사용합니다. Secure cookie는 HTTPS, 명시 loopback HTTP 개발 모드만 예외입니다. POST/PATCH/PUT는 same-origin 및 CSRF header 검사가 필요합니다. raw 세션·비밀번호는 HTML literal/localStorage/로그에 저장하지 않습니다. 운영 기본값은 human bearer·X-Admin/X-Demo-User 우회를 거절하며 agent bearer와 human session을 분리합니다. 테스트 전용 allow_fixture_bearer는 serve에서 켜지 않습니다.
+
+KO/EN GUI는 방 목록·참여자 이름/ID·대화·상태·text artifact 다운로드, human 질문/조언, 확인 후 pause/resume/close를 같은 API로 처리합니다. 늦은 응답·닫기·뒤로가기·중복 클릭은 epoch와 busy/idempotency key로 관리하고 401/403에 private 화면을 비웁니다. 브라우저 도구를 두 번 시도했으나 Windows 플랫폼 디렉터리 누락으로 커널이 종료되어 실제 브라우저 실측은 NOTRUN입니다. DOM/키보드/시각 접근성·실제 history 동작의 전체 검증은 남아 있습니다.
+
+MCP는 [공식 lifecycle](https://modelcontextprotocol.io/specification/2025-11-25/basic/lifecycle), [stdio transport](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports), [tools](https://modelcontextprotocol.io/specification/2025-11-25/server/tools)를 참고해 initialize/initialized/ping/tools/list/tools/call을 제공합니다. 지원 version은 2025-11-25와 2025-06-18입니다. list_rooms/read_room/propose_text만 노출하고 token·임의 URL·shell·admin 도구를 받지 않습니다. 별도 설정의 agent credential을 APIClient로 전달하며 같은 ACL/fencing 검사를 적용합니다. MCP는 상주 worker가 아니고 HTTP MCP transport·외부 client 상호운용은 NOTRUN입니다.
+
+worker는 fake runtime으로 bounded waiting·cancel·late result 폐기·출력 형식·도구/승인 우회 정책 거절을 시험했습니다. cancel을 무시하는 외부 프로세스 강제 종료나 side effect rollback을 보장하지 않습니다. 실제 CLI adapter 호출·tool sandbox 검증은 여전히 미수행입니다.
+
+human bootstrap/session API와 GUI가 추가됐지만 공개 운영을 위한 MFA·password reset·분산 rate limit·세션 정리·계정 복구 정책은 미완료입니다. 이 단계는 private loopback prototype입니다. 참고 근거는 [OWASP session](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html), [CSRF](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html), [password storage](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html)이며 보안 감사나 production 인증 완성 선언이 아닙니다.
+
 Python FastAPI·psycopg와 PostgreSQL schema, 별도 SQLite worker journal을 사용합니다. Node UI framework를 추가하지 않았습니다. 표준 라이브러리 기반 domain과 작은 JSONB room 상태 저장은 bounded P0에 맞춘 최소안입니다. room row lock과 Event 테이블을 사용하며 SQLite는 worker journal에만 쓰고 서버 DB 대체로 사용하지 않습니다.
 
 - API core: credential hash/만료/철회, scope·membership 교집합, 합성 신원의 ID/표시명/handle 정규화, 자율 생성 최소 membership, 초대·수락, task scheduler·lease·attempt·generation/member revision fencing.

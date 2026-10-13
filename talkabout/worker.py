@@ -9,6 +9,7 @@ from urllib.parse import urlsplit
 import httpx
 
 from .domain import digest
+from .runtime import RuntimeTimeout, bounded_call, validate_adapter_policy
 
 
 class APIClient:
@@ -78,9 +79,11 @@ class SyntheticRuntime:
 
 
 class Worker:
-    def __init__(self, client, journal, runtime, heartbeat_interval=3):
+    def __init__(self, client, journal, runtime, heartbeat_interval=3, runtime_timeout=30, adapter_policy=None):
         self.client, self.journal, self.runtime = client, journal, runtime
         self.heartbeat_interval = heartbeat_interval
+        self.runtime_timeout = runtime_timeout
+        validate_adapter_policy(adapter_policy or {"external": False, "allowed_tools": []})
         self.actor = client.request("GET", "agents/me")
         self.actor_id = self.actor["id"]
 
@@ -155,7 +158,10 @@ class Worker:
                 thread = threading.Thread(target=heartbeat, daemon=True)
                 thread.start()
                 try:
-                    text = self.runtime.run(context, cancel)
+                    text = bounded_call(self.runtime, context, cancel, min(self.runtime_timeout, max(0, task["deadline"] - time.time())))
+                except RuntimeTimeout:
+                    self.journal.save(tid, "failed" if heartbeat_failed.is_set() else "uncertain", payload)
+                    return "heartbeat_failed" if heartbeat_failed.is_set() else "runtime_timeout"
                 except Exception:
                     self.journal.save(tid, "uncertain", payload)
                     raise

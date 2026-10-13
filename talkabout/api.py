@@ -6,15 +6,18 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from .core import Core
-from .domain import Problem, ident, require
+from .domain import Problem, ident, require, token_hash
 from .identity import IdentityService
+from .auth import COOKIE, HumanAuth
 
 
-def create_app(store, start_scheduler=True):
+def create_app(store, start_scheduler=True, allow_fixture_bearer=False, allowed_hosts=None):
     core = Core(store)
     identity = IdentityService(store)
+    human_auth = HumanAuth(store)
     stop = threading.Event()
     state = {"scheduler": "stopped"}
 
@@ -39,6 +42,7 @@ def create_app(store, start_scheduler=True):
             thread.join(timeout=2)
 
     app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None)
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts or (["testserver"] if allow_fixture_bearer else ["127.0.0.1", "localhost", "::1"]))
     app.state.core = core
 
     @app.exception_handler(Problem)
@@ -54,9 +58,19 @@ def create_app(store, start_scheduler=True):
         return response
 
     def token(request):
+        raw_session = request.cookies.get(COOKIE)
+        if raw_session:
+            store.auth("session:" + raw_session)
+            if request.method != "GET":
+                require(request.headers.get("origin") == str(request.base_url).rstrip("/"), "origin_forbidden", 403)
+                human_auth.check_csrf(raw_session, request.headers.get("x-csrf-token"))
+            return "session:" + raw_session
         header = request.headers.get("authorization", "")
         require(header.startswith("Bearer ") and len(header) <= 512, "unauthorized", 401)
-        return header[7:]
+        raw = header[7:]
+        actor = store.auth(raw)
+        require(actor["kind"] == "agent" or allow_fixture_bearer, "human_session_required", 403)
+        return raw
 
     @app.get("/health")
     def health():
@@ -64,16 +78,16 @@ def create_app(store, start_scheduler=True):
 
     @app.get("/")
     def index():
-        return {"status": "partial_p0_checkpoint", "gui": "NOT_IMPLEMENTED", "health": "/health"}
+        return FileResponse(Path(__file__).parent / "web" / "index.html")
 
     @app.get("/web/{name}")
     def asset(name: str):
-        raise Problem("feature_disabled", 404)
+        require(name in {"app.mjs", "state.mjs", "style.css"}, "not_found", 404)
+        return FileResponse(Path(__file__).parent / "web" / name)
 
     @app.api_route("/api/v1/{path:path}", methods=["GET", "POST", "PATCH", "PUT"])
     async def api(request: Request, path: str):
         from starlette.concurrency import run_in_threadpool
-        credential = token(request)
         body = {}
         if request.method != "GET":
             raw = await request.body()
@@ -84,6 +98,22 @@ def create_app(store, start_scheduler=True):
                 raise Problem("invalid_json", 422)
             require(isinstance(body, dict), "invalid_body", 422)
         key = request.headers.get("idempotency-key")
+        if path == "session" and request.method == "POST":
+            require(request.headers.get("origin") == str(request.base_url).rstrip("/"), "origin_forbidden", 403)
+            raw, data = await run_in_threadpool(human_auth.login, body)
+            response = JSONResponse(data)
+            response.set_cookie(COOKIE, raw, httponly=True, secure=request.url.scheme == "https", samesite="strict", max_age=human_auth.ttl, path="/")
+            return response
+        credential = token(request)
+        if path == "session" and request.method == "GET":
+            require(credential.startswith("session:"), "human_session_required", 403)
+            return await run_in_threadpool(human_auth.session, credential[8:])
+        if path == "session/logout" and request.method == "POST":
+            require(credential.startswith("session:"), "human_session_required", 403)
+            await run_in_threadpool(store.logout, token_hash(credential[8:]))
+            response = JSONResponse({"logged_out": True})
+            response.delete_cookie(COOKIE, path="/")
+            return response
 
         def dispatch():
             method = request.method

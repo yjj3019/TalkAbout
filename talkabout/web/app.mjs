@@ -1,0 +1,35 @@
+import {ViewState,labels} from './state.mjs';
+const view=new ViewState();let csrf=null,user=null,readController=null,listEpoch=0,authEpoch=0;
+const el=id=>document.getElementById(id), t=key=>labels[view.language][key];
+function notice(key){el('notice').textContent=key?t(key):'';}
+function language(){document.documentElement.lang=view.language;document.querySelectorAll('[data-i18n]').forEach(node=>node.textContent=t(node.dataset.i18n));el('language').textContent=view.language==='ko'?'EN':'KO';}
+function clearDetail(){view.close();readController?.abort();el('detail').hidden=true;for(const id of ['messages','artifacts','members','tasks'])el(id).replaceChildren();}
+function signedOut(){authEpoch++;user=null;csrf=null;clearDetail();listEpoch++;el('login').hidden=false;el('dashboard').hidden=true;el('rooms').replaceChildren();}
+async function api(path,{method='GET',body,key,signal}={}){
+ const authTicket=authEpoch,viewTicket=view.epoch;
+ const headers={};if(body)headers['Content-Type']='application/json';if(method!=='GET'&&csrf)headers['X-CSRF-Token']=csrf;if(key)headers['Idempotency-Key']=key;
+ const response=await fetch('/api/v1/'+path,{method,headers,credentials:'same-origin',body:body?JSON.stringify(body):undefined,signal});
+ if(!response.ok){if(response.status===401&&authTicket===authEpoch){signedOut();notice('expired');}else if(response.status===403&&viewTicket===view.epoch){clearDetail();el('rooms').replaceChildren();notice('rejected');}throw new Error('operation_rejected');}
+ return response.json();
+}
+function card(text){const node=document.createElement('div');node.className='card';node.textContent=text;return node;}
+function renderRoom(room){
+ el('detail').hidden=false;el('room-title').textContent=room.topic;el('room-state').textContent=room.state+' · revision '+room.room_revision;
+ el('members').replaceChildren(...Object.entries(room.members).map(([id,m])=>{const li=document.createElement('li');li.textContent=(m.display_name||id)+' @'+(m.handle||id)+' · '+m.kind+' · '+m.status;return li;}));
+ el('messages').replaceChildren(...room.messages.map(m=>card(m.display_name+' ['+m.actor_kind+'] '+m.kind+'\n'+m.text)));
+ el('tasks').replaceChildren(...room.tasks.map(task=>{const li=document.createElement('li');li.textContent=task.assignee+' · '+task.state+' · '+task.purpose;return li;}));
+ el('artifacts').replaceChildren(...room.artifacts.map(a=>{const node=card('revision '+a.revision);for(const v of a.versions){node.append(card(v.text));const button=document.createElement('button');button.textContent=t('download');button.onclick=async()=>{try{const data=await api(`rooms/${room.id}/artifacts/${a.id}/versions/${v.id}/download`);if(view.selected!==room.id)return;const url=URL.createObjectURL(new Blob([data.text],{type:'text/plain;charset=utf-8'}));const link=document.createElement('a');link.href=url;link.download='TalkAbout-text.txt';link.click();URL.revokeObjectURL(url);}catch{notice('rejected');}};node.append(button);}return node;}));
+ const mine=room.members[user.id];document.querySelectorAll('[data-action]').forEach(button=>{const action=button.dataset.action;button.disabled=!mine?.permissions.includes('room:control')||!mine?.permissions.includes('room:approve')||room.state==='closed'||(action==='pause'&&room.state!=='active')||(action==='resume'&&room.state!=='paused');});
+ el('message').hidden=room.state==='closed'||(!mine?.permissions.includes('room:question')&&!mine?.permissions.includes('room:advice'));
+}
+async function openRoom(id,push=true){readController?.abort();readController=new AbortController();const ticket=view.select(id);el('detail').hidden=true;if(push)history.pushState({room:id},'',id?'?room='+encodeURIComponent(id):'/');if(!id)return;try{const room=await api('rooms/'+id,{signal:readController.signal});if(view.accept(ticket,room))renderRoom(room);}catch(error){if(error.name!=='AbortError')notice('rejected');}}
+async function refresh(){const epoch=++listEpoch;try{const rooms=await api('rooms');if(epoch!==listEpoch||!user)return;el('rooms').replaceChildren(...rooms.map(room=>{const button=document.createElement('button');button.className='card';button.textContent=room.topic+' · '+room.state;button.onclick=()=>openRoom(room.id);return button;}));if(view.selected)await openRoom(view.selected,false);}catch{notice('rejected');}}
+async function mutate(kind,payload,operation){const ticket=view.start(kind,payload);if(!ticket)return;document.querySelectorAll('button[type="submit"],[data-action]').forEach(button=>button.disabled=true);try{await operation(ticket.key);if(view.finish(ticket,true)&&user)await refresh();}catch{if(view.finish(ticket,false))notice('rejected');}finally{document.querySelectorAll('button[type="submit"],[data-action]').forEach(button=>button.disabled=false);if(view.room&&user)renderRoom(view.room);}}
+el('login').onsubmit=async event=>{event.preventDefault();const body={workspace_id:el('workspace').value,username:el('username').value,password:el('password').value};el('password').value='';await mutate('login',{},async()=>{const data=await api('session',{method:'POST',body});authEpoch++;user=data.user;csrf=data.csrf_token;el('actor').textContent=user.display_name+' [human]';el('login').hidden=true;el('dashboard').hidden=false;notice(null);});};
+el('create').onsubmit=event=>{event.preventDefault();const body={topic:el('topic').value};mutate('create',body,key=>api('rooms',{method:'POST',body,key}));};
+el('message').onsubmit=event=>{event.preventDefault();if(!view.room)return;const roomId=view.room.id;const body={kind:el('message-kind').value,text:el('message-text').value,client_message_id:crypto.randomUUID(),reply_to:null,mentions:[]};mutate('message',body,async key=>{await api('rooms/'+roomId+'/messages',{method:'POST',body,key});el('message-text').value='';});};
+document.querySelectorAll('[data-action]').forEach(button=>button.onclick=()=>{const room=view.room;if(!room||!confirm(t('confirm')))return;const body={action:button.dataset.action,expected_revision:room.room_revision};mutate('control',body,async key=>{const pending=await api('rooms/'+room.id+'/controls',{method:'POST',body,key});await api('rooms/'+room.id+'/controls/'+pending.id+'/approve',{method:'POST',body:{},key:key+':approve'});});});
+el('close').onclick=()=>openRoom(null);window.onpopstate=()=>openRoom(new URLSearchParams(location.search).get('room'),false);el('refresh').onclick=refresh;
+el('language').onclick=()=>{view.languageTo(view.language==='ko'?'en':'ko');language();if(view.room&&user)renderRoom(view.room);};
+el('logout').onclick=()=>mutate('logout',{},async()=>{await api('session/logout',{method:'POST',body:{}});signedOut();history.replaceState({},'','/');});
+language();const initialAuthEpoch=authEpoch;api('session').then(data=>{if(initialAuthEpoch!==authEpoch)return;user=data.user;csrf=data.csrf_token;el('actor').textContent=user.display_name+' [human]';el('login').hidden=true;el('dashboard').hidden=false;refresh();}).catch(()=>{if(initialAuthEpoch===authEpoch)signedOut();});

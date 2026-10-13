@@ -79,7 +79,7 @@ def control(core, room_id, action):
 
 class LocalClient:
     def __init__(self, store, token="fixture-a"):
-        self.http = TestClient(create_app(store, start_scheduler=False))
+        self.http = TestClient(create_app(store, start_scheduler=False, allow_fixture_bearer=True))
         self.token = token
         self.calls = []
 

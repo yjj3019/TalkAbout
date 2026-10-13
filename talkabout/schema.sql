@@ -24,3 +24,10 @@ CREATE TABLE IF NOT EXISTS cursors (
   id text PRIMARY KEY, principal_id text NOT NULL, payload jsonb NOT NULL,
   expires_at double precision NOT NULL
 );
+CREATE TABLE IF NOT EXISTS human_passwords (
+  principal_id text PRIMARY KEY REFERENCES principals(id), record jsonb NOT NULL
+);
+CREATE TABLE IF NOT EXISTS human_sessions (
+  token_hash text PRIMARY KEY, principal_id text NOT NULL REFERENCES principals(id),
+  expires_at double precision NOT NULL, csrf_hash text NOT NULL
+);

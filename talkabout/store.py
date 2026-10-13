@@ -15,6 +15,7 @@ class MemoryStore:
     """Contract-test store only; not a PostgreSQL concurrency substitute."""
     def __init__(self):
         self.principals, self.credentials, self.rooms, self.cursors = {}, {}, {}, {}
+        self.passwords, self.sessions = {}, {}
         self.lock = threading.RLock()
         self.signal = threading.Event()
 
@@ -28,9 +29,44 @@ class MemoryStore:
 
     def auth(self, token):
         with self.lock:
+            if token.startswith("session:"):
+                session = self.sessions.get(token_hash(token[8:]))
+                require(session and session["expires_at"] > time.time(), "unauthorized", 401)
+                principal = self.principals[session["principal_id"]]
+                return copy.deepcopy({**principal, "scopes": principal["account_scopes"]})
             c = self.credentials.get(token_hash(token))
             require(c and not c["revoked"] and c["expires_at"] > time.time(), "unauthorized", 401)
             return copy.deepcopy({**self.principals[c["id"]], **c})
+
+    def bootstrap(self, principal, record):
+        with self.lock:
+            require(not any(p["owner"] == principal["owner"] and p["kind"] == "human" for p in self.principals.values()), "bootstrap_exists")
+            self.principals[principal["id"]] = copy.deepcopy(principal)
+            self.passwords[principal["id"]] = copy.deepcopy(record)
+
+    def password_lookup(self, workspace, username):
+        with self.lock:
+            p = next((p for p in self.principals.values() if p["owner"] == workspace and p["handle"] == username and p["kind"] == "human"), None)
+            return {"principal_id": p["id"], "record": self.passwords[p["id"]]} if p and p["id"] in self.passwords else None
+
+    def save_session(self, hashed, record):
+        with self.lock:
+            self.sessions[hashed] = copy.deepcopy(record)
+
+    def session_record(self, hashed):
+        with self.lock:
+            return copy.deepcopy(self.sessions.get(hashed))
+
+    def rotate_csrf(self, hashed, csrf_hash):
+        with self.lock:
+            require(hashed in self.sessions, "unauthorized", 401)
+            self.sessions[hashed]["csrf_hash"] = csrf_hash
+
+    def logout(self, hashed):
+        with self.lock:
+            if hashed in self.sessions:
+                self.sessions[hashed]["expires_at"] = 0
+        self.signal.set()
 
     @contextmanager
     def identity_transaction(self, token):
@@ -111,6 +147,10 @@ class PostgresStore:
 
     @staticmethod
     def _auth(conn, token):
+        if token.startswith("session:"):
+            row = conn.execute("SELECT s.*,p.payload FROM human_sessions s JOIN principals p ON p.id=s.principal_id WHERE s.token_hash=%s FOR SHARE OF s", (token_hash(token[8:]),)).fetchone()
+            require(row and row["expires_at"] > time.time(), "unauthorized", 401)
+            return {**row["payload"], "scopes": row["payload"]["account_scopes"]}
         c = conn.execute("SELECT c.*,p.payload FROM credentials c JOIN principals p ON p.id=c.principal_id WHERE c.token_hash=%s FOR SHARE OF c", (token_hash(token),)).fetchone()
         require(c and not c["revoked"] and c["expires_at"] > time.time(), "unauthorized", 401)
         return {**c["payload"], "scopes": c["scopes"], "room_id": c["room_id"]}
@@ -119,13 +159,45 @@ class PostgresStore:
         with self.connect() as conn:
             return self._auth(conn, token)
 
+    def bootstrap(self, principal, record):
+        from psycopg.types.json import Jsonb
+        with self.connect() as conn:
+            conn.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s,0))", (principal["owner"] + ":identity",))
+            require(not conn.execute("SELECT id FROM principals WHERE owner=%s AND payload->>'kind'='human'", (principal["owner"],)).fetchone(), "bootstrap_exists")
+            conn.execute("INSERT INTO principals(id,owner,name_key,handle,payload) VALUES(%s,%s,%s,%s,%s)", (principal["id"], principal["owner"], principal["name_key"], principal["handle"], Jsonb(principal)))
+            conn.execute("INSERT INTO human_passwords(principal_id,record) VALUES(%s,%s)", (principal["id"], Jsonb(record)))
+
+    def password_lookup(self, workspace, username):
+        with self.connect() as conn:
+            return conn.execute("SELECT h.principal_id,h.record FROM human_passwords h JOIN principals p ON p.id=h.principal_id WHERE p.owner=%s AND p.handle=%s AND p.payload->>'kind'='human'", (workspace, username)).fetchone()
+
+    def save_session(self, hashed, record):
+        with self.connect() as conn:
+            conn.execute("INSERT INTO human_sessions(token_hash,principal_id,expires_at,csrf_hash) VALUES(%s,%s,%s,%s)", (hashed, record["principal_id"], record["expires_at"], record["csrf_hash"]))
+
+    def session_record(self, hashed):
+        with self.connect() as conn:
+            return conn.execute("SELECT * FROM human_sessions WHERE token_hash=%s", (hashed,)).fetchone()
+
+    def rotate_csrf(self, hashed, csrf_hash):
+        with self.connect() as conn:
+            conn.execute("UPDATE human_sessions SET csrf_hash=%s WHERE token_hash=%s AND expires_at>%s", (csrf_hash, hashed, time.time()))
+
+    def logout(self, hashed):
+        with self.connect() as conn:
+            conn.execute("UPDATE human_sessions SET expires_at=0 WHERE token_hash=%s", (hashed,))
+            conn.execute("NOTIFY talkabout_changed")
+
     @contextmanager
     def identity_transaction(self, token):
         from psycopg.types.json import Jsonb
         from psycopg.errors import UniqueViolation
         try:
             with self.connect() as conn:
-                row = conn.execute("SELECT p.owner FROM credentials c JOIN principals p ON p.id=c.principal_id WHERE c.token_hash=%s", (token_hash(token),)).fetchone()
+                if token.startswith("session:"):
+                    row = conn.execute("SELECT p.owner FROM human_sessions s JOIN principals p ON p.id=s.principal_id WHERE s.token_hash=%s", (token_hash(token[8:]),)).fetchone()
+                else:
+                    row = conn.execute("SELECT p.owner FROM credentials c JOIN principals p ON p.id=c.principal_id WHERE c.token_hash=%s", (token_hash(token),)).fetchone()
                 require(row, "unauthorized", 401)
                 # Serialize workspace identity mutations before acquiring credential locks.
                 conn.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s,0))", (row["owner"] + ":identity",))

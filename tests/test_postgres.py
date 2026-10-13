@@ -124,3 +124,24 @@ def test_postgres_artifact_conflict(postgres_fixture):
         results = list(pool.map(update, ["update-a", "update-b"]))
     assert sum(isinstance(v, dict) for v in results) == 1
     assert "artifact_conflict" in results
+
+
+def test_postgres_human_session_identity_and_logout(postgres_fixture):
+    store, core, _ = postgres_fixture
+    from talkabout.auth import HumanAuth, bootstrap_human
+    owner = bootstrap_human(store, "session-fixture-owner", "Session Owner", "session-owner", "fixture-password-not-real")
+    auth = HumanAuth(store)
+    raw, data = auth.login({"workspace_id": "session-fixture-owner", "username": "session-owner", "password": "fixture-password-not-real"})
+    actor = store.auth("session:" + raw)
+    assert actor["id"] == owner["id"] and actor["kind"] == "human"
+    auth.check_csrf(raw, data["csrf_token"])
+    registered = IdentityService(store).mutate("session:" + raw, "register", "session-register", {"display_name": "Session Agent", "handle": "session-agent"})
+    assert registered["kind"] == "agent"
+    room = core.create("session:" + raw, {"topic": "Session fixture"}, "session-room")
+    assert core.read("session:" + raw, room["id"])["id"] == room["id"]
+    with store.connect() as conn:
+        records = conn.execute("SELECT token_hash,csrf_hash FROM human_sessions").fetchall()
+        assert raw not in str(records) and data["csrf_token"] not in str(records)
+    store.logout(token_hash(raw))
+    with pytest.raises(Problem, match="unauthorized"):
+        core.me("session:" + raw)
