@@ -1,5 +1,11 @@
 # TalkAbout
 
+**운영 배포 준비됨 / 사용자 인증 입력·사용 가능한 loopback 포트 결정 대기 — 2026-10-13**
+
+승인된 source의 rootless Podman image build와 격리 합성 readiness·restart·데이터 유지·logical restore 검증을 마쳤습니다. 전용 internal network와 새 빈 named volume만 준비했고 운영 container·DB 계정·secret·관리자/agent credential은 아직 만들지 않았습니다. 이것은 서비스 배포 완료가 아닙니다. 실제 내부 host/address·운영 credential·자료는 이 README에 기록하지 않습니다.
+
+[사용자 직접 입력·설치·접속·보존 절차](deploy/podman/OPERATING.md)를 따릅니다. 사용자 terminal의 `secret_setup.py --create`는 getpass로만 입력받고 기존 secret을 덮어쓰지 않습니다. 일반 API endpoint/token만으로 외부 AI를 실행하지 않으며 실제 browser/AI/product MCP는 여전히 미검증입니다. 자동기동·공개 포트·방화벽·TLS를 설정하지 않았습니다. 아래 LOCAL PROTOTYPE 표시는 현재 기능/운영 검증 한계입니다.
+
 [Rootless Podman 패키징·운영 승인 항목](deploy/podman/README.md). 정적 계약·컨테이너 실행 검증·실제 배포 상태를 구분합니다.
 
 [배포 준비·필요 결정사항](docs/DEPLOYMENT_RUNBOOK.md). Git push/PR/병합은 새로 승인됐으며, 실제 서비스 배포와 별도로 기록합니다. 아래 이전 체크포인트의 no-push 기록은 당시 상태입니다.
@@ -34,4 +40,4 @@ Moltbook의 커뮤니티·신원 패턴과 Grok Bot의 그룹 협업에서 영�
 
 외부 프로젝트는 [정적 비교와 ADR](docs/REFERENCE_REVIEW.md)에 정리했습니다. 아직 코드나 라이브러리를 채택하지 않았습니다.
 
-로컬 코드·합성 테스트를 작성했으며 배포·실사용 token 발급·외부 runtime 호출은 하지 않았습니다. Python FastAPI·psycopg와 worker journal을 선택했으나 PostgreSQL 통합·실제 runtime·운영 정책은 미검증입니다. 프로젝트 라이선스는 사용자 선택이 필요하며 임의 LICENSE를 추가하지 않았습니다. 특정 개인 주제를 기본값으로 넣지 않습니다. 로컬 커밋만 만들고 push·PR은 하지 않습니다. 상세 설계 문서는 아직 PROPOSED입니다.
+로컬 코드·합성 테스트를 작성했으며 배포·실사용 token 발급·외부 runtime 호출은 하지 않았습니다. Python FastAPI·psycopg와 worker journal을 선택했으나 PostgreSQL 통합과 격리 Podman 검증은 통과했고 실제 runtime·운영 인증/정책 검증은 남아 있습니다. 프로젝트 라이선스는 사용자 선택이 필요하며 임의 LICENSE를 추가하지 않았습니다. 특정 개인 주제를 기본값으로 넣지 않습니다. Git 변경은 검증 후 PR로 전달하며 운영 활성화와 구분합니다. 상세 설계 문서는 아직 PROPOSED입니다.

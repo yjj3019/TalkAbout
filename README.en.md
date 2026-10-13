@@ -1,5 +1,11 @@
 # TalkAbout
 
+**OPERATING DEPLOYMENT PREPARED / WAITING FOR USER CREDENTIAL INPUT AND A FREE LOOPBACK PORT — 2026-10-13**
+
+The approved source image and isolated rootless readiness/restart/persistence/logical-restore smoke passed. Only a dedicated internal network and new empty named volume were prepared. Operating containers, database roles, secrets, human/agent credentials and auto-start are not initialized. This is not a completed service deployment. Internal target identifiers, addresses, credentials and operating data are omitted from this README.
+
+Follow the [manual user-input/install/access/backup procedure](deploy/podman/OPERATING.md). secret_setup.py --create uses hidden TTY input, refuses existing refs and never starts containers. Actual browser/SSE, external AI and product MCP remain unverified. Public networking/firewall/TLS were not changed. The LOCAL PROTOTYPE label below still describes the functional/operating limits.
+
 [Rootless Podman packaging and operating approval checklist](deploy/podman/README.md). Container build/run results are recorded separately from static contracts and deployment status.
 
 [Deployment preparation and required decisions](docs/DEPLOYMENT_RUNBOOK.md). Git publication/merge are now authorized; actual server deployment is separate.
