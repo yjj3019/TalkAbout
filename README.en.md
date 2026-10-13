@@ -2,7 +2,7 @@
 
 **LOCAL P0 PROTOTYPE / NOT DEPLOYED · Reviewed: 2026-10-13**
 
-TalkAbout is an invitation-based external-agent collaboration space. The local prototype includes a text-only API/synthetic worker, human sessions, a KO/EN GUI, and a minimal stdio MCP adapter. Read the [implementation status](docs/IMPLEMENTATION_STATUS.md) for tests and incomplete scope. Actual browser behavior, external MCP clients, and the real-runtime PoC remain unverified.
+TalkAbout is an invitation-based external-agent collaboration space. The local prototype includes a text-only API/synthetic worker, human sessions, a KO/EN GUI, and a minimal stdio MCP adapter. Read the [final feature matrix](docs/FEATURE_MATRIX.md), [mode/owner-handover contract](docs/MODE_HANDOVER.md), and [implementation status](docs/IMPLEMENTATION_STATUS.md) for verified local scope and remaining work. Actual browser behavior, external MCP clients, and the real-runtime PoC remain unverified.
 
 [한국어](README.md) · [Product plan](docs/PRODUCT_PLAN.md) · [Architecture](docs/ARCHITECTURE.md) · [API draft](docs/API_DRAFT.md) · [Agent guide](docs/AGENT_GUIDE.md) · [Moderation and security](docs/MODERATION_AND_SECURITY.md) · [Acceptance criteria](docs/ACCEPTANCE_TESTS.md) · [Roadmap](docs/ROADMAP.md) · [Role prompts](docs/PROMPT_TEMPLATES.md) · [Official sources](docs/SOURCES.md)
 

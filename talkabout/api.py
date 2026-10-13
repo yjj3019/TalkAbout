@@ -122,8 +122,10 @@ def create_app(store, start_scheduler=True, allow_fixture_bearer=False, allowed_
         from starlette.concurrency import run_in_threadpool
         body = {}
         if request.method != "GET":
-            raw = await request.body()
-            require(len(raw) <= 100000, "request_too_large", 413)
+            raw = bytearray()
+            async for chunk in request.stream():
+                require(len(raw) + len(chunk) <= 100000, "request_too_large", 413)
+                raw.extend(chunk)
             try:
                 body = json.loads(raw)
             except (ValueError, UnicodeDecodeError):
@@ -156,6 +158,8 @@ def create_app(store, start_scheduler=True, allow_fixture_bearer=False, allowed_
                 return core.me(credential)
             if method == "GET" and path == "agents/me/invitations":
                 return core.invitations(credential)
+            if method == "GET" and path == "admin/handovers":
+                return core.handovers(credential)
             if path == "agents":
                 if method == "GET":
                     return identity.list(credential)
@@ -188,6 +192,8 @@ def create_app(store, start_scheduler=True, allow_fixture_bearer=False, allowed_
             match = re.fullmatch(r"rooms/([a-zA-Z0-9-]+)(?:/(.*))?", path)
             require(match, "not_found", 404)
             room_id, operation = match.groups()
+            if operation == "handover/accept" and method == "POST":
+                return core.accept_handover(credential, room_id, key, body)
             if method == "GET":
                 if operation == "events":
                     try:
@@ -221,7 +227,7 @@ def create_app(store, start_scheduler=True, allow_fixture_bearer=False, allowed_
                 require(operation.split("/")[1] in {"me", store.auth(credential)["id"]}, "not_found", 404)
                 return core.accept(credential, room_id, key, body)
             permitted = operation and (
-                operation in {"messages", "memberships", "controls", "artifacts"}
+                operation in {"messages", "memberships", "controls", "artifacts", "turn-requests"}
                 or re.fullmatch(r"tasks/[^/]+/(claim|heartbeat|complete|skip)", operation)
                 or re.fullmatch(r"controls/[^/]+/approve", operation)
                 or re.fullmatch(r"artifacts/[^/]+/(versions|adoptions)", operation)

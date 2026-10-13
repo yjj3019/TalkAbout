@@ -15,3 +15,6 @@ export class ViewState {
 
 Object.assign(labels.ko,{adopt:'이 버전 채택',adopted:'채택됨',interventions:'관리자 개입 이력',confirmAdopt:'이 텍스트 버전을 채택하시겠습니까?',streamEnded:'실시간 갱신 시간이 끝났습니다. 새로고침으로 다시 연결할 수 있습니다.'});
 Object.assign(labels.en,{adopt:'Adopt this version',adopted:'Adopted',interventions:'Administrator interventions',confirmAdopt:'Adopt this text version?',streamEnded:'Live update budget ended. Refresh to connect again.'});
+
+Object.assign(labels.ko,{handovers:'소유자 인계 요청',acceptHandover:'관리자 인계 수락',confirmHandover:'전체 방 이력을 읽고 관리하는 membership을 수락하시겠습니까?',mode:'모드',bounded_rounds:'구조화 토론',free_discussion:'자유 토론',co_creation:'공동 창작',unsupportedUi:'GUI는 방 생성·관찰·인계·조언·pause/resume/close·text 채택을 지원합니다. agent 발언 요청/worker 실행, 고급 설정, 업로드·공개는 이 화면에서 지원하지 않습니다.'});
+Object.assign(labels.en,{handovers:'Owner handover offers',acceptHandover:'Accept administrator handover',confirmHandover:'Accept membership that reads the full room history and administers this room?',mode:'Mode',bounded_rounds:'Structured discussion',free_discussion:'Free discussion',co_creation:'Co-creation',unsupportedUi:'GUI supports create/read/handover/advice, pause/resume/close and text adoption. Agent turn requests/worker execution, advanced settings, uploads and publishing are not supported in this screen.'});

@@ -21,6 +21,8 @@ def public_room(room, actor, principals=None):
         "artifacts": [{**a, "versions": [v for v in a["versions"] if v["seq"] >= viewer_member["read_start_seq"]]}
                       for a in room["artifacts"].values() if any(v["seq"] >= viewer_member["read_start_seq"] for v in a["versions"])],
         "membership_revision": viewer_member["revision"],
+        "mode_status": room.get("mode_status", "running"), "mode_progress": copy.deepcopy(room.get("mode_progress", {})),
+        "handover": copy.deepcopy(room.get("handover")),
         "effective_permissions": sorted(set(actor["scopes"]) & set(viewer_member["permissions"])),
         "pinned_message_id": room.get("pinned_message_id") if room.get("pinned_message_id") in room["messages"] and room["messages"][room["pinned_message_id"]]["seq"] >= viewer_member["read_start_seq"] else None}
 
@@ -35,7 +37,7 @@ def control_parameters(action, parameters, room, member):
         proposed = parameters.get("limits")
         require(set(parameters) == {"limits"} and isinstance(proposed, dict) and proposed and set(proposed) <= set(room["limits"]), "invalid_limits", 422)
         limits = {**room["limits"], **proposed}
-        ranges = {"messages": (1, 200), "attempts": (1, 3), "lease": (5, 60), "task_seconds": (5, 180)}
+        ranges = {"messages": (1, 200), "attempts": (1, 3), "lease": (5, 60), "task_seconds": (5, 180), "rounds": (1, 3)}
         require(all(type(limits[k]) is int and low <= limits[k] <= high for k, (low, high) in ranges.items()) and limits["lease"] <= limits["task_seconds"], "invalid_limits", 422)
         parameters = {"limits": limits}
     elif action == "pin":
@@ -79,6 +81,7 @@ class Core:
         actor, rooms, principals = self.store.snapshot(token)
         require(key and len(key) <= 128, "idempotency_key_required", 422)
         require(not ({"actor_id", "agent_id", "role", "badge"} & body.keys()), "actor_field_forbidden", 422)
+        require(set(body) <= {"topic", "mode"}, "invalid_room_fields", 422)
         # Deterministic create identity makes lost responses replayable without returning a new room.
         room_id = digest([actor["id"], "create", key])[:32]
         if room_id in rooms:
@@ -86,9 +89,50 @@ class Core:
             return public_room(rooms[room_id], actor, principals)
         room = new_room(actor, room_id, body.get("topic"), body.get("mode", "bounded_rounds"))
         room["create_digest"] = digest(body)
+        if actor["kind"] == "agent":
+            owners = [p["id"] for p in principals.values() if p["owner"] == actor["owner"] and p["kind"] == "human"]
+            if len(owners) == 1:
+                room["handover"] = {"target_human_id": owners[0], "creator_id": actor["id"], "state": "pending", "revision": 1,
+                                    "notice": "Acceptance grants the workspace owner human full room history and administration membership."}
+                emit(room, "handover.offered", target_human_id=owners[0], actor_id=actor["id"])
         schedule(room, principals)
         room = self.store.create(token, room)
         return public_room(room, actor, principals)
+
+    def handovers(self, token):
+        actor, rooms, _ = self.store.snapshot(token)
+        require(actor["kind"] == "human" and "room:manage_members" in actor["scopes"] and not actor.get("room_id"), "forbidden", 403)
+        return [{"room_id": r["id"], "room_revision": r["room_revision"], "handover_revision": r["handover"]["revision"], "creator_id": r["handover"]["creator_id"], "notice": r["handover"]["notice"]}
+                for r in rooms.values() if r["owner"] == actor["owner"] and r.get("handover", {}).get("target_human_id") == actor["id"] and r["handover"]["state"] == "pending" and r["state"] != "closed"]
+
+    def accept_handover(self, token, room_id, key, body):
+        _, _, principals = self.store.snapshot(token)
+        with self.store.transaction(room_id, token) as (actor, room):
+            h = room.get("handover")
+            require(actor["kind"] == "human" and actor["owner"] == room["owner"] and not actor.get("room_id") and h and h["target_human_id"] == actor["id"], "not_found", 404)
+            require({"room:read", "room:manage_members", "room:control", "room:approve"} <= set(actor["scopes"]), "forbidden", 403)
+            require(set(body) == {"expected_room_revision", "expected_handover_revision", "acknowledge_history"}, "invalid_handover_fields", 422)
+            if h["state"] == "accepted":
+                member = authorize(actor, room, "room:manage_members", True)
+                previous, _, _ = replay(room, actor, "handover", key, body)
+                require(previous is not None, "handover_unavailable")
+                return previous
+            require(room["state"] in {"active", "paused"}, "room_closed")
+            require(body["expected_room_revision"] == room["room_revision"] and body["expected_handover_revision"] == h["revision"], "handover_conflict")
+            require(body["acknowledge_history"] is True, "history_acknowledgement_required", 422)
+            require(actor["id"] not in room["members"] and len(room["members"]) < 16, "handover_membership_conflict")
+            member = {"status": "active", "kind": "human", "revision": 1, "epoch": 1, "permissions": sorted(HUMAN_PERMISSIONS & set(actor["scopes"])), "read_start_seq": 1, "greeted": False}
+            room["members"][actor["id"]] = member
+            _, lookup, fingerprint = replay(room, actor, "handover", key, body)
+            h.update(state="accepted", revision=h["revision"] + 1, accepted_by=actor["id"], accepted_at=time.time())
+            room["room_revision"] += 1
+            room["generation"] += 1
+            cancel_tasks(room)
+            room.pop("mode_progress", None)
+            room["mode_status"] = "running"
+            h["accepted_seq"] = emit(room, "handover.accepted", actor_id=actor["id"], generation=room["generation"])["seq"]
+            schedule(room, principals)
+            return save_response(room, lookup, fingerprint, copy.deepcopy(h), member["epoch"])
 
     def read(self, token, room_id):
         actor, rooms, principals = self.store.snapshot(token)
@@ -118,6 +162,8 @@ class Core:
                 permission = "room:approve" if verb == "approve" else "room:control"
             elif bits[0] == "artifacts":
                 permission = "room:adopt" if verb == "adoptions" else "room:contribute"
+            elif bits[0] == "turn-requests":
+                permission = "room:speak"
             else:
                 raise Problem("not_found", 404)
             human = bits[0] in {"messages", "memberships", "controls"} or verb == "adoptions"
@@ -128,7 +174,19 @@ class Core:
             if previous is not None:
                 return previous
             now = time.time()
-            if bits[0] == "tasks":
+            if bits[0] == "turn-requests":
+                active(room)
+                require(actor["kind"] == "agent" and room["mode"] == "free_discussion", "unsupported_turn_request", 422)
+                require(set(body) == {"generation", "membership_revision"} and body["generation"] == room["generation"] and body["membership_revision"] == member["revision"], "stale_context")
+                requests = room.setdefault("turn_requests", [])
+                require(actor["id"] not in requests and not any(t["assignee"] == actor["id"] and t["state"] in {"queued", "leased"} for t in room["tasks"].values()), "turn_already_pending")
+                require(len(requests) < 16 and room.get("request_count", 0) < 64, "turn_request_capacity", 429)
+                requests.append(actor["id"])
+                room["request_count"] = room.get("request_count", 0) + 1
+                emit(room, "turn.requested", actor_id=actor["id"])
+                schedule(room, principals)
+                response = {"accepted": True}
+            elif bits[0] == "tasks":
                 task = room["tasks"].get(target)
                 require(task and task["assignee"] == actor["id"], "not_found", 404)
                 if verb == "complete":
@@ -157,11 +215,30 @@ class Core:
                         task["lease_expires_at"] = min(task["deadline"], now + room["limits"]["lease"])
                         response = copy.deepcopy(task)
                     elif verb == "complete":
+                        if room["mode"] == "co_creation" and task["purpose"] == "creator":
+                            authorize(actor, room, "room:contribute")
                         msg = message(room, actor, body, now, task, fingerprint)
+                        proposal = None
+                        if room["mode"] == "co_creation" and task["purpose"] == "creator":
+                            aid = room.get("creation_artifact_id")
+                            if not aid:
+                                require(len(room["artifacts"]) < 16, "artifact_capacity", 429)
+                                aid = ident()
+                                room["creation_artifact_id"] = aid
+                                room["artifacts"][aid] = {"id": aid, "revision": 0, "versions": [], "adopted": None}
+                            artifact = room["artifacts"][aid]
+                            require(len(artifact["versions"]) < 16, "version_capacity", 429)
+                            artifact["versions"].append({"id": ident(), "seq": room["last_seq"] + 1, "text": msg["text"], "actor_id": actor["id"], "sources": [], "ai_generated": True})
+                            artifact["revision"] += 1
+                            emit(room, "artifact.changed", artifact_id=aid, actor_id=actor["id"])
+                            proposal = copy.deepcopy(artifact)
+                            proposal["versions"] = [v for v in proposal["versions"] if v["seq"] >= member["read_start_seq"]]
                         task["state"] = "completed"
                         member["greeted"] = True
                         emit(room, "task.completed", task_id=target)
                         response = {"message": msg, "task": copy.deepcopy(task)}
+                        if proposal:
+                            response["artifact"] = proposal
                     else:
                         task["state"] = "skipped"
                         emit(room, "task.skipped", task_id=target, actor_id=actor["id"])
@@ -176,6 +253,7 @@ class Core:
                 pid = body.get("principal_id") if len(bits) == 1 else target
                 require(pid in principals and principals[pid]["owner"] == actor["owner"], "not_found", 404)
                 old = room["members"].get(pid)
+                require(old or len(room["members"]) < 16, "membership_capacity", 429)
                 if old:
                     require(body.get("expected_revision") == old["revision"], "membership_conflict")
                 proposed = body.get("permissions", [])
@@ -196,6 +274,7 @@ class Core:
                 response = copy.deepcopy(room["members"][pid])
             elif bits[0] == "controls":
                 if verb != "approve":
+                    require(len(room["controls"]) < 128, "control_capacity", 429)
                     action = body.get("action")
                     require(action in {"pause", "resume", "close", "change_topic", "change_mode", "change_limits", "pin"}, "unsupported_control", 422)
                     parameters = control_parameters(action, body.get("parameters", {}), room, member)
@@ -237,6 +316,11 @@ class Core:
                     if action != "pin":
                         room["generation"] += 1
                         cancel_tasks(room)
+                    if action in {"change_topic", "change_mode"}:
+                        room.pop("mode_progress", None)
+                        room.pop("creation_artifact_id", None)
+                        room["turn_requests"] = []
+                        room["mode_status"] = "running"
                     room["room_revision"] += 1
                     control.update(state="applied", approver_id=actor["id"], applied_at=now)
                     control["applied_seq"] = emit(room, "control.applied", control_id=control["id"], actor_id=actor["id"], generation=room["generation"])["seq"]
@@ -251,6 +335,7 @@ class Core:
                     require(any(v["seq"] >= member["read_start_seq"] for v in artifact["versions"]), "not_found", 404)
                     require(body.get("expected_revision") == artifact["revision"], "artifact_conflict")
                 else:
+                    require(len(room["artifacts"]) < 16, "artifact_capacity", 429)
                     artifact = {"id": ident(), "revision": 0, "versions": [], "adopted": None}
                     room["artifacts"][artifact["id"]] = artifact
                 if verb == "adoptions":
@@ -261,9 +346,18 @@ class Core:
                     text = body.get("text")
                     require(isinstance(text, str) and 1 <= len(text) <= 64000, "text_only", 422)
                     require(isinstance(body.get("sources", []), list) and len(body.get("sources", [])) <= 20, "invalid_sources", 422)
+                    require(all(isinstance(s, str) and len(s) <= 2048 for s in body.get("sources", [])), "invalid_sources", 422)
+                    require(isinstance(body.get("caption", ""), str) and len(body.get("caption", "")) <= 2000, "invalid_caption", 422)
+                    require(len(artifact["versions"]) < 16, "version_capacity", 429)
                     artifact["versions"].append({"id": ident(), "seq": room["last_seq"] + 1, "text": text, "actor_id": actor["id"], "sources": body.get("sources", []), "ai_generated": actor["kind"] == "agent"})
                 artifact["revision"] += 1
                 emit(room, "artifact.changed", artifact_id=artifact["id"], actor_id=actor["id"])
+                if verb == "adoptions" and room["mode"] == "co_creation" and room.get("mode_status") == "awaiting_adoption" and artifact["id"] == room.get("creation_artifact_id"):
+                    room["state"] = "closed"
+                    room["generation"] += 1
+                    room["room_revision"] += 1
+                    room["mode_status"] = "adopted"
+                    emit(room, "room.closed", actor_id=actor["id"], reason="artifact_adopted")
                 response = copy.deepcopy(artifact)
                 response["versions"] = [v for v in response["versions"] if v["seq"] >= member["read_start_seq"]]
             return save_response(room, lookup, fingerprint, copy.deepcopy(response), member["epoch"])

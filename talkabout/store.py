@@ -10,6 +10,7 @@ from pathlib import Path
 
 from .domain import Problem, ident, normalize_name, require, token_hash
 from .retention import DEFAULT_RETENTION
+from .bounds import room_bounds, snapshot_bounds
 
 
 class MemoryStore:
@@ -75,6 +76,7 @@ class MemoryStore:
             actor = self.auth(token)
             principals, credentials = copy.deepcopy(self.principals), copy.deepcopy(self.credentials)
             yield actor, principals, credentials
+            require(len(principals) <= 128 and len(credentials) <= 512, "identity_capacity", 429)
             self.principals, self.credentials = principals, credentials
         self.signal.set()
 
@@ -90,6 +92,7 @@ class MemoryStore:
             require(room_id in self.rooms, "not_found", 404)
             room = copy.deepcopy(self.rooms[room_id])
             yield actor, room
+            room_bounds(room)
             self.rooms[room_id] = room
         self.signal.set()
 
@@ -103,13 +106,19 @@ class MemoryStore:
                 return copy.deepcopy(existing)
             require(set(room["members"][actor["id"]]["permissions"]) <= set(actor["scopes"]), "creator_scope_insufficient", 403)
             require(sum(r["owner"] == actor["owner"] and r["state"] != "closed" for r in self.rooms.values()) < 4, "room_quota", 429)
+            require(sum(r["owner"] == actor["owner"] for r in self.rooms.values()) < 64, "room_list_capacity_paging_unsupported", 429)
+            room_bounds(room)
             self.rooms[room["id"]] = copy.deepcopy(room)
         self.signal.set()
         return copy.deepcopy(room)
 
     def snapshot(self, token):
         with self.lock:
-            return self.auth(token), copy.deepcopy(self.rooms), copy.deepcopy(self.principals)
+            actor = self.auth(token)
+            rooms = {rid: r for rid, r in self.rooms.items() if r["owner"] == actor["owner"]}
+            principals = {pid: p for pid, p in self.principals.items() if p["owner"] == actor["owner"]}
+            snapshot_bounds(rooms, principals)
+            return actor, copy.deepcopy(rooms), copy.deepcopy(principals)
 
     def cursor(self, cursor_id):
         with self.lock:
@@ -118,6 +127,7 @@ class MemoryStore:
 
     def save_cursor(self, cursor_id, payload):
         with self.lock:
+            require(sum(c["principal"] == payload["principal"] for c in self.cursors.values()) < 4096, "cursor_capacity_archival_unsupported", 429)
             self.cursors[cursor_id] = {**copy.deepcopy(payload), "expires_at": time.time() + DEFAULT_RETENTION.cursor_seconds}
 
     def tick_all(self):
@@ -233,11 +243,14 @@ class PostgresStore:
                 # Serialize workspace identity mutations before acquiring credential locks.
                 conn.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s,0))", (row["owner"] + ":identity",))
                 actor = self._auth(conn, token)
-                principals = {r["id"]: r["payload"] for r in conn.execute("SELECT id,payload FROM principals WHERE owner=%s ORDER BY id FOR UPDATE", (actor["owner"],)).fetchall()}
-                rows = conn.execute("SELECT c.* FROM credentials c JOIN principals p ON p.id=c.principal_id WHERE p.owner=%s ORDER BY c.token_hash FOR UPDATE OF c", (actor["owner"],)).fetchall()
+                principals = {r["id"]: r["payload"] for r in conn.execute("SELECT id,payload FROM principals WHERE owner=%s ORDER BY id LIMIT 129 FOR UPDATE", (actor["owner"],)).fetchall()}
+                require(len(principals) <= 128, "principal_list_capacity_paging_unsupported", 429)
+                rows = conn.execute("SELECT c.* FROM credentials c JOIN principals p ON p.id=c.principal_id WHERE p.owner=%s ORDER BY c.token_hash LIMIT 513 FOR UPDATE OF c", (actor["owner"],)).fetchall()
+                require(len(rows) <= 512, "credential_capacity", 429)
                 credentials = {r["token_hash"]: {"id": r["principal_id"], "credential_id": r["credential_id"] or ident(),
                                "scopes": r["scopes"], "expires_at": r["expires_at"], "revoked": r["revoked"], "room_id": r["room_id"]} for r in rows}
                 yield actor, principals, credentials
+                require(len(principals) <= 128 and len(credentials) <= 512, "identity_capacity", 429)
                 for pid, principal in principals.items():
                     conn.execute("INSERT INTO principals(id,owner,name_key,handle,payload) VALUES(%s,%s,%s,%s,%s) ON CONFLICT(id) DO UPDATE SET name_key=excluded.name_key,handle=excluded.handle,payload=excluded.payload",
                                  (pid, principal["owner"], principal["name_key"], principal["handle"], Jsonb(principal)))
@@ -268,12 +281,14 @@ class PostgresStore:
         room = copy.deepcopy(row["payload"])
         room["last_seq"] = row["last_event_seq"]
         # shortcut: bounded P0 rooms load their event history; switch to paged event queries before raising room limits.
-        room["events"] = [r["payload"] for r in conn.execute("SELECT payload FROM events WHERE room_id=%s ORDER BY seq", (row["id"],)).fetchall()]
+        room["events"] = [r["payload"] for r in conn.execute("SELECT payload FROM events WHERE room_id=%s ORDER BY seq LIMIT 2049", (row["id"],)).fetchall()]
+        room_bounds(room)
         return room
 
     @staticmethod
     def _flush(conn, room, prior_seq):
         from psycopg.types.json import Jsonb
+        room_bounds(room)
         payload = {k: v for k, v in room.items() if k != "events"}
         conn.execute("UPDATE rooms SET payload=%s,last_event_seq=%s WHERE id=%s", (Jsonb(payload), room["last_seq"], room["id"]))
         for e in room["events"]:
@@ -306,6 +321,7 @@ class PostgresStore:
             conn.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s,0))", (actor["owner"],))
             count = conn.execute("SELECT count(*) AS n FROM rooms WHERE owner=%s AND payload->>'state' != 'closed'", (actor["owner"],)).fetchone()["n"]
             require(count < 4, "room_quota", 429)
+            require(conn.execute("SELECT count(*) AS n FROM rooms WHERE owner=%s", (actor["owner"],)).fetchone()["n"] <= 64, "room_list_capacity_paging_unsupported", 429)
             self._flush(conn, room, 0)
             return room
 
@@ -313,8 +329,11 @@ class PostgresStore:
         with self.connect() as conn:
             conn.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
             actor = self._auth(conn, token)
-            rooms = {r["id"]: self._room(conn, r) for r in conn.execute("SELECT * FROM rooms ORDER BY id").fetchall()}
-            principals = {r["id"]: r["payload"] for r in conn.execute("SELECT id,payload FROM principals").fetchall()}
+            rows = conn.execute("SELECT * FROM rooms WHERE owner=%s ORDER BY id LIMIT 65", (actor["owner"],)).fetchall()
+            require(len(rows) <= 64, "room_list_capacity_paging_unsupported", 429)
+            rooms = {r["id"]: self._room(conn, r) for r in rows}
+            principals = {r["id"]: r["payload"] for r in conn.execute("SELECT id,payload FROM principals WHERE owner=%s ORDER BY id LIMIT 129", (actor["owner"],)).fetchall()}
+            snapshot_bounds(rooms, principals)
             return actor, rooms, principals
 
     def cursor(self, cursor_id):
@@ -325,18 +344,22 @@ class PostgresStore:
     def save_cursor(self, cursor_id, payload):
         from psycopg.types.json import Jsonb
         with self.connect() as conn:
+            conn.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s,0))", (payload["principal"] + ":cursors",))
+            require(conn.execute("SELECT count(*) AS n FROM cursors WHERE principal_id=%s", (payload["principal"],)).fetchone()["n"] < 4096, "cursor_capacity_archival_unsupported", 429)
             conn.execute("INSERT INTO cursors(id,principal_id,payload,expires_at) VALUES(%s,%s,%s,%s)", (cursor_id, payload["principal"], Jsonb(payload), time.time() + DEFAULT_RETENTION.cursor_seconds))
 
     def tick_all(self):
         from .domain import schedule
         with self.connect() as conn:
-            ids = [r["id"] for r in conn.execute("SELECT id FROM rooms WHERE payload->>'state'='active' ORDER BY id").fetchall()]
+            ids = [r["id"] for r in conn.execute("SELECT id FROM rooms WHERE payload->>'state'='active' ORDER BY id LIMIT 65").fetchall()]
+            require(len(ids) <= 64, "scheduler_capacity", 429)
         for rid in ids:
             with self.connect() as conn:
                 row = conn.execute("SELECT * FROM rooms WHERE id=%s FOR UPDATE SKIP LOCKED", (rid,)).fetchone()
                 if not row:
                     continue
-                principals = {p["id"]: p["payload"] for p in conn.execute("SELECT id,payload FROM principals").fetchall()}
+                principals = {p["id"]: p["payload"] for p in conn.execute("SELECT id,payload FROM principals WHERE owner=%s ORDER BY id LIMIT 129", (row["owner"],)).fetchall()}
+                require(len(principals) <= 128, "principal_list_capacity_paging_unsupported", 429)
                 room = self._room(conn, row)
                 schedule(room, principals)
                 self._flush(conn, room, row["last_event_seq"])

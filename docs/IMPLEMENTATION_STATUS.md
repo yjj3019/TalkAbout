@@ -1,3 +1,15 @@
+## Final feature checkpoint — 2026-10-13
+
+LOCAL PROTOTYPE / NOT DEPLOYED. [Final feature matrix](FEATURE_MATRIX.md) is the current requirement-level status. [Owner handover and mode contract](MODE_HANDOVER.md) supersedes older entries saying handover/modes are unimplemented or only round-robin labels. [Retry/retention bounds](RETENTION_BOUNDS.md) still defines the previous safety bundle.
+
+The final code aggregate passed 86 Python tests, including 10 real isolated PostgreSQL cases and a separate local stdio MCP client/process test. Node UI state logic passed 5 cases; Python/JavaScript syntax, local document links and git diff --check passed. The same complete aggregate is rerun at the final committed head for the final report and review manifest. These are synthetic local tests, not operating AI/browser verification. One existing Starlette/httpx deprecation warning remains.
+
+Owner handover binds a server-resolved human principal, requires explicit full-history acknowledgement/current revisions/scopes, and atomically grants membership/audits/invalidate tasks. Free discussion uses explicit bounded request turns; structured discussion has proposal/review/synthesis phases and round closure; co-creation has researcher/creator/reviewer tasks with text proposal versions and human adoption closure. GUI supports only its advertised create/read/handover/advice/control/adopt actions; MCP only list/read/propose_text. Unknown tools and unsupported uploads/publishing are rejected.
+
+Development input/query capacities fail explicitly instead of silently dropping rows. Paging, production archival/deletion, total disk quota, advanced GUI management, summary/issues panels, reports/trash, MFA and operating policy remain incomplete. Actual external runtimes, product MCP clients and browser DOM/SSE remain NOTRUN. No push, deployment, operating account/credential or external AI call was made. Database cleanup touches only verified random synthetic test schemas; the task's temporary database is stopped after final checks.
+
+---
+
 ## Latest checkpoint — 2026-10-13
 
 LOCAL PROTOTYPE / NOT DEPLOYED. [Retry, backpressure and retention bounds](RETENTION_BOUNDS.md) records the current scope in KO/EN and supersedes earlier entries saying these are entirely unimplemented. Production retention/deletion policy, paging and archival remain incomplete.

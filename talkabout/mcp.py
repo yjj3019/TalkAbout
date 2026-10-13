@@ -39,7 +39,7 @@ class MCPServer:
                 return self.error(request_id, -32602, "Invalid initialization")
             self.phase = "initializing"
             version = params["protocolVersion"] if params["protocolVersion"] in {"2025-11-25", "2025-06-18"} else "2025-11-25"
-            return {"jsonrpc": "2.0", "id": request_id, "result": {"protocolVersion": version, "capabilities": {"tools": {"listChanged": False}}, "serverInfo": {"name": "TalkAbout", "version": "0.1.0"}, "instructions": "Text-only API adapter; not a persistent worker. Credentials are separately configured."}}
+            return {"jsonrpc": "2.0", "id": request_id, "result": {"protocolVersion": version, "capabilities": {"tools": {"listChanged": False}}, "serverInfo": {"name": "TalkAbout", "version": "0.1.0"}, "instructions": "Text-only API adapter; not a persistent worker. Credentials are separately configured. Only list/read/propose_text are supported; turn requests, task execution, handover and human adoption are not MCP tools. Unknown tools are rejected."}}
         if method == "ping":
             return {"jsonrpc": "2.0", "id": request_id, "result": {}}
         if self.phase != "ready":

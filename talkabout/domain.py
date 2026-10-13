@@ -7,6 +7,7 @@ import time
 import unicodedata
 import uuid
 from .retention import DEFAULT_RETENTION
+from .modes import next_turn
 
 AGENT_PERMISSIONS = {
     "room:read", "room:speak", "room:contribute", "task:claim",
@@ -62,6 +63,7 @@ def authorize(actor, room, permission, human=False):
 
 
 def emit(room, kind, **payload):
+    require(len(room["events"]) < 2048, "event_capacity", 429)
     room["last_seq"] += 1
     event = {"event_id": ident(), "room_id": room["id"], "seq": room["last_seq"], "type": kind, "created_at": time.time(), **payload}
     room["events"].append(event)
@@ -81,7 +83,7 @@ def new_room(actor, room_id, topic, mode="bounded_rounds", now=None):
         require((AGENT_PERMISSIONS - {"room:contribute"}) <= perms, "creator_scope_insufficient", 403)
     room = {"id": room_id, "owner": actor["owner"], "topic": topic, "mode": mode, "state": "active",
             "room_revision": 1, "generation": 1, "last_seq": 0, "next_slot": 0, "next_agent": 0,
-            "deadline": (now or time.time()) + 900, "limits": {"messages": 40, "attempts": 3, "lease": 20, "task_seconds": 60},
+            "deadline": (now or time.time()) + 900, "limits": {"messages": 40, "attempts": 3, "lease": 20, "task_seconds": 60, "rounds": 1},
             "members": {actor["id"]: {"status": "active", "revision": 1, "epoch": 1,
             "permissions": sorted(perms), "read_start_seq": 1, "greeted": False, "kind": actor["kind"]}},
             "events": [], "tasks": {}, "messages": {}, "artifacts": {}, "controls": {}, "keys": {}, "client_ids": {}}
@@ -120,15 +122,25 @@ def schedule(room, principals, now=None):
         return
     eligible = sorted(pid for pid, m in room["members"].items() if m["status"] == "active"
                       and principals[pid]["kind"] == "agent" and (AGENT_PERMISSIONS - {"room:contribute"}) <= set(m["permissions"]))
+    if room["mode"] == "co_creation":
+        eligible = [pid for pid in eligible if "room:contribute" in room["members"][pid]["permissions"]]
     if not eligible:
         return
-    pid = eligible[room["next_agent"] % len(eligible)]
-    room["next_agent"] += 1
+    turn = next_turn(room, eligible)
+    if turn is None:
+        if room.get("mode_status") == "round_limit":
+            room["state"] = "closed"
+            room["generation"] += 1
+            room["room_revision"] += 1
+            emit(room, "room.closed", actor_id="system", reason="round_limit")
+        return
+    require(len(room["tasks"]) < 256, "task_capacity", 429)
+    pid, purpose, phase, round_number = turn
     member = room["members"][pid]
     room["next_slot"] += 1
     task_id = ident()
     task = {"id": task_id, "room_id": room["id"], "slot": room["next_slot"], "assignee": pid,
-            "purpose": "speak" if member["greeted"] else "greeting", "state": "queued", "attempt": 0,
+            "purpose": purpose, "phase": phase, "round": round_number, "role": purpose, "state": "queued", "attempt": 0,
             "generation": room["generation"], "membership_revision": member["revision"],
             "deadline": min(room["deadline"], now + room["limits"]["task_seconds"]), "lease_expires_at": 0}
     room["tasks"][task_id] = task
@@ -146,6 +158,7 @@ def replay(room, actor, operation, key, body):
         require(previous["digest"] == fingerprint, "idempotency_conflict")
         require("response" in previous and previous.get("response_until", float("inf")) > time.time(), "idempotency_retired", 410)
         return previous["response"], lookup, fingerprint
+    require(len(room["keys"]) < 2048, "idempotency_capacity", 429)
     return None, lookup, fingerprint
 
 
@@ -181,6 +194,7 @@ def message(room, actor, body, now, task=None, fingerprint=None):
         require(prior.get("epoch") == room["members"][actor["id"]]["epoch"], "client_message_epoch_conflict")
         require(prior["digest"] == fingerprint, "client_message_conflict")
         return room["messages"][prior["id"]]
+    require(len(room["messages"]) < min(200, room["limits"]["messages"]), "message_capacity", 429)
     msg = {"id": ident(), "actor_id": actor["id"], "actor_kind": actor["kind"], "display_name": actor["display_name"],
            "text": text, "kind": "contribution" if task else body["kind"], "reply_to": reply, "mentions": mentions, "created_at": now}
     room["messages"][msg["id"]] = msg
