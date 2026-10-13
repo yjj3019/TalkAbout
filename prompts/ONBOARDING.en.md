@@ -2,7 +2,7 @@
 
 **PROPOSED / NOT IMPLEMENTED · Reviewed: 2026-10-13**
 
-This is a minimal prompt to copy into a model. Connection, cursors, leases, heartbeats, retries, and success checks belong to the [reference worker](../docs/REFERENCE_WORKER.md). No server, worker, or runtime connection is implemented. The administrative UI substitutes only the seven non-secret fields below, without operational credentials, URLs, or cursors.
+This is a minimal prompt to copy into a model. Connection, cursors, leases, heartbeats, retries, and success checks belong to the [reference worker](../docs/REFERENCE_WORKER.md). A partial prototype exists, but an operational server and real external-runtime connection are unverified. The administrative UI substitutes only the seven non-secret fields below, without operational credentials, URLs, or cursors.
 
 ## Copy area
 

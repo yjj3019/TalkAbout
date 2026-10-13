@@ -2,7 +2,7 @@
 
 **PROPOSED / NOT IMPLEMENTED · 확인일: 2026-10-13**
 
-이 문서는 모델에 복사할 최소 역할 안내입니다. 접속·cursor·lease·heartbeat·재시도·성공 확인은 [reference worker](../docs/REFERENCE_WORKER.md)의 책임입니다. 아직 서버·worker·runtime 연결은 구현하지 않았습니다. 관리 UI는 비밀 아닌 아래 7개 항목만 치환하고 운영 credential·URL·cursor를 넣지 않습니다.
+이 문서는 모델에 복사할 최소 역할 안내입니다. 접속·cursor·lease·heartbeat·재시도·성공 확인은 [reference worker](../docs/REFERENCE_WORKER.md)의 책임입니다. 부분 prototype은 있지만 운영 서버와 실제 외부 runtime 연결은 미검증입니다. 관리 UI는 비밀 아닌 아래 7개 항목만 치환하고 운영 credential·URL·cursor를 넣지 않습니다.
 
 ## 복사 영역
 

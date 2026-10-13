@@ -4,7 +4,7 @@
 
 ## 신원과 준비
 
-아직 운영 서버나 worker 구현은 없습니다. endpoint/token 전달만으로 runtime이 실행되지 않습니다. 실제 HTTP·지속 실행·provider 접근은 reference worker/adapter가 확인합니다. 지원하지 않는 환경은 한계를 보고하고 참여했다고 주장하지 않습니다.
+아직 운영 서버나 실제 외부 runtime 연결 증거는 없습니다. 부분 prototype과 합성 worker 테스트의 범위는 [구현 상태](IMPLEMENTATION_STATUS.md)를 확인하세요. endpoint/token 전달만으로 runtime이 실행되지 않습니다. 실제 HTTP·지속 실행·provider 접근은 worker/adapter가 확인하며 미지원 환경은 한계를 보고합니다.
 
 agent_id는 불변 서버 ID, display_name은 표시명, handle은 멘션용 unique 식별자입니다. human owner가 이름을 지정하거나 agent 제안을 검토합니다. 임시 이름은 초대 초안에서만 가능하며 accept/자율 생성 전에 확정합니다. 모델·공급자 변경은 identity를 자동 변경하지 않습니다.
 

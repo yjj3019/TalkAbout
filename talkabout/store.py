@@ -1,0 +1,210 @@
+from __future__ import annotations
+
+import copy
+import json
+import threading
+import time
+from contextlib import contextmanager
+from pathlib import Path
+
+from .domain import Problem, normalize_name, require, token_hash
+
+
+class MemoryStore:
+    """Contract-test store only; not a PostgreSQL concurrency substitute."""
+    def __init__(self):
+        self.principals, self.credentials, self.rooms, self.cursors = {}, {}, {}, {}
+        self.lock = threading.RLock()
+        self.signal = threading.Event()
+
+    def provision(self, principal, fixture_token, scopes):
+        name, name_key, handle = normalize_name(principal["display_name"], principal["handle"])
+        with self.lock:
+            require(not any(p["owner"] == principal["owner"] and (p["name_key"] == name_key or p["handle"] == handle)
+                            for p in self.principals.values()), "identity_conflict")
+            self.principals[principal["id"]] = {**principal, "display_name": name, "name_key": name_key, "identity_revision": 1}
+            self.credentials[token_hash(fixture_token)] = {"id": principal["id"], "scopes": sorted(scopes), "expires_at": time.time() + 3600, "revoked": False}
+
+    def auth(self, token):
+        with self.lock:
+            c = self.credentials.get(token_hash(token))
+            require(c and not c["revoked"] and c["expires_at"] > time.time(), "unauthorized", 401)
+            return copy.deepcopy({**self.principals[c["id"]], **c})
+
+    def revoke(self, token):
+        with self.lock:
+            self.credentials[token_hash(token)]["revoked"] = True
+        self.signal.set()
+
+    @contextmanager
+    def transaction(self, room_id, token):
+        with self.lock:
+            actor = self.auth(token)
+            require(room_id in self.rooms, "not_found", 404)
+            room = copy.deepcopy(self.rooms[room_id])
+            yield actor, room
+            self.rooms[room_id] = room
+        self.signal.set()
+
+    def create(self, token, room):
+        with self.lock:
+            actor = self.auth(token)
+            require("rooms:create" in actor["scopes"] and not actor.get("room_id"), "forbidden", 403)
+            if room["id"] in self.rooms:
+                existing = self.rooms[room["id"]]
+                require(existing["create_digest"] == room["create_digest"], "idempotency_conflict")
+                return copy.deepcopy(existing)
+            require(set(room["members"][actor["id"]]["permissions"]) <= set(actor["scopes"]), "creator_scope_insufficient", 403)
+            require(sum(r["owner"] == actor["owner"] and r["state"] != "closed" for r in self.rooms.values()) < 4, "room_quota", 429)
+            self.rooms[room["id"]] = copy.deepcopy(room)
+        self.signal.set()
+        return copy.deepcopy(room)
+
+    def snapshot(self, token):
+        with self.lock:
+            return self.auth(token), copy.deepcopy(self.rooms), copy.deepcopy(self.principals)
+
+    def cursor(self, cursor_id):
+        return copy.deepcopy(self.cursors.get(cursor_id))
+
+    def save_cursor(self, cursor_id, payload):
+        with self.lock:
+            self.cursors[cursor_id] = copy.deepcopy(payload)
+
+    def tick_all(self):
+        from .domain import schedule
+        with self.lock:
+            for room in self.rooms.values():
+                schedule(room, self.principals)
+        self.signal.set()
+
+    @contextmanager
+    def listener(self):
+        yield self.signal.wait
+        self.signal.clear()
+
+
+class PostgresStore:
+    def __init__(self, dsn):
+        self.dsn = dsn
+
+    def connect(self, autocommit=False):
+        import psycopg
+        from psycopg.rows import dict_row
+        return psycopg.connect(self.dsn, row_factory=dict_row, autocommit=autocommit)
+
+    def initialize(self):
+        with self.connect() as conn:
+            conn.execute(Path(__file__).with_name("schema.sql").read_text())
+
+    @staticmethod
+    def _auth(conn, token):
+        c = conn.execute("SELECT c.*,p.payload FROM credentials c JOIN principals p ON p.id=c.principal_id WHERE c.token_hash=%s FOR SHARE OF c", (token_hash(token),)).fetchone()
+        require(c and not c["revoked"] and c["expires_at"] > time.time(), "unauthorized", 401)
+        return {**c["payload"], "scopes": c["scopes"], "room_id": c["room_id"]}
+
+    def auth(self, token):
+        with self.connect() as conn:
+            return self._auth(conn, token)
+
+    def provision(self, principal, fixture_token, scopes):
+        from psycopg.types.json import Jsonb
+        name, name_key, handle = normalize_name(principal["display_name"], principal["handle"])
+        payload = {**principal, "display_name": name, "name_key": name_key, "identity_revision": 1}
+        with self.connect() as conn:
+            conn.execute("INSERT INTO principals(id,owner,name_key,handle,payload) VALUES(%s,%s,%s,%s,%s)",
+                         (principal["id"], principal["owner"], name_key, handle, Jsonb(payload)))
+            conn.execute("INSERT INTO credentials(token_hash,principal_id,scopes,expires_at) VALUES(%s,%s,%s,%s)",
+                         (token_hash(fixture_token), principal["id"], Jsonb(sorted(scopes)), time.time() + 3600))
+
+    def revoke(self, token):
+        with self.connect() as conn:
+            conn.execute("UPDATE credentials SET revoked=true WHERE token_hash=%s", (token_hash(token),))
+            conn.execute("NOTIFY talkabout_changed")
+
+    @staticmethod
+    def _room(conn, row):
+        room = copy.deepcopy(row["payload"])
+        room["last_seq"] = row["last_event_seq"]
+        # shortcut: bounded P0 rooms load their event history; switch to paged event queries before raising room limits.
+        room["events"] = [r["payload"] for r in conn.execute("SELECT payload FROM events WHERE room_id=%s ORDER BY seq", (row["id"],)).fetchall()]
+        return room
+
+    @staticmethod
+    def _flush(conn, room, prior_seq):
+        from psycopg.types.json import Jsonb
+        payload = {k: v for k, v in room.items() if k != "events"}
+        conn.execute("UPDATE rooms SET payload=%s,last_event_seq=%s WHERE id=%s", (Jsonb(payload), room["last_seq"], room["id"]))
+        for e in room["events"]:
+            if e["seq"] > prior_seq:
+                conn.execute("INSERT INTO events(room_id,seq,event_id,payload) VALUES(%s,%s,%s,%s)", (room["id"], e["seq"], e["event_id"], Jsonb(e)))
+        conn.execute("NOTIFY talkabout_changed")
+
+    @contextmanager
+    def transaction(self, room_id, token):
+        with self.connect() as conn:
+            row = conn.execute("SELECT * FROM rooms WHERE id=%s FOR UPDATE", (room_id,)).fetchone()
+            require(row, "not_found", 404)
+            actor = self._auth(conn, token)
+            room = self._room(conn, row)
+            yield actor, room
+            self._flush(conn, room, row["last_event_seq"])
+
+    def create(self, token, room):
+        from psycopg.types.json import Jsonb
+        with self.connect() as conn:
+            conn.execute("INSERT INTO rooms(id,owner,payload) VALUES(%s,%s,%s) ON CONFLICT DO NOTHING", (room["id"], room["owner"], Jsonb({})))
+            row = conn.execute("SELECT * FROM rooms WHERE id=%s FOR UPDATE", (room["id"],)).fetchone()
+            actor = self._auth(conn, token)
+            require("rooms:create" in actor["scopes"] and not actor.get("room_id"), "forbidden", 403)
+            if row["payload"]:
+                existing = self._room(conn, row)
+                require(existing["create_digest"] == room["create_digest"], "idempotency_conflict")
+                return existing
+            require(set(room["members"][actor["id"]]["permissions"]) <= set(actor["scopes"]), "creator_scope_insufficient", 403)
+            conn.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s,0))", (actor["owner"],))
+            count = conn.execute("SELECT count(*) AS n FROM rooms WHERE owner=%s AND payload->>'state' != 'closed'", (actor["owner"],)).fetchone()["n"]
+            require(count < 4, "room_quota", 429)
+            self._flush(conn, room, 0)
+            return room
+
+    def snapshot(self, token):
+        with self.connect() as conn:
+            conn.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
+            actor = self._auth(conn, token)
+            rooms = {r["id"]: self._room(conn, r) for r in conn.execute("SELECT * FROM rooms ORDER BY id").fetchall()}
+            principals = {r["id"]: r["payload"] for r in conn.execute("SELECT id,payload FROM principals").fetchall()}
+            return actor, rooms, principals
+
+    def cursor(self, cursor_id):
+        with self.connect() as conn:
+            row = conn.execute("SELECT payload FROM cursors WHERE id=%s AND expires_at>%s", (cursor_id, time.time())).fetchone()
+            return row["payload"] if row else None
+
+    def save_cursor(self, cursor_id, payload):
+        from psycopg.types.json import Jsonb
+        with self.connect() as conn:
+            conn.execute("INSERT INTO cursors(id,principal_id,payload,expires_at) VALUES(%s,%s,%s,%s)", (cursor_id, payload["principal"], Jsonb(payload), time.time() + 3600))
+
+    def tick_all(self):
+        from .domain import schedule
+        with self.connect() as conn:
+            ids = [r["id"] for r in conn.execute("SELECT id FROM rooms WHERE payload->>'state'='active' ORDER BY id").fetchall()]
+        for rid in ids:
+            with self.connect() as conn:
+                row = conn.execute("SELECT * FROM rooms WHERE id=%s FOR UPDATE SKIP LOCKED", (rid,)).fetchone()
+                if not row:
+                    continue
+                principals = {p["id"]: p["payload"] for p in conn.execute("SELECT id,payload FROM principals").fetchall()}
+                room = self._room(conn, row)
+                schedule(room, principals)
+                self._flush(conn, room, row["last_event_seq"])
+
+    @contextmanager
+    def listener(self):
+        with self.connect(autocommit=True) as conn:
+            conn.execute("LISTEN talkabout_changed")
+            def wait(timeout):
+                for _ in conn.notifies(timeout=timeout, stop_after=1):
+                    break
+            yield wait
