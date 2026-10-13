@@ -12,8 +12,19 @@ import uuid
 def run(args, data=None, check=True):
     result = subprocess.run(['podman', *args], input=data, capture_output=True, timeout=120)
     if check and result.returncode:
+        if args[0] == 'run':
+            # Run argv carries only secret references; never emit SQL/secret stdin.
+            print(json.dumps({'fixture_engine_error': result.stderr.decode(errors='replace')[-1200:]}))
         raise RuntimeError('podman_operation_failed_' + args[0])
     return result
+
+
+def labels_of(kind, obj):
+    if kind == 'container':
+        return obj.get('Config', {}).get('Labels', {})
+    if kind == 'secret':
+        return obj.get('Spec', {}).get('Labels', {})
+    return obj.get('Labels') or obj.get('labels', {})
 
 
 def smoke(image):
@@ -34,14 +45,14 @@ def smoke(image):
         if result.returncode:
             return False
         obj = json.loads(result.stdout)[0]
-        metadata = obj.get('Config', {}).get('Labels', {}) if kind == 'container' else obj.get('Spec', {}).get('Labels', {}) if kind == 'secret' else obj.get('Labels', {})
+        metadata = labels_of(kind, obj)
         if metadata.get('io.talkabout.fixture') != identifier:
             raise RuntimeError('fixture_ownership_mismatch')
         return True
     for kind, name in resources:
         if run([kind, 'inspect', name], check=False).returncode == 0:
             raise RuntimeError('fixture_name_collision')
-    result = {'status': 'FAIL', 'fixture_only': True, 'published_ports': False, 'checks': []}
+    result = {'status': 'FAIL', 'fixture_only': True, 'fixture_id': identifier, 'published_ports': False, 'checks': []}
     common = [*labels, '--network', network, '--cap-drop=all', '--security-opt=no-new-privileges', '--read-only', '--read-only-tmpfs=false', '--tmpfs=/tmp:rw,nosuid,nodev,size=32m', '--memory=512m', '--memory-swap=512m', '--cpus=1', '--pids-limit=128']
     def sql(statement, database='talkabout'):
         return run(['exec', '-i', db, 'psql', '-U', 'talkabout_owner', '-d', database, '-At', '-v', 'ON_ERROR_STOP=1'], statement.encode()).stdout.strip()
