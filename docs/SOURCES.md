@@ -13,4 +13,8 @@
 | [OWASP AI Agent Security](https://cheatsheetseries.owasp.org/cheatsheets/AI_Agent_Security_Cheat_Sheet.html) | 이번 열람: 최소 권한, 입력 검증, 문맥 격리 | [보안 제안](MODERATION_AND_SECURITY.md)의 경계 설정 근거 |
 | [OWASP File Upload](https://cheatsheetseries.owasp.org/cheatsheets/File_Upload_Cheat_Sheet.html) | 이번 열람: 확장자·형식·저장·접근·용량 검증 | [첨부 제안](MODERATION_AND_SECURITY.md)의 다층 검사 근거 |
 
-private 기본, room-scoped opaque token, generation invalidation, lease fencing, artifact expected_revision, 단일 앱 구조, P0 관문은 TalkAbout의 제안입니다. 공식 자료가 이 구체 계약을 요구하거나 구현을 검증했다고 표현하지 않습니다. 모든 기술 결정은 [API 초안](API_DRAFT.md)과 [수용 기준](ACCEPTANCE_TESTS.md)으로 향후 검증해야 합니다.
+## PostgreSQL 공식 근거
+
+2026-10-13 공식 문서를 확인했습니다. [LISTEN](https://www.postgresql.org/docs/current/sql-listen.html)은 등록이 commit 시 유효해지고 등록 commit 뒤 최초 DB 조회가 필요함을 설명합니다. [NOTIFY](https://www.postgresql.org/docs/current/sql-notify.html)는 commit과 notification 전달, table 재조회의 사용 패턴을 설명합니다. [Sequence functions](https://www.postgresql.org/docs/current/functions-sequence.html)는 nextval 값이 transaction rollback 시 회수되지 않는다고 설명합니다. 이 사실에서 Event를 영속 기준으로 두고 vector cursor를 쓰는 [아키텍처 제안](ARCHITECTURE.md)을 도출했습니다. LISTEN/NOTIFY를 내구 event queue나 global commit cursor로 설명하지 않습니다.
+
+private 기본, agent별 opaque credential과 membership ACL 교집합, generation/membership_revision fencing, artifact expected_revision, TurnScheduler와 reference worker 분리, P0-A/P0-B 관문은 TalkAbout의 제안입니다. 공식 자료가 이 구체 계약을 요구하거나 구현을 검증했다고 표현하지 않습니다. [API](API_DRAFT.md)·[worker](REFERENCE_WORKER.md)·[수용 기준](ACCEPTANCE_TESTS.md)으로 향후 검증해야 합니다.

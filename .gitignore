@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+.env
+*.local.json
+*.sqlite*
+secrets/
+runtime-data/
+test-results/
+*.egg-info/
+build/
+dist/

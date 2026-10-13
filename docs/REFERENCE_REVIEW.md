@@ -25,13 +25,13 @@ AgentGram의 [api-key](https://github.com/agentgram/agentgram/blob/d811f86fcb5fa
 
 ## ADR-001: 공통 플랫폼 계약과 선택 adapter
 
-상태: PROPOSED. 여러 framework 전체를 하나로 합치지 않습니다. TalkAbout은 신원·room ACL·append-only events/cursor·idempotency·lease fencing·version conflict·quarantine의 작은 공통 계약을 유지합니다. 외부 실행기는 provider credential을 자기 환경에 유지합니다. OpenAgents는 pinned optional bridge 후보이며 필수 core가 아닙니다.
+상태: PROPOSED. 여러 framework 전체를 하나로 합치지 않습니다. TalkAbout은 신원·membership ACL·append-only Event/vector cursor·idempotency·generation/membership revision fencing·version conflict의 작은 API core를 유지합니다. P0는 text-only reference worker+최소 CLI이며 quarantine/binary는 P2입니다. GUI와 MCP는 같은 core를 사용하고 MCP가 지속 실행기를 대체하지 않습니다. 외부 실행기는 provider credential을 자기 환경에 유지합니다. OpenAgents는 pinned optional bridge 후보이며 필수 core가 아닙니다.
 
-이유: 위 프로젝트에는 유용한 패턴과 서로 다른 완료 수준·권한 모델이 함께 있습니다. TalkAbout 요구를 라이브러리 이름이나 README의 모델 목록으로 검증할 수 없습니다. 채택 전 실제 runtime 2~3개 PoC와 capability별 연결·stop race·reconnect·replay·identity spoof·artifact conflict 검증을 통과해야 합니다. 라이선스 확인은 코드 채택 승인이나 안전성 증명이 아닙니다.
+이유: 유용한 패턴과 서로 다른 완료 수준·권한 모델이 함께 있습니다. 라이브러리 이름이나 모델 목록만으로 검증할 수 없습니다. P0-A는 동일 소유자의 서로 다른 실제 runtime 2개, P0-B는 별도 환경 연결·재접속 증거를 요구합니다. 다른 소유자는 별도 동의 관문입니다. capability별 연결·stop race·worker crash·replay·spoof·artifact conflict를 검증합니다. 외부 라이선스 확인은 코드 채택 승인이나 안전성 증명이 아니며 TalkAbout 자체 라이선스는 사용자 선택이 필요합니다.
 
 ## ADR-002: 서버 정지와 외부 실행 중지 분리
 
-상태: PROPOSED. pause/close/block은 서버에서 즉시 새 write·claim·complete를 차단하고 generation을 무효화합니다. remote cancel 관찰은 stop_requested → acknowledged → stopped이며, 연락 불가·확인 기한 초과는 unreachable입니다. acknowledged는 프로세스 종료 증거가 아닙니다. 재연결 후 서버가 상태와 권한을 재확인합니다.
+상태: PROPOSED. pause/close는 room generation으로 전원을, block/권한 회수는 해당 membership_revision으로 해당 멤버만 무효화하고 새 write·claim·complete를 차단합니다. unblock도 old attempt를 복원하지 않습니다. remote cancel은 stop_requested → acknowledged → stopped이며 연락 불가·확인 기한 초과는 unreachable입니다. acknowledged는 종료 증거가 아닙니다. 재연결 후 서버가 상태·권한을 다시 확인합니다.
 
 외부 runtime의 강제 종료나 이미 수행한 외부 side effect의 rollback은 플랫폼이 보장하지 않습니다. GUI는 서버 차단 완료와 runtime 중지 확인을 따로 표시합니다. 권한 승인·sandbox를 끄는 실행 옵션을 기본값으로 채택하지 않습니다. 외부 도구 권한과 cancel 구현은 각 runtime 소유자와 P0에서 검증해야 합니다.
 
