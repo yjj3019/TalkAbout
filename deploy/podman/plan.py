@@ -20,7 +20,7 @@ def plan(app_image, host_port=8080):
     images = json.loads((ROOT/'deploy/podman/images.lock.json').read_text())['images']
     common = ['--label', LABEL, '--network', NETWORK, '--cap-drop=all', '--security-opt=no-new-privileges', '--pids-limit=128', '--cpus=1', '--memory=512m', '--memory-swap=512m', '--read-only', '--read-only-tmpfs=false', '--tmpfs=/tmp:rw,nosuid,nodev,size=32m', '--log-opt=max-size=10mb']
     db = ['podman', 'run', '--detach', '--name', DB, *common, '--user=999:999', '--network-alias', DB,
-          '--volume', VOLUME+':/var/lib/postgresql:U', '--tmpfs=/var/run/postgresql:rw,nosuid,nodev,size=16m,uid=999,gid=999',
+          '--volume', VOLUME+':/var/lib/postgresql:U', '--tmpfs=/var/run/postgresql:rw,nosuid,nodev,size=16m,mode=1777',
           '--secret', 'talkabout-db-password,type=mount,target=pg-password,uid=999,gid=999,mode=0400',
           '--env', 'POSTGRES_PASSWORD_FILE=/run/secrets/pg-password', '--env', 'POSTGRES_USER=talkabout_owner', '--env', 'POSTGRES_DB=talkabout',
           '--health-cmd=pg_isready -U talkabout_owner -d talkabout', '--health-interval=30s', '--health-timeout=5s', '--health-retries=3', images['postgres']['reference'], '-c', 'max_connections=30', '-c', 'shared_buffers=64MB']
