@@ -25,6 +25,7 @@ def plan(app_image, host_port=8080):
           '--env', 'POSTGRES_PASSWORD_FILE=/run/secrets/pg-password', '--env', 'POSTGRES_USER=talkabout_owner', '--env', 'POSTGRES_DB=talkabout',
           '--health-cmd=pg_isready -U talkabout_owner -d talkabout', '--health-interval=30s', '--health-timeout=5s', '--health-retries=3', images['postgres']['reference'], '-c', 'max_connections=30', '-c', 'shared_buffers=64MB']
     app = ['podman', 'run', '--detach', '--name', APP, *common, '--user=10001:10001', f'--publish=127.0.0.1:{host_port}:8080',
+           '--health-cmd=python -m talkabout.container healthcheck', '--health-interval=30s', '--health-timeout=10s', '--health-retries=3',
            '--secret', 'talkabout-db-url,type=mount,target=talkabout-db-url,uid=10001,gid=10001,mode=0400', app_image]
     return {'status': 'PLAN_ONLY_NOT_EXECUTED', 'rootless_required': True,
             'collision_policy': 'Abort if any named resource exists; never replace/prune existing resources.',

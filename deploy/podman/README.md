@@ -33,12 +33,14 @@ podman volume exists talkabout-pg18-data
 검증된 source commit을 SOURCE_SHA로 기록합니다. 공식 pinned base와 runtime requirements snapshot을 사용합니다. 테스트·Git·문서·secret·로컬 환경은 deny-by-default .containerignore와 명시 COPY로 context에서 제외합니다. image에는 credentials/ARG secret이 없으며 runtime secret은 file mount로만 받습니다.
 
 ```sh
-podman build --file Containerfile --tag "localhost/talkabout:$SOURCE_SHA" .
+podman build --format=docker --file Containerfile --tag "localhost/talkabout:$SOURCE_SHA" .
 podman image inspect "localhost/talkabout:$SOURCE_SHA"
 python deploy/podman/plan.py --app-image "localhost/talkabout:$SOURCE_SHA"
 ```
 
 plan.py는 JSON argv를 출력할 뿐 Podman을 호출하거나 자원을 만들지 않습니다. build 이후 app image ID/digest·base digests·source SHA·dependency 결과를 release manifest에 별도 기록합니다. Linux dependency compatibility와 포함 schema/web resources 확인 후에만 run합니다. 실패 시 snapshot을 임의 느슨하게 풀거나 설치 성공으로 표시하지 않습니다.
+
+Podman 기본 OCI image format은 Containerfile의 HEALTHCHECK를 보존하지 않습니다. image healthcheck를 보존하려면 위처럼 --format=docker를 명시합니다. native run plan과 Quadlet도 HealthCmd를 따로 지정해 image format에 의존하지 않도록 했습니다. DB 중단으로 scheduler가 실패하면 /ready는 503이며, DB 복구 후 해당 TalkAbout app을 운영자가 다시 시작해야 합니다. 현재 자동복구/자동기동은 설정하지 않습니다.
 
 기본 host port가 이미 사용 중이면 중단하고 승인된 빈 unprivileged port를 --host-port로 지정합니다. 이 옵션은 127.0.0.1 bind를 유지하며 1024..65535만 허용합니다. Quadlet PublishPort와 사용자가 접속하는 localhost origin/port도 같은 값으로 검토합니다. 기존 listener를 종료하거나 교체하지 않습니다.
 

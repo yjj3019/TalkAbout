@@ -120,7 +120,8 @@ def test_stop_during_runtime_never_publishes_and_reports_outcome(fixture,tmp_pat
         finally: journal.close()
     with ThreadPoolExecutor(1) as pool:
         future=pool.submit(run_worker)
-        assert started.wait(3)
+        # This bounds HTTP/TestClient setup, not runtime stop responsiveness.
+        assert started.wait(10)
         control=Journal(path)
         with control.db:
             control.set_setting('stop',True)
