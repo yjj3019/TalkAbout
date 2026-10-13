@@ -12,3 +12,6 @@ export class ViewState {
   finish(ticket,success){if(this.busy.get(ticket.kind)?.nonce===ticket.nonce)this.busy.delete(ticket.kind);if(success)this.keys.delete(ticket.signature);return ticket.epoch===this.epoch;}
   languageTo(language){if(!labels[language])throw new Error('invalid language');this.language=language;}
 }
+
+Object.assign(labels.ko,{adopt:'이 버전 채택',adopted:'채택됨',interventions:'관리자 개입 이력',confirmAdopt:'이 텍스트 버전을 채택하시겠습니까?',streamEnded:'실시간 갱신 시간이 끝났습니다. 새로고침으로 다시 연결할 수 있습니다.'});
+Object.assign(labels.en,{adopt:'Adopt this version',adopted:'Adopted',interventions:'Administrator interventions',confirmAdopt:'Adopt this text version?',streamEnded:'Live update budget ended. Refresh to connect again.'});

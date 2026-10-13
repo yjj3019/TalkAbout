@@ -126,7 +126,10 @@ class MemoryStore:
 
     @contextmanager
     def listener(self):
-        yield self.signal.wait
+        def wait(timeout):
+            self.signal.wait(timeout)
+            self.signal.clear()
+        yield wait
         self.signal.clear()
 
 

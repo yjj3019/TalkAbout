@@ -62,7 +62,7 @@ class Journal:
                         old = json.loads(row[1])
                         task = old.get("task", {})
                         safe = row[0] in {"failed", "pre_call_retry"} and old.get("safe_pre_call_retry") is True and old.get("runtime_started") is False
-                        same = event.get("generation") == task.get("generation") and event.get("membership_revision") == task.get("membership_revision") and event.get("attempt", -1) >= task.get("attempt", 0)
+                        same = event.get("generation") == task.get("generation") and event.get("membership_revision") == task.get("membership_revision") and event.get("attempt", -1) == task.get("attempt", 0)
                         if safe and same:
                             self.db.execute("UPDATE queue SET state='ready',payload=? WHERE id=?", (json.dumps({"event": event, "runtime_started": False}), event["task_id"]))
                     else:
@@ -142,6 +142,18 @@ class Worker:
             self.journal.save(tid, "uncertain", payload)
             return "uncertain"
         try:
+            if state == "pre_call_retry":
+                task = self.client.request("GET", prefix)
+                previous = payload["task"]
+                same = all(task[k] == previous[k] for k in ("attempt", "generation", "membership_revision"))
+                if same and task["state"] == "queued":
+                    self.journal.save(tid, "ready", {"event": payload["event"], "runtime_started": False})
+                    return "retry_queued"
+                if same and task["state"] == "leased" and task["lease_expires_at"] <= time.time():
+                    return "retry_wait"
+                payload["safe_pre_call_retry"] = False
+                self.journal.save(tid, "failed", payload)
+                return "stale"
             if state == "ready":
                 task = self.client.request("GET", prefix)
                 if task["state"] != "queued":
@@ -166,6 +178,10 @@ class Worker:
                     payload.update(safe_pre_call_retry=True, runtime_started=False)
                     self.journal.save(tid, "ready", {"event": payload["event"], "runtime_started": False})
                     return "retry_queued"
+                if task["state"] == "leased" and task["lease_expires_at"] <= time.time() and all(task[k] == payload["task"][k] for k in ("attempt", "generation", "membership_revision")):
+                    payload.update(safe_pre_call_retry=True, runtime_started=False)
+                    self.journal.save(tid, "pre_call_retry", payload)
+                    return "retry_wait"
                 if task["state"] != "leased" or task["attempt"] != payload["task"]["attempt"] or task["lease_expires_at"] <= time.time():
                     self.journal.save(tid, "failed", payload)
                     return "stale"

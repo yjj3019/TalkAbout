@@ -1,11 +1,12 @@
 import json
 import re
 import threading
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from .core import Core
@@ -85,6 +86,37 @@ def create_app(store, start_scheduler=True, allow_fixture_bearer=False, allowed_
         require(name in {"app.mjs", "state.mjs", "style.css"}, "not_found", 404)
         return FileResponse(Path(__file__).parent / "web" / name)
 
+    def room_stream(request, credential, room_id):
+        require(store.auth(credential)["kind"] == "human", "human_required", 403)
+        core.read(credential, room_id)
+        try:
+            duration = float(request.query_params.get("duration_seconds", 60))
+        except ValueError:
+            raise Problem("invalid_stream_duration", 422)
+        require(0 <= duration <= 60, "invalid_stream_duration", 422)
+        async def stream():
+            from starlette.concurrency import run_in_threadpool
+            end = time.monotonic() + duration
+            cursor = request.headers.get("last-event-id") or request.query_params.get("cursor")
+            while True:
+                if await request.is_disconnected():
+                    return
+                try:
+                    data = await run_in_threadpool(core.events, credential, cursor, min(10, max(0, end-time.monotonic())), False, room_id)
+                    cursor = data["next_cursor"]
+                    # One batch per SSE message: its cursor never skips partially delivered events.
+                    yield "id: " + cursor + "\nevent: room_update\ndata: " + json.dumps(data, ensure_ascii=True) + "\n\n"
+                except Problem as error:
+                    yield "event: access_changed\ndata: " + json.dumps({"code": error.code}) + "\n\n"
+                    return
+                except Exception:
+                    yield 'event: access_changed\ndata: {"code":"service_unavailable"}\n\n'
+                    return
+                if time.monotonic() >= end:
+                    yield 'event: stream_end\ndata: {"reason":"budget"}\n\n'
+                    return
+        return StreamingResponse(stream(), media_type="text/event-stream", headers={"X-Accel-Buffering": "no"})
+
     @app.api_route("/api/v1/{path:path}", methods=["GET", "POST", "PATCH", "PUT"])
     async def api(request: Request, path: str):
         from starlette.concurrency import run_in_threadpool
@@ -157,6 +189,18 @@ def create_app(store, start_scheduler=True, allow_fixture_bearer=False, allowed_
             require(match, "not_found", 404)
             room_id, operation = match.groups()
             if method == "GET":
+                if operation == "events":
+                    try:
+                        wait = float(request.query_params.get("wait_seconds", 0))
+                    except ValueError:
+                        raise Problem("invalid_wait", 422)
+                    return core.events(credential, request.query_params.get("cursor"), wait, target_room=room_id)
+                if operation == "snapshot":
+                    return core.room_snapshot(credential, room_id)
+                if operation == "stream":
+                    return room_stream(request, credential, room_id)
+                if operation == "interventions":
+                    return core.interventions(credential, room_id)
                 room = core.read(credential, room_id)
                 if not operation:
                     return room

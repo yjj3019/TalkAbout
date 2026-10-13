@@ -147,3 +147,23 @@ def test_requeue_reactivates_only_proven_pre_call_terminal_row(fixture,tmp_path)
     assert journal.status()=={'ready':1}
     assert worker.step()=='completed' and store.rooms[rid]['tasks'][tid]['attempt']==2
     journal.close()
+
+
+def test_pre_call_restart_before_scheduler_tick_waits_then_retries(fixture,tmp_path):
+    store,core,rid=fixture
+    path=tmp_path/'late-tick.sqlite'; journal=Journal(path)
+    client=LocalClient(store); Worker(client,journal,SyntheticRuntime()).poll()
+    tid,_,payload=journal.next(); claimed=leased(core,rid)
+    payload.update(task=claimed,runtime_started=False)
+    journal.save(tid,'claimed',payload); journal.close()
+    with store.transaction(rid,'fixture-human') as (_,room):
+        room['tasks'][tid]['lease_expires_at']=time.time()-1
+    recovered=Journal(path); worker=Worker(LocalClient(store),recovered,SyntheticRuntime())
+    assert worker.step()=='retry_wait'
+    assert recovered.status()=={'pre_call_retry':1}
+    assert worker.step()=='retry_wait'
+    store.tick_all()
+    assert worker.step()=='completed'
+    assert store.rooms[rid]['tasks'][tid]['attempt']==2
+    assert len(core.read('fixture-human',rid)['messages'])==1
+    recovered.close()

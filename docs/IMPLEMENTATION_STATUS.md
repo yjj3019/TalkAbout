@@ -22,6 +22,28 @@ DB 준비 wrapper는 Windows child output handle 대기로 timeout을 반환했�
 
 ## 작성한 코드
 
+## 방별 조회·제어·채택 후속 체크포인트
+
+pre-call restart가 scheduler tick보다 앞서는 잔여 race를 수정했습니다. 아직 leased이지만 lease 만료된 작업을 pre_call_retry로 보존하고 queued가 된 뒤에만 새 attempt key로 claim합니다. unknown/model-started 상태는 재실행하지 않습니다. tick 전/후 순서 모두 회귀시험으로 확인합니다.
+
+per-room events·snapshot·human SSE를 추가했습니다. inbox/per-room cursor view를 분리하고 snapshot은 실제 last_seq와 cursor offset을 맞춥니다. SSE는 batch 하나에 cursor 하나를 붙여 부분 이벤트 전달 뒤 누락을 피하며 60초 연결 예산·현재 ACL 재검사·access_changed 종료를 사용합니다. GUI는 이를 통해 읽기 갱신하고 실패·권한 회수에 private 화면과 연결을 비웁니다. 실제 browser EventSource는 여전히 NOTRUN입니다.
+
+change_mode/change_limits와 pin을 human 확인·승인·감사 경로에 추가했습니다. mode/limits는 generation을 올려 old lease를 취소합니다. pin은 revision만 변경합니다. prototype limits는 messages 1..200, attempts 1..3, lease 5..60초, task_seconds 5..180초이며 lease가 task deadline 길이를 넘지 못합니다. 세 mode의 별도 진행 정책은 아직 구현하지 않았고 모두 P0 round-robin으로 동작합니다.
+
+GUI에 text version 채택과 관리자 질문/조언/control 이력을 추가했습니다. effective_permissions는 현재 credential/account scope와 membership의 교집합입니다. 추가 확인한 adoption target ACL 격차를 수정해 숨겨진 과거 version은 채택할 수 없습니다. 현재 읽을 수 있는 버전만 확인·채택할 수 있고 stale revision은 거절합니다.
+
+| 요구/관문 | 이번 구현·검증 범위 | 남은 요구 / NOTRUN |
+| --- | --- | --- |
+| pre-call 재시도 | scheduler tick 전·후의 retry-wait/새 claim, 불명 결과 금지 | 실제 provider 호출·비용·취소 실증 |
+| per-room API/SSE | cursor 분리, snapshot seq, batch framing, human ACL, 단기 SSE 및 GUI 연결 코드 | browser 실제 EventSource·proxy/TLS 운영 경로 |
+| mode/limits | 명시 human control·확인·revision·generation·현재 작업 취소, 수치 cap | 모드별 round 정책·자유 발언 요청·공동 창작 task orchestration |
+| intervention/adoption | human 이력 API/GUI, visible text version 채택·권한 교집합·충돌 | 출처/요약 패널 전체·브라우저 실측·신고/휴지통 |
+| worker 운영 | durable journal·stop·안전한 pre-call 재시도 유지 | bounded transport backoff, queue backpressure, inbox/cursor/idempotency retention/cleanup |
+| 자율 방 관리 | creator 최소 membership·quota 유지 | 사전 승인된 workspace 정책/고지와 별도 human membership을 통한 handover; 권한 우회로 해결하지 않음 |
+| 실환경 | 합성/격리 PostgreSQL·로컬 stdio MCP만 시험 | 실제 runtime 2개·운영 인증 정책·외부 client·배포 승인 |
+
+binary/이미지 upload와 publication은 계속 비활성화입니다. 실제 계정·credential·외부 AI 호출은 하지 않았습니다. bootstrap 및 authentication은 여전히 private prototype 범위입니다.
+
 ## 독립 리뷰 수정·MCP 프로세스 체크포인트
 
 최종 aggregate: Python 51개 PASS(실제 PostgreSQL 7개·별도 MCP process 시험 1개 포함), Node UI 로직 5개 PASS, compileall·diff 검사 PASS입니다. stop 회귀의 최초 기대값은 callback이 이미 끝나 제출만 막은 stopped_before_submit 경우를 제외해 1건 실패했으며, 취소/완료 후 제출 차단을 구분해 재실행했습니다. 최종 FAIL 0입니다. 추가 모델 호출이나 운영 credential은 없고 임시 DB는 종료했습니다.

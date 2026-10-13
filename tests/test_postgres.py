@@ -145,3 +145,16 @@ def test_postgres_human_session_identity_and_logout(postgres_fixture):
     store.logout(token_hash(raw))
     with pytest.raises(Problem, match="unauthorized"):
         core.me("session:" + raw)
+
+
+def test_postgres_room_snapshot_limits_cursor_contract(postgres_fixture):
+    _,core,rid=postgres_fixture
+    snapshot=core.room_snapshot('fixture-a',rid)
+    assert core.events('fixture-a',snapshot['snapshot_cursor'],target_room=rid)['events']==[]
+    pending=core.mutation('fixture-human',rid,'controls','limits-request',{'action':'change_limits','expected_revision':1,'parameters':{'limits':{'messages':6}}})
+    core.mutation('fixture-human',rid,'controls/'+pending['id']+'/approve','limits-approve',{})
+    room=core.read('fixture-human',rid)
+    assert room['generation']==2 and room['limits']['messages']==6
+    events=core.events('fixture-a',snapshot['snapshot_cursor'],target_room=rid)['events']
+    assert events and any(e['type']=='control.applied' for e in events)
+    assert any(c['kind']=='control' and c['state']=='applied' for c in core.interventions('fixture-human',rid))
