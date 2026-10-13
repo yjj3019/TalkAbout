@@ -25,7 +25,16 @@ class Core:
     def me(self, token):
         actor = self.store.auth(token)
         require("agent:self_read" in actor["scopes"] or actor["kind"] == "human", "forbidden", 403)
-        return {k: actor.get(k) for k in ("id", "display_name", "handle", "kind", "identity_revision", "scopes")}
+        return {k: actor.get(k) for k in ("id", "display_name", "handle", "kind", "identity_revision", "scopes", "capabilities", "model")} | {"agent_id": actor["id"] if actor["kind"] == "agent" else None}
+
+    def invitations(self, token):
+        actor, rooms, _ = self.store.snapshot(token)
+        require("agent:self_read" in actor["scopes"] or actor["kind"] == "human", "forbidden", 403)
+        return [{"room_id": rid, "membership_id": actor["id"], "topic": r["topic"], "mode": r["mode"],
+                 "membership_revision": r["members"][actor["id"]]["revision"],
+                 "notice": "Private by default; authorized human room members can read; special operator access is disabled"}
+                for rid, r in rooms.items() if actor["id"] in r["members"] and r["members"][actor["id"]]["status"] == "pending"
+                and (not actor.get("room_id") or actor["room_id"] == rid)]
 
     def rooms(self, token):
         actor, rooms, _ = self.store.snapshot(token)
@@ -134,7 +143,7 @@ class Core:
                 response = message(room, actor, body, now, fingerprint=fingerprint)
                 # Human messages never create extra recursive turns.
             elif bits[0] == "memberships":
-                active(room)
+                require(room["state"] in {"active", "paused"}, "room_closed")
                 pid = body.get("principal_id") if len(bits) == 1 else target
                 require(pid in principals and principals[pid]["owner"] == actor["owner"], "not_found", 404)
                 old = room["members"].get(pid)
@@ -145,11 +154,13 @@ class Core:
                 perms = set(proposed)
                 permitted = AGENT_PERMISSIONS if principals[pid]["kind"] == "agent" else HUMAN_PERMISSIONS
                 require(perms <= permitted and "room:read" in perms, "invalid_permissions", 422)
-                status = body.get("status", "pending")
-                require(status in {"pending", "blocked", "left"}, "invalid_status", 422)
-                epoch = (old or {}).get("epoch", 0) + 1
+                status = body.get("status", old["status"] if old else "pending")
+                require(status in {"pending", "blocked", "left", "active"}, "invalid_status", 422)
+                require(status != "active" or (old and old["status"] in {"active", "blocked"}), "invitation_required", 422)
+                reset_read = not old or old["status"] != status
+                epoch = (old or {}).get("epoch", 0) + (1 if reset_read else 0)
                 room["members"][pid] = {"status": status, "kind": principals[pid]["kind"], "permissions": sorted(perms), "revision": (old or {}).get("revision", 0) + 1,
-                                        "epoch": epoch, "read_start_seq": room["last_seq"] + 1, "greeted": False}
+                                        "epoch": epoch, "read_start_seq": room["last_seq"] + 1 if reset_read else old["read_start_seq"], "greeted": False}
                 cancel_tasks(room, pid)
                 emit(room, "membership.changed", principal_id=pid, actor_id=actor["id"])
                 schedule(room, principals)

@@ -42,6 +42,7 @@ def token_hash(token):
 
 
 def normalize_name(display_name, handle):
+    require(isinstance(display_name, str) and isinstance(handle, str), "invalid_name", 422)
     name = unicodedata.normalize("NFKC", display_name).strip()
     require(1 <= len(name) <= 48 and not any(unicodedata.category(c).startswith("C") for c in name), "invalid_name", 422)
     require(name.casefold() not in {"admin", "administrator", "human", "system", "관리자"}, "reserved_name", 422)

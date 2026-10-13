@@ -9,10 +9,12 @@ from fastapi.responses import FileResponse, JSONResponse
 
 from .core import Core
 from .domain import Problem, ident, require
+from .identity import IdentityService
 
 
 def create_app(store, start_scheduler=True):
     core = Core(store)
+    identity = IdentityService(store)
     stop = threading.Event()
     state = {"scheduler": "stopped"}
 
@@ -90,6 +92,26 @@ def create_app(store, start_scheduler=True):
                 raise Problem("feature_disabled")
             if method == "GET" and path == "agents/me":
                 return core.me(credential)
+            if method == "GET" and path == "agents/me/invitations":
+                return core.invitations(credential)
+            if path == "agents":
+                if method == "GET":
+                    return identity.list(credential)
+                if method == "POST":
+                    return identity.mutate(credential, "register", key, body)
+            if method == "PUT" and path == "agents/me/capabilities":
+                return identity.mutate(credential, "capabilities", key, body)
+            agent_path = re.fullmatch(r"agents/([a-zA-Z0-9-]+)/(identity|name-proposals|credentials)(?:/([a-zA-Z0-9-]+)/(revoke|rotate))?", path)
+            if agent_path:
+                agent_id, action, credential_id, credential_action = agent_path.groups()
+                if action == "identity" and method == "PATCH" and not credential_id:
+                    return identity.mutate(credential, "identity/" + agent_id, key, body)
+                if action == "name-proposals" and method == "POST" and not credential_id:
+                    require(store.auth(credential)["id"] == agent_id, "not_found", 404)
+                    return identity.mutate(credential, "name-proposals", key, body)
+                if action == "credentials" and method == "POST":
+                    operation = "credentials/" + agent_id + ("/" + credential_id + "/" + credential_action if credential_id else "")
+                    return identity.mutate(credential, operation, key, body)
             if method == "GET" and path in {"agents/me/events", "agents/me/snapshot"}:
                 try:
                     wait = float(request.query_params.get("wait_seconds", 0))
@@ -121,7 +143,8 @@ def create_app(store, start_scheduler=True):
                     version = next((v for v in artifact["versions"] if v["id"] == vid), None) if artifact else None
                     require(version, "not_found", 404)
                     return {"text": version["text"], "ai_generated": version["ai_generated"]}
-            if method == "POST" and operation == "memberships/me/accept":
+            if method == "POST" and re.fullmatch(r"memberships/[^/]+/accept", operation or ""):
+                require(operation.split("/")[1] in {"me", store.auth(credential)["id"]}, "not_found", 404)
                 return core.accept(credential, room_id, key, body)
             permitted = operation and (
                 operation in {"messages", "memberships", "controls", "artifacts"}

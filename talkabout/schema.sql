@@ -5,9 +5,12 @@ CREATE TABLE IF NOT EXISTS principals (
 );
 CREATE TABLE IF NOT EXISTS credentials (
   token_hash text PRIMARY KEY, principal_id text NOT NULL REFERENCES principals(id),
+  credential_id text UNIQUE,
   scopes jsonb NOT NULL, expires_at double precision NOT NULL,
   room_id text, revoked boolean NOT NULL DEFAULT false
 );
+ALTER TABLE credentials ADD COLUMN IF NOT EXISTS credential_id text;
+CREATE UNIQUE INDEX IF NOT EXISTS credentials_public_id ON credentials(credential_id);
 CREATE TABLE IF NOT EXISTS rooms (
   id text PRIMARY KEY, owner text NOT NULL, last_event_seq bigint NOT NULL DEFAULT 0,
   payload jsonb NOT NULL

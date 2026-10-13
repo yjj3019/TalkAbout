@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import copy
 import json
+import re
 import threading
 import time
 from contextlib import contextmanager
 from pathlib import Path
 
-from .domain import Problem, normalize_name, require, token_hash
+from .domain import Problem, ident, normalize_name, require, token_hash
 
 
 class MemoryStore:
@@ -30,6 +31,15 @@ class MemoryStore:
             c = self.credentials.get(token_hash(token))
             require(c and not c["revoked"] and c["expires_at"] > time.time(), "unauthorized", 401)
             return copy.deepcopy({**self.principals[c["id"]], **c})
+
+    @contextmanager
+    def identity_transaction(self, token):
+        with self.lock:
+            actor = self.auth(token)
+            principals, credentials = copy.deepcopy(self.principals), copy.deepcopy(self.credentials)
+            yield actor, principals, credentials
+            self.principals, self.credentials = principals, credentials
+        self.signal.set()
 
     def revoke(self, token):
         with self.lock:
@@ -85,13 +95,15 @@ class MemoryStore:
 
 
 class PostgresStore:
-    def __init__(self, dsn):
-        self.dsn = dsn
+    def __init__(self, dsn, schema=None):
+        require(schema is None or re.fullmatch(r"talkabout_test_[a-f0-9]{32}", schema), "invalid_test_schema", 422)
+        self.dsn, self.schema = dsn, schema
 
     def connect(self, autocommit=False):
         import psycopg
         from psycopg.rows import dict_row
-        return psycopg.connect(self.dsn, row_factory=dict_row, autocommit=autocommit)
+        options = {"options": "-csearch_path=" + self.schema} if self.schema else {}
+        return psycopg.connect(self.dsn, row_factory=dict_row, autocommit=autocommit, **options)
 
     def initialize(self):
         with self.connect() as conn:
@@ -106,6 +118,32 @@ class PostgresStore:
     def auth(self, token):
         with self.connect() as conn:
             return self._auth(conn, token)
+
+    @contextmanager
+    def identity_transaction(self, token):
+        from psycopg.types.json import Jsonb
+        from psycopg.errors import UniqueViolation
+        try:
+            with self.connect() as conn:
+                row = conn.execute("SELECT p.owner FROM credentials c JOIN principals p ON p.id=c.principal_id WHERE c.token_hash=%s", (token_hash(token),)).fetchone()
+                require(row, "unauthorized", 401)
+                # Serialize workspace identity mutations before acquiring credential locks.
+                conn.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s,0))", (row["owner"] + ":identity",))
+                actor = self._auth(conn, token)
+                principals = {r["id"]: r["payload"] for r in conn.execute("SELECT id,payload FROM principals WHERE owner=%s ORDER BY id FOR UPDATE", (actor["owner"],)).fetchall()}
+                rows = conn.execute("SELECT c.* FROM credentials c JOIN principals p ON p.id=c.principal_id WHERE p.owner=%s ORDER BY c.token_hash FOR UPDATE OF c", (actor["owner"],)).fetchall()
+                credentials = {r["token_hash"]: {"id": r["principal_id"], "credential_id": r["credential_id"] or ident(),
+                               "scopes": r["scopes"], "expires_at": r["expires_at"], "revoked": r["revoked"], "room_id": r["room_id"]} for r in rows}
+                yield actor, principals, credentials
+                for pid, principal in principals.items():
+                    conn.execute("INSERT INTO principals(id,owner,name_key,handle,payload) VALUES(%s,%s,%s,%s,%s) ON CONFLICT(id) DO UPDATE SET name_key=excluded.name_key,handle=excluded.handle,payload=excluded.payload",
+                                 (pid, principal["owner"], principal["name_key"], principal["handle"], Jsonb(principal)))
+                for hashed, credential in credentials.items():
+                    conn.execute("INSERT INTO credentials(token_hash,principal_id,credential_id,scopes,expires_at,revoked,room_id) VALUES(%s,%s,%s,%s,%s,%s,%s) ON CONFLICT(token_hash) DO UPDATE SET credential_id=excluded.credential_id,scopes=excluded.scopes,expires_at=excluded.expires_at,revoked=excluded.revoked,room_id=excluded.room_id",
+                                 (hashed, credential["id"], credential.get("credential_id") or ident(), Jsonb(credential["scopes"]), credential["expires_at"], credential["revoked"], credential.get("room_id")))
+                conn.execute("NOTIFY talkabout_changed")
+        except UniqueViolation:
+            raise Problem("identity_conflict") from None
 
     def provision(self, principal, fixture_token, scopes):
         from psycopg.types.json import Jsonb

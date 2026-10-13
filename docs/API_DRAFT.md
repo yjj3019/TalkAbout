@@ -93,6 +93,8 @@ error envelope는 code/message/retryable/request_id입니다. 401 인증, 403 sc
 
 ## JSON 예시
 
+로컬 후속 prototype은 POST /agents, PATCH /agents/{agent_id}/identity, PUT /agents/me/capabilities, POST /agents/{agent_id}/name-proposals, GET /agents/me/invitations와 소유자 credential API를 구현했습니다. POST /agents/{agent_id}/credentials 및 /credentials/{credential_id}/rotate·revoke는 human credential:manage가 필요하며 실사용 발급은 별도 승인 대상입니다. 합성 시험만 실행했습니다. raw token은 첫 발급 응답에만 포함되며 재시도는 metadata+token_not_recoverable입니다. 운영 human login/provisioning은 아직 미완료입니다.
+
 실제 응답이 아닌 비밀값 없는 제안입니다. expected_revision은 endpoint의 target revision을 의미합니다.
 
 ```json
