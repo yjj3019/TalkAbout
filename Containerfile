@@ -5,6 +5,9 @@ COPY talkabout/ ./talkabout/
 RUN python -m venv /opt/venv && /opt/venv/bin/pip install --no-cache-dir -r requirements.lock.txt && /opt/venv/bin/pip install --no-cache-dir --no-deps .
 
 FROM docker.io/library/python:3.14.8-slim-bookworm@sha256:48b13b003dda20b16f9442b8475aa05fe21bf6579a8c881db92ffb4d8fd20f83
+ARG SOURCE_SHA
+RUN test "${#SOURCE_SHA}" -eq 40 && case "$SOURCE_SHA" in *[!0-9a-f]*) exit 1;; esac
+LABEL org.opencontainers.image.revision="${SOURCE_SHA}"
 LABEL org.opencontainers.image.title="TalkAbout" org.opencontainers.image.licenses="MIT" io.talkabout.project="talkabout"
 COPY --from=build /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH" PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1

@@ -1,12 +1,16 @@
 # TalkAbout
 
+**AUTOMATIC DB INSTALLER: LOCAL IMPLEMENTATION / OPERATING SERVICE NOT STARTED — 2026-10-14**
+
+The default installer generates separate per-installation owner/runtime database passwords with a CSPRNG and stores/injects them through private Podman secrets. Developers and installers do not choose database passwords manually. No secret values are returned; successful installations reuse their credentials without automatic rotation. The administrator separately chooses a password through the one-time-code KO/EN GUI. See the [automatic installation, interruption recovery and existing-volume protection guide](deploy/podman/OPERATING.md). Operating installation and initial code issuance have not been performed.
+
 **INITIAL GUI SETUP: LOCAL IMPLEMENTATION / NOT APPLIED TO OPERATIONS — 2026-10-14**
 
 Installation-specific one-time codes replace shared default passwords; users choose passwords directly in the KO/EN GUI. APIs, SSE, downloads and scheduling stay locked before setup, while existing owned installations retain authentication. See the [initial setup, reissue and migration guide](docs/INITIAL_SETUP.md). No operating image build, service launch or actual browser verification has been performed for this change; earlier image/fixture results below apply to the prior source.
 
 [MIT License](LICENSE) · Copyright (c) 2026 yjj3019. [Third-party licenses and notices](THIRD_PARTY_NOTICES.md) remain separate and preserved.
 
-**OPERATING DEPLOYMENT PREPARED / WAITING FOR USER CREDENTIAL INPUT AND A FREE LOOPBACK PORT — 2026-10-13**
+**EARLIER PREPARATION RECORD / OPERATING INSTALLATION AND FREE LOOPBACK PORT PENDING — 2026-10-13**
 
 The approved source image and isolated rootless readiness/restart/persistence/logical-restore smoke passed. Only a dedicated internal network and new empty named volume were prepared. Operating containers, database roles, secrets, human/agent credentials and auto-start are not initialized. This is not a completed service deployment. Internal target identifiers, addresses, credentials and operating data are omitted from this README.
 

@@ -33,12 +33,16 @@ podman volume exists talkabout-pg18-data
 검증된 source commit을 SOURCE_SHA로 기록합니다. 공식 pinned base와 runtime requirements snapshot을 사용합니다. 테스트·Git·문서·secret·로컬 환경은 deny-by-default .containerignore와 명시 COPY로 context에서 제외합니다. image에는 credentials/ARG secret이 없으며 runtime secret은 file mount로만 받습니다.
 
 ```sh
-podman build --format=docker --file Containerfile --tag "localhost/talkabout:$SOURCE_SHA" .
+podman build --format=docker --build-arg SOURCE_SHA="$SOURCE_SHA" --memory=1g --cpu-period=100000 --cpu-quota=100000 --file Containerfile --tag "localhost/talkabout:$SOURCE_SHA" .
 podman image inspect "localhost/talkabout:$SOURCE_SHA"
 python deploy/podman/plan.py --app-image "localhost/talkabout:$SOURCE_SHA"
 ```
 
 plan.py는 JSON argv를 출력할 뿐 Podman을 호출하거나 자원을 만들지 않습니다. build 이후 app image ID/digest·base digests·source SHA·dependency 결과를 release manifest에 별도 기록합니다. Linux dependency compatibility와 포함 schema/web resources 확인 후에만 run합니다. 실패 시 snapshot을 임의 느슨하게 풀거나 설치 성공으로 표시하지 않습니다.
+
+SOURCE_SHA는 검토된 checkout의 40자리 소문자 Git SHA이며 비밀이 아닙니다. runtime stage는 이 ARG를 검증해 `org.opencontainers.image.revision` label에 기록합니다. ARG 누락/잘못된 형식은 build를 실패시키며 installer는 label과 source tag의 일치를 계속 검사합니다. 외부 helper에서 label을 따로 주입할 필요가 없습니다.
+
+SOURCE_SHA is the reviewed checkout's 40-character lowercase Git commit, never a credential. The runtime stage validates this build argument and records the revision label. Missing/invalid arguments fail the build; the installer still checks label/tag equality. Use the documented command without a separate helper-injected label.
 
 Podman 기본 OCI image format은 Containerfile의 HEALTHCHECK를 보존하지 않습니다. image healthcheck를 보존하려면 위처럼 --format=docker를 명시합니다. native run plan과 Quadlet도 HealthCmd를 따로 지정해 image format에 의존하지 않도록 했습니다. DB 중단으로 scheduler가 실패하면 /ready는 503이며, DB 복구 후 해당 TalkAbout app을 운영자가 다시 시작해야 합니다. 현재 자동복구/자동기동은 설정하지 않습니다.
 
