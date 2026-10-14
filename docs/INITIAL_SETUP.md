@@ -40,4 +40,8 @@ Database credentials remain independent and user-entered through the existing Po
 
 ## Verification scope
 
+The GUI refreshes setup status and CSRF immediately before each submission. A failed POST rechecks state/CSRF without automatically resubmitting. Expired cookies, operator code reissue and another tab changing the cookie therefore require no page reload to obtain a fresh nonce. Code/password fields and the temporary submitted values are cleared; the user explicitly re-enters them after failure. If another request completed setup, the form closes and normal login remains available. UI logic tests cover expired/replaced cookies, a cookie race and completion before/during submission; actual browser DOM verification remains separate.
+
+GUI는 매 제출 직전 설정 상태와 CSRF를 갱신합니다. 실패한 POST는 자동 재전송하지 않고 상태/CSRF만 다시 확인합니다. 코드·비밀번호 입력과 임시 제출 값을 비우고 사용자 직접 재입력을 안내합니다. 만료 후 코드 재발급·다중 탭 쿠키 교체에도 새 nonce를 받으며, 다른 요청이 설정을 완료했다면 설정 화면을 닫고 기존 로그인을 제공합니다.
+
 Synthetic tests cover API lock/Origin/CSRF, expiry/reissue, terminal-only issuance, scheduler pause, existing authentication, durable attempts across store recreation, simultaneous setup, transaction rollback and a runtime role denied DDL. These are local/isolated database tests, not operating deployment or browser DOM verification. No actual operating code, password or agent credential was generated.
