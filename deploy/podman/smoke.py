@@ -83,6 +83,9 @@ def smoke(image):
         run(['run', '--rm', '--name', init, *common, '--user=10001:10001', '--secret', password_names[1]+',target=talkabout-db-url,uid=10001,gid=10001,mode=0400', image, 'init-db'])
         sql(f"CREATE ROLE talkabout_app LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE PASSWORD '{app_password}'; GRANT CONNECT ON DATABASE talkabout TO talkabout_app; GRANT USAGE ON SCHEMA public TO talkabout_app; GRANT SELECT,INSERT,UPDATE,DELETE ON ALL TABLES IN SCHEMA public TO talkabout_app; CREATE TABLE fixture_probe(value text); INSERT INTO fixture_probe VALUES ('synthetic-marker');")
         run(['run', '-d', '--name', app, *common, '--user=10001:10001', '--secret', password_names[2]+',target=talkabout-db-url,uid=10001,gid=10001,mode=0400', '--health-cmd=python -m talkabout.container healthcheck', image])
+        # Synthetic fixture only: initialize its owner without printing the code.
+        run(['exec', app, 'python', '-c',
+             "from talkabout.container import read_secret; from talkabout.store import PostgresStore; from talkabout.setup import issue_code,complete_setup; s=PostgresStore(read_secret()); complete_setup(s,dict(code=issue_code(s),workspace_id='synthetic-smoke',display_name='Fixture Owner',username='owner',password='synthetic-password-only',confirmation='synthetic-password-only'))"])
         app_ready()
         result['checks'].append('app_and_database_readiness')
         run(['stop', db])

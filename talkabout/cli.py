@@ -17,6 +17,7 @@ def main():
     sub.add_parser("init-db")
     sub.add_parser("serve")
     sub.add_parser("preflight", help="Validate loopback configuration and existing schema; never initialize accounts or data")
+    sub.add_parser('setup-code', help='Explicit private-terminal-only initial GUI setup; no default password')
     bootstrap = sub.add_parser("bootstrap-human", help="Explicit operator action; never performed automatically")
     bootstrap.add_argument("--workspace", required=True)
     bootstrap.add_argument("--name", required=True)
@@ -29,7 +30,7 @@ def main():
             command.add_argument("--synthetic", action="store_true")
             command.add_argument("--max-seconds", type=int, default=60)
     args = parser.parse_args()
-    if args.command in {"init-db", "serve", "bootstrap-human", "preflight"}:
+    if args.command in {"init-db", "serve", "bootstrap-human", "preflight", "setup-code"}:
         dsn = os.environ.get("TALKABOUT_DATABASE_URL")
         if not dsn:
             parser.error("Set TALKABOUT_DATABASE_URL separately; never put credentials in command arguments")
@@ -40,6 +41,9 @@ def main():
         store = PostgresStore(dsn)
         if args.command == "init-db":
             store.initialize()
+        elif args.command == 'setup-code':
+            from .setup import terminal_issue
+            terminal_issue(store)
         elif args.command == "preflight":
             ready = store.ready()
             print(json.dumps({"configuration": "loopback_valid", "database_schema": "ready" if ready else "not_ready", "deployment": "NOT_DEPLOYED"}))

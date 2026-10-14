@@ -37,6 +37,17 @@ document.querySelectorAll('[data-action]').forEach(button=>button.onclick=()=>{c
 el('close').onclick=()=>openRoom(null);window.onpopstate=()=>openRoom(new URLSearchParams(location.search).get('room'),false);el('refresh').onclick=()=>{closeLive();refresh().then(()=>{if(view.selected&&user)watchRoom(view.selected);});};
 el('language').onclick=()=>{view.languageTo(view.language==='ko'?'en':'ko');language();if(view.room&&user)renderRoom(view.room);};
 el('logout').onclick=()=>mutate('logout',{},async()=>{await api('session/logout',{method:'POST',body:{}});signedOut();history.replaceState({},'','/');});
-language();const initialAuthEpoch=authEpoch;api('session').then(data=>{if(initialAuthEpoch!==authEpoch)return;user=data.user;csrf=data.csrf_token;el('actor').textContent=user.display_name+' [human]';el('login').hidden=true;el('dashboard').hidden=false;refresh();}).catch(()=>{if(initialAuthEpoch===authEpoch)signedOut();});
+let setupCsrf=null;
+el('login').hidden=true;
+el('setup').onsubmit=async event=>{
+ event.preventDefault();const button=el('setup').querySelector('button');button.disabled=true;
+ const body={code:el('setup-code').value,workspace_id:el('setup-workspace').value,display_name:el('setup-name').value,username:el('setup-username').value,password:el('setup-password').value,confirmation:el('setup-confirmation').value};
+ for(const id of ['setup-code','setup-password','setup-confirmation'])el(id).value='';
+ try{if(!await initialSetup()){notice('setupAlreadyDone');return;}const response=await fetch('/api/v1/setup/complete',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRF-Token':setupCsrf||''},body:JSON.stringify(body)});
+ if(!response.ok)throw new Error('setup_rejected');setupCsrf=null;el('setup').hidden=true;el('login').hidden=false;el('workspace').value=body.workspace_id;el('username').value=body.username;notice('setupDone');
+ }catch{try{notice(await initialSetup()?'setupRetry':'setupAlreadyDone');}catch{notice('setupRefreshFailed');}}finally{setupCsrf=null;body.code=body.password=body.confirmation='';button.disabled=false;}
+};
+async function initialSetup(){setupCsrf=null;const status=await api('setup/status');if(!status.setup_required){el('setup').hidden=true;el('login').hidden=false;return false;}el('login').hidden=true;el('setup').hidden=false;const data=await api('setup/csrf');setupCsrf=data.csrf_token;return true;}
+language();const initialAuthEpoch=authEpoch;initialSetup().then(locked=>{if(locked)return null;return api('session');}).then(data=>{if(!data||initialAuthEpoch!==authEpoch)return;user=data.user;csrf=data.csrf_token;el('actor').textContent=user.display_name+' [human]';el('login').hidden=true;el('dashboard').hidden=false;refresh();}).catch(()=>{if(initialAuthEpoch===authEpoch)notice('setupRefreshFailed');});
 
 async function refreshHandovers(epoch){const offers=await api('admin/handovers');if(epoch!==listEpoch||!user)return;el('handovers').replaceChildren(...offers.map(offer=>{const button=document.createElement('button');button.textContent=t('acceptHandover')+' · '+offer.room_id;button.onclick=()=>{if(!user||!confirm(t('confirmHandover')))return;const body={expected_room_revision:offer.room_revision,expected_handover_revision:offer.handover_revision,acknowledge_history:true};mutate('handover',body,key=>api('rooms/'+offer.room_id+'/handover/accept',{method:'POST',body,key}));};return button;}));}

@@ -11,9 +11,10 @@ from pathlib import Path
 from .domain import Problem, ident, normalize_name, require, token_hash
 from .retention import DEFAULT_RETENTION
 from .bounds import room_bounds, snapshot_bounds
+from .setup import SetupStore
 
 
-class MemoryStore:
+class MemoryStore(SetupStore):
     """Contract-test store only; not a PostgreSQL concurrency substitute."""
     def __init__(self):
         self.principals, self.credentials, self.rooms, self.cursors = {}, {}, {}, {}
@@ -46,6 +47,7 @@ class MemoryStore:
 
     def bootstrap(self, principal, record):
         with self.lock:
+            require(not getattr(self, 'setup_state', {}), 'setup_managed_use_gui', 409)
             require(not any(p["owner"] == principal["owner"] and p["kind"] == "human" for p in self.principals.values()), "bootstrap_exists")
             self.principals[principal["id"]] = copy.deepcopy(principal)
             self.passwords[principal["id"]] = copy.deepcopy(record)
@@ -150,7 +152,7 @@ class MemoryStore:
         self.signal.clear()
 
 
-class PostgresStore:
+class PostgresStore(SetupStore):
     def __init__(self, dsn, schema=None):
         require(schema is None or re.fullmatch(r"talkabout_test_[a-f0-9]{32}", schema), "invalid_test_schema", 422)
         self.dsn, self.schema = dsn, schema
@@ -169,6 +171,8 @@ class PostgresStore:
                     "SELECT token_hash,principal_id,expires_at,csrf_hash FROM human_sessions LIMIT 0",
                 ):
                     conn.execute(query)
+                if not conn.execute("SELECT id FROM principals WHERE payload->>'kind'='human' LIMIT 1").fetchone():
+                    conn.execute('SELECT id,payload FROM installation_setup LIMIT 0')
             return True
         except Exception:
             return False
@@ -225,6 +229,9 @@ class PostgresStore:
     def bootstrap(self, principal, record):
         from psycopg.types.json import Jsonb
         with self.connect() as conn:
+            conn.execute("SELECT pg_advisory_xact_lock(hashtextextended('talkabout:installation',0))")
+            if conn.execute("SELECT to_regclass('installation_setup') AS name").fetchone()['name']:
+                require(not conn.execute('SELECT id FROM installation_setup WHERE id=1').fetchone(), 'setup_managed_use_gui', 409)
             conn.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s,0))", (principal["owner"] + ":identity",))
             require(not conn.execute("SELECT id FROM principals WHERE owner=%s AND payload->>'kind'='human'", (principal["owner"],)).fetchone(), "bootstrap_exists")
             conn.execute("INSERT INTO principals(id,owner,name_key,handle,payload) VALUES(%s,%s,%s,%s,%s)", (principal["id"], principal["owner"], principal["name_key"], principal["handle"], Jsonb(principal)))
