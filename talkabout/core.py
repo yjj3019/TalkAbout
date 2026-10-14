@@ -16,6 +16,11 @@ def public_room(room, actor, principals=None):
         for pid, listed_member in members.items():
             principal = principals.get(pid, {})
             listed_member.update({k: principal.get(k) for k in ("display_name", "handle", "identity_revision")})
+            if actor["kind"] == "human":
+                connection = principal.get("connection")
+                listed_member["connection"] = copy.deepcopy(connection) if connection and connection.get("room_id") in {None, room["id"]} else None
+                posted = [m for m in room["messages"].values() if m["actor_id"] == pid and m["actor_kind"] == "agent"]
+                listed_member["published_contributions"] = len(posted)
     return {k: copy.deepcopy(room[k]) for k in ("id", "topic", "mode", "state", "generation", "room_revision", "limits", "last_seq")} | {"members": members,
         "messages": [m for m in room["messages"].values() if m["seq"] >= viewer_member["read_start_seq"]], "tasks": tasks,
         "artifacts": [{**a, "versions": [v for v in a["versions"] if v["seq"] >= viewer_member["read_start_seq"]]}
@@ -23,6 +28,7 @@ def public_room(room, actor, principals=None):
         "membership_revision": viewer_member["revision"],
         "mode_status": room.get("mode_status", "running"), "mode_progress": copy.deepcopy(room.get("mode_progress", {})),
         "handover": copy.deepcopy(room.get("handover")),
+        "deadline": room.get("deadline"), "started_at": room.get("started_at"),
         "effective_permissions": sorted(set(actor["scopes"]) & set(viewer_member["permissions"])),
         "pinned_message_id": room.get("pinned_message_id") if room.get("pinned_message_id") in room["messages"] and room["messages"][room["pinned_message_id"]]["seq"] >= viewer_member["read_start_seq"] else None}
 
@@ -81,13 +87,15 @@ class Core:
         actor, rooms, principals = self.store.snapshot(token)
         require(key and len(key) <= 128, "idempotency_key_required", 422)
         require(not ({"actor_id", "agent_id", "role", "badge"} & body.keys()), "actor_field_forbidden", 422)
-        require(set(body) <= {"topic", "mode"}, "invalid_room_fields", 422)
+        require(set(body) <= {"topic", "mode", "start_policy"}, "invalid_room_fields", 422)
+        require(body.get("start_policy", "automatic") in {"automatic", "manual"}, "invalid_start_policy", 422)
+        require(body.get("start_policy") != "manual" or actor["kind"] == "human", "human_start_required", 403)
         # Deterministic create identity makes lost responses replayable without returning a new room.
         room_id = digest([actor["id"], "create", key])[:32]
         if room_id in rooms:
             require(rooms[room_id]["create_digest"] == digest(body), "idempotency_conflict")
             return public_room(rooms[room_id], actor, principals)
-        room = new_room(actor, room_id, body.get("topic"), body.get("mode", "bounded_rounds"))
+        room = new_room(actor, room_id, body.get("topic"), body.get("mode", "bounded_rounds"), preparing=body.get("start_policy") == "manual")
         room["create_digest"] = digest(body)
         if actor["kind"] == "agent":
             owners = [p["id"] for p in principals.values() if p["owner"] == actor["owner"] and p["kind"] == "human"]
@@ -245,11 +253,11 @@ class Core:
                         response = copy.deepcopy(task)
                     schedule(room, principals, now)
             elif bits[0] == "messages":
-                require(room["state"] in {"active", "paused"}, "room_closed")
+                require(room["state"] in {"preparing", "active", "paused"}, "room_closed")
                 response = message(room, actor, body, now, fingerprint=fingerprint)
                 # Human messages never create extra recursive turns.
             elif bits[0] == "memberships":
-                require(room["state"] in {"active", "paused"}, "room_closed")
+                require(room["state"] in {"preparing", "active", "paused"}, "room_closed")
                 pid = body.get("principal_id") if len(bits) == 1 else target
                 require(pid in principals and principals[pid]["owner"] == actor["owner"], "not_found", 404)
                 old = room["members"].get(pid)
@@ -276,7 +284,7 @@ class Core:
                 if verb != "approve":
                     require(len(room["controls"]) < 128, "control_capacity", 429)
                     action = body.get("action")
-                    require(action in {"pause", "resume", "close", "change_topic", "change_mode", "change_limits", "pin"}, "unsupported_control", 422)
+                    require(action in {"start", "pause", "resume", "close", "change_topic", "change_mode", "change_limits", "pin"}, "unsupported_control", 422)
                     parameters = control_parameters(action, body.get("parameters", {}), room, member)
                     reason = body.get("reason", "")
                     require(isinstance(reason, str) and len(reason) <= 512, "invalid_reason", 422)
@@ -294,7 +302,18 @@ class Core:
                     require(control["expected_revision"] == room["room_revision"], "room_conflict")
                     action = control["action"]
                     require(room["state"] != "closed", "room_closed")
-                    if action == "pause":
+                    if action == "start":
+                        require(room["state"] == "preparing", "invalid_transition")
+                        require(any(m["kind"] == "agent" and m["status"] == "active" and (AGENT_PERMISSIONS - {"room:contribute"}) <= set(m["permissions"]) for m in room["members"].values()), "participants_required")
+                        require(any(m["kind"] == "agent" and m["status"] == "active"
+                            and (AGENT_PERMISSIONS - {"room:contribute"}) <= set(m["permissions"])
+                            and principals.get(pid, {}).get("connection", {}).get("runtime") in {"synthetic", "codex", "claude"}
+                            and principals.get(pid, {}).get("connection", {}).get("state") in {"idle", "running"}
+                            and principals.get(pid, {}).get("connection", {}).get("room_id") in {None, room["id"]}
+                            and now - principals.get(pid, {}).get("connection", {}).get("last_seen_at", 0) <= 75
+                            for pid, m in room["members"].items()), "worker_connection_required")
+                        room.update(state="active", started_at=now, deadline=now + room.get("duration_seconds", 900))
+                    elif action == "pause":
                         require(room["state"] == "active", "invalid_transition")
                         room["state"] = "paused"
                     elif action == "resume":
@@ -372,7 +391,7 @@ class Core:
             if previous is not None:
                 return previous
             require(member["status"] == "pending", "invitation_unavailable")
-            active(room)
+            require(room["state"] in {"preparing", "active"}, "room_not_accepting")
             require(body.get("expected_revision") == member["revision"] and body.get("acknowledge_private") is True, "invitation_confirmation_required", 422)
             member["status"] = "active"
             member["revision"] += 1

@@ -9,7 +9,7 @@ AGENT_SCOPES = AGENT_PERMISSIONS | SELF_PERMISSIONS | {"rooms:create"}
 
 
 def public_identity(principal):
-    return {k: copy.deepcopy(principal.get(k)) for k in ("id", "display_name", "handle", "kind", "identity_revision", "capabilities", "model", "name_history")}
+    return {k: copy.deepcopy(principal.get(k)) for k in ("id", "display_name", "handle", "kind", "identity_revision", "capabilities", "model", "name_history", "connection")}
 
 
 class IdentityService:
@@ -21,13 +21,16 @@ class IdentityService:
         require(actor["kind"] == "human" and "agent:manage" in actor["scopes"], "forbidden", 403)
         return [public_identity(p) for p in principals.values() if p["owner"] == actor["owner"] and p["kind"] == "agent"]
 
+    def credential_metadata(self, token, agent_id):
+        return self.store.credential_metadata(token, agent_id)
+
     def mutate(self, token, operation, key, body):
         require(isinstance(key, str) and 1 <= len(key) <= 128 and isinstance(body, dict), "idempotency_key_required", 422)
         require(not ({"actor_id", "role", "badge", "owner", "kind"} & body.keys()), "actor_field_forbidden", 422)
         parts = operation.split("/")
         with self.store.identity_transaction(token) as (actor, principals, credentials):
-            own = parts[0] in {"capabilities", "name-proposals"}
-            permission = "agent:capabilities_write" if parts[0] == "capabilities" else "agent:name_propose" if parts[0] == "name-proposals" else "credential:manage" if parts[0] == "credentials" else "agent:manage"
+            own = parts[0] in {"capabilities", "connection", "name-proposals"}
+            permission = "agent:capabilities_write" if parts[0] in {"capabilities", "connection"} else "agent:name_propose" if parts[0] == "name-proposals" else "credential:manage" if parts[0] == "credentials" else "agent:manage"
             require(permission in actor["scopes"] and actor["kind"] == ("agent" if own else "human"), "forbidden", 403)
             target_id = actor["id"] if own else (parts[1] if len(parts) > 1 else None)
             if target_id:
@@ -41,7 +44,7 @@ class IdentityService:
                 require(saved["digest"] == fingerprint, "idempotency_conflict")
                 require("response" in saved and saved.get("response_until", float("inf")) > time.time(), "idempotency_retired", 410)
                 return copy.deepcopy(saved["response"])
-            require(len(operations) < 2000, "identity_operation_quota", 429)
+            if parts[0] != "connection": require(len(operations) < 2000, "identity_operation_quota", 429)
             if parts[0] == "register":
                 require(set(body) <= {"display_name", "handle"}, "invalid_identity_fields", 422)
                 name, name_key, handle = normalize_name(body.get("display_name", ""), body.get("handle", ""))
@@ -68,6 +71,19 @@ class IdentityService:
                 principal["capabilities"] = {k: v for k, v in body.items() if k != "model_label"}
                 principal["model"] = {"label": body.get("model_label", "unknown"), "verification": "self_reported"}
                 response = public_identity(principal)
+            elif parts[0] == "connection":
+                require(set(body) <= {"runtime", "state", "error_code"}, "invalid_connection", 422)
+                require(body.get("runtime") in {"unknown", "synthetic", "codex", "claude"} and body.get("state") in {"idle", "running", "failed", "stopped"}, "invalid_connection", 422)
+                require(body.get("error_code") in {None, "runtime_failed", "runtime_timeout", "connection_failed"}, "invalid_connection", 422)
+                principal = principals[target_id]
+                prior_connection = principal.get("connection", {})
+                principal["connection"] = {"authenticated_at": prior_connection.get("authenticated_at", time.time()),
+                    "last_seen_at": time.time(), "runtime": body["runtime"], "state": body["state"],
+                    "room_id": actor.get("room_id"),
+                    "error_code": body.get("error_code"), "execution_evidence": "worker_reported"}
+                response = copy.deepcopy(principal["connection"])
+                # Heartbeats are replaceable observations, not an unbounded idempotency ledger.
+                return response
             elif parts[0] == "name-proposals":
                 require(set(body) <= {"display_name", "handle"}, "invalid_identity_fields", 422)
                 name, _, handle = normalize_name(body.get("display_name", ""), body.get("handle", ""))

@@ -178,6 +178,18 @@ class Worker:
         self.actor = client.request("GET", "agents/me")
         self.actor_id = self.actor["id"]
 
+    def request_turns(self):
+        """Explicit CLI opt-in only; never trigger recursively from replies or mentions."""
+        for room in self.client.request('GET', 'rooms'):
+            if room['mode'] != 'free_discussion' or room['state'] != 'active': continue
+            if any(t['assignee'] == self.actor_id and t['state'] in {'queued', 'leased'} for t in room['tasks']): continue
+            try:
+                self.client.request('POST', 'rooms/'+room['id']+'/turn-requests',
+                    {'generation': room['generation'], 'membership_revision': room['membership_revision']},
+                    'turn:'+room['id']+':'+str(room['generation'])+':'+str(room['last_seq']))
+            except httpx.HTTPStatusError as error:
+                if error.response.status_code != 409: raise
+
     def poll(self):
         cursor = self.journal.setting("cursor")
         try:

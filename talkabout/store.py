@@ -91,6 +91,15 @@ class MemoryStore(SetupStore):
             self.credentials[token_hash(token)]["revoked"] = True
         self.signal.set()
 
+    def credential_metadata(self, token, agent_id):
+        with self.lock:
+            actor = self.auth(token)
+            require(actor['kind'] == 'human' and 'credential:manage' in actor['scopes'], 'forbidden', 403)
+            principal = self.principals.get(agent_id)
+            require(principal and principal['owner'] == actor['owner'] and principal['kind'] == 'agent', 'not_found', 404)
+            return [{key: copy.deepcopy(c.get(key)) for key in ('credential_id', 'room_id', 'scopes', 'expires_at', 'revoked')}
+                    for c in self.credentials.values() if c['id'] == agent_id and c.get('credential_id')]
+
     @contextmanager
     def transaction(self, room_id, token):
         with self.lock:
@@ -153,6 +162,13 @@ class MemoryStore(SetupStore):
 
 
 class PostgresStore(SetupStore):
+    def credential_metadata(self, token, agent_id):
+        with self.connect() as conn:
+            actor = self._auth(conn, token)
+            require(actor['kind'] == 'human' and 'credential:manage' in actor['scopes'], 'forbidden', 403)
+            require(conn.execute("SELECT id FROM principals WHERE id=%s AND owner=%s AND payload->>'kind'='agent'", (agent_id, actor['owner'])).fetchone(), 'not_found', 404)
+            return conn.execute('SELECT credential_id,room_id,scopes,expires_at,revoked FROM credentials WHERE principal_id=%s AND credential_id IS NOT NULL', (agent_id,)).fetchall()
+
     def __init__(self, dsn, schema=None):
         require(schema is None or re.fullmatch(r"talkabout_test_[a-f0-9]{32}", schema), "invalid_test_schema", 422)
         self.dsn, self.schema = dsn, schema

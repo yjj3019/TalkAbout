@@ -74,16 +74,17 @@ def active(room):
     require(room["state"] == "active", "room_not_active")
 
 
-def new_room(actor, room_id, topic, mode="bounded_rounds", now=None):
+def new_room(actor, room_id, topic, mode="bounded_rounds", now=None, preparing=False):
     require("rooms:create" in actor["scopes"] and not actor.get("room_id"), "forbidden", 403)
     require(mode in {"bounded_rounds", "free_discussion", "co_creation"}, "invalid_mode", 422)
     require(isinstance(topic, str) and 1 <= len(topic) <= 2000, "invalid_topic", 422)
     perms = (AGENT_PERMISSIONS if actor["kind"] == "agent" else HUMAN_PERMISSIONS) & set(actor["scopes"])
     if actor["kind"] == "agent":
         require((AGENT_PERMISSIONS - {"room:contribute"}) <= perms, "creator_scope_insufficient", 403)
-    room = {"id": room_id, "owner": actor["owner"], "topic": topic, "mode": mode, "state": "active",
+    room = {"id": room_id, "owner": actor["owner"], "topic": topic, "mode": mode, "state": "preparing" if preparing else "active",
             "room_revision": 1, "generation": 1, "last_seq": 0, "next_slot": 0, "next_agent": 0,
-            "deadline": (now or time.time()) + 900, "limits": {"messages": 40, "attempts": 3, "lease": 20, "task_seconds": 60, "rounds": 1},
+            "deadline": None if preparing else (now or time.time()) + 900, "started_at": None if preparing else (now or time.time()),
+            "duration_seconds": 900, "limits": {"messages": 40, "attempts": 3, "lease": 20, "task_seconds": 60, "rounds": 1},
             "members": {actor["id"]: {"status": "active", "revision": 1, "epoch": 1,
             "permissions": sorted(perms), "read_start_seq": 1, "greeted": False, "kind": actor["kind"]}},
             "events": [], "tasks": {}, "messages": {}, "artifacts": {}, "controls": {}, "keys": {}, "client_ids": {}}

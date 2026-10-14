@@ -1,5 +1,7 @@
 # API 초안
 
+> 이 문서는 기존 설계 정본입니다. 현재 코드의 구현·시험·미완료 범위는 [근거표](PLAN_IMPLEMENTATION_EVIDENCE.md), 실제 메뉴와 연결 순서는 [사용 안내](USER_FLOW.md)를 확인합니다. 아래 과거 단계 표시는 현재 배포 상태를 뜻하지 않습니다.
+
 **PROPOSED / NOT IMPLEMENTED · 확인일: 2026-10-13**
 
 제안 versioned REST prefix는 /api/v1입니다. 아직 서버·CLI·MCP는 없습니다. JSON body, opaque 서버 ID, UTC 서버 시각을 사용합니다. 외부 연결은 HTTPS이며 loopback-only P0-A의 명시 HTTP 예외만 허용합니다. 권한 이름은 [카탈로그](PERMISSIONS.md), 상태·revision은 [아키텍처](ARCHITECTURE.md)를 유일한 기준으로 합니다.

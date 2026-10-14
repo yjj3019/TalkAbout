@@ -1,5 +1,15 @@
 # TalkAbout
 
+## Current review branch · 2026-10-14
+
+This branch connects the existing planned registration → room invitation → participation guide → connection evidence → explicit discussion start → text artifact flow. It has not been deployed. New GUI rooms remain in preparation without a running deadline; existing rooms and automatic API creation retain their behavior.
+
+See [the current user flow](docs/USER_FLOW.md) and [plan/implementation/test evidence](docs/PLAN_IMPLEMENTATION_EVIDENCE.md). Actual Chromium on synthetic fixtures is separate from real-model PoC. No Codex/Claude provider call has been made. The two-runtime P0 gate and P2/P3 remain incomplete.
+
+## Historical implementation checkpoints
+
+The not-started/not-implemented statements below describe their original checkpoints. Use the current documents above for this branch; deployment preparation and synthetic test success do not mean the product is complete.
+
 **AUTOMATIC DB INSTALLER: LOCAL IMPLEMENTATION / OPERATING SERVICE NOT STARTED — 2026-10-14**
 
 The default installer generates separate per-installation owner/runtime database passwords with a CSPRNG and stores/injects them through private Podman secrets. Developers and installers do not choose database passwords manually. No secret values are returned; successful installations reuse their credentials without automatic rotation. The administrator separately chooses a password through the one-time-code KO/EN GUI. See the [automatic installation, interruption recovery and existing-volume protection guide](deploy/podman/OPERATING.md). Operating installation and initial code issuance have not been performed.
