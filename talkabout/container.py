@@ -44,7 +44,8 @@ def healthcheck():
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description='TalkAbout private container entrypoint; no automatic schema/accounts')
-    parser.add_argument('action', choices=['serve', 'preflight', 'init-db', 'bootstrap-human', 'setup-code', 'healthcheck'])
+    parser.add_argument('action', choices=['serve', 'preflight', 'init-db', 'provision-db', 'bootstrap-human', 'setup-code', 'healthcheck'])
+    parser.add_argument('--installation-id')
     parser.add_argument('--workspace')
     parser.add_argument('--name')
     parser.add_argument('--handle')
@@ -54,7 +55,7 @@ def main(argv=None):
     if os.name != 'nt' and os.geteuid() == 0:
         parser.error('nonroot_container_user_required')
     try:
-        store = PostgresStore(read_secret(initialize=args.action == 'init-db'))
+        store = PostgresStore(read_secret(initialize=args.action in {'init-db','provision-db'}))
     except ValueError as error:
         parser.error(str(error))
     if args.action == 'preflight':
@@ -63,6 +64,14 @@ def main(argv=None):
         return 0 if ready else 1
     if args.action == 'init-db':
         store.initialize()
+        return 0
+    if args.action == 'provision-db':
+        from .provision import provision_database
+        try:
+            print(json.dumps(provision_database(store.dsn, read_secret('/run/secrets/talkabout-runtime-url'), args.installation_id or '')))
+        except ValueError as error:
+            print(json.dumps({'code': str(error)}), file=sys.stderr)
+            return 1
         return 0
     if args.action == 'setup-code':
         from .setup import terminal_issue

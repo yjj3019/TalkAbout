@@ -14,7 +14,7 @@ LOCAL IMPLEMENTATION / NOT DEPLOYED — 2026-10-14
 
 설치 단위 PostgreSQL advisory transaction lock과 singleton 상태 행으로 동시 제출을 직렬화합니다. 코드 소비·소유자·비밀번호 해시·완료 상태가 같은 트랜잭션에서 저장됩니다. 실패한 코드의 횟수는 오류 응답 전에 커밋합니다. 완료 시 코드 해시를 제거합니다. 기존 소유자가 있는 설치는 신규 테이블이 없어도 기존 인증과 scheduler가 유지되며 GUI setup은 거절됩니다. 기존 소유자와 비밀번호를 바꾸지 않습니다. `bootstrap-human`은 기존 수동 초기화 경로로 남지만 GUI용 코드가 발급되면 우회할 수 없습니다.
 
-DB owner/runtime 비밀번호는 관리자 로그인 비밀번호와 별개입니다. 이번 변경은 기존 `secret_setup.py --create`의 사용자 직접 입력을 유지합니다. 자동 DB 비밀 생성은 구현하지 않았습니다. DB schema 초기화/추가는 owner 전용 일회성 작업입니다. 새 `installation_setup` 테이블에도 runtime role의 SELECT/INSERT/UPDATE/DELETE만 부여합니다. runtime은 DDL·superuser·role 생성 권한이 필요하지 않으며, 앱에 Podman 소켓/owner secret을 주지 않습니다. 기존 DB 업그레이드는 승인된 백업 후 owner `init-db`, 새 테이블 권한 부여를 명시적으로 수행합니다. 신규 테이블이 없는 미설정 DB는 잠긴 상태로 실패합니다.
+DB owner/runtime 비밀번호는 관리자 로그인 비밀번호와 별개입니다. 기본 DB 설치는 [자동 installer](../deploy/podman/OPERATING.md)가 설치마다 별도 비밀번호를 생성·보관합니다. `secret_setup.py --create`의 사용자 직접 입력은 명시적 수동 호환 경로입니다. DB schema 초기화/추가는 owner 전용 일회성 작업입니다. 새 `installation_setup` 테이블에도 runtime role의 SELECT/INSERT/UPDATE/DELETE만 부여합니다. runtime은 DDL·superuser·role 생성 권한이 필요하지 않으며, 앱에 Podman 소켓/owner secret을 주지 않습니다. 기존 DB 업그레이드는 승인된 백업 후 owner `init-db`, 새 테이블 권한 부여를 명시적으로 수행합니다. 신규 테이블이 없는 미설정 DB는 잠긴 상태로 실패합니다.
 
 운영자 코드 분실/만료/시도 소진은 비공개 터미널 재발급으로 처리합니다. 이미 설정한 소유자 비밀번호의 분실 복구·변경 기능은 이 초기 설정의 범위가 아닙니다. DB row 삭제나 기존 볼륨 초기화로 재설정하지 않습니다. 코드의 악의적인 실패 제출에 따른 잠금은 운영자 재발급이 필요할 수 있습니다.
 
@@ -36,7 +36,7 @@ The user enters the code and chooses/confirms their administrator password in th
 
 Before completion the server blocks ordinary APIs, SSE, downloads and scheduling; only initial UI/assets, minimal liveness and the setup endpoints above remain available. `/ready` is deliberately unavailable until setup completes. Existing owned installations retain authentication even before the additive schema migration, and cannot use setup to reset their owner. A PostgreSQL installation-wide lock and one transaction enforce single consumption with atomic owner/password/completion storage. Failure counters commit separately from the returned error.
 
-Database credentials remain independent and user-entered through the existing Podman secret helper; automatic database-secret generation is not implemented. Owner-only schema initialization/migration precedes runtime DML grants on the new table. No DDL or host/container-management privilege is added to the application. Password recovery after setup is a separate feature; never erase data to reopen bootstrap.
+Database credentials remain independent: the default installer generates/stores them per installation; the existing user-input secret helper is an explicit manual compatibility path. Owner-only schema initialization/migration precedes runtime DML grants on the new table. No DDL or host/container-management privilege is added to the application. Password recovery after setup is a separate feature; never erase data to reopen bootstrap.
 
 ## Verification scope
 

@@ -1,12 +1,16 @@
 # TalkAbout
 
+**자동 DB 설치 도구: 로컬 구현 / 운영 미기동 — 2026-10-14**
+
+기본 설치 흐름은 배포마다 owner/runtime DB 비밀번호를 각각 CSPRNG로 생성하고 private Podman secret으로 보관·주입합니다. 개발자나 설치자가 DB 비밀번호를 직접 정할 필요가 없습니다. 비밀 값은 반환하지 않으며 기존 성공 설치는 재사용하고 자동 회전하지 않습니다. 설치자 관리자 비밀번호는 별도의 일회용 코드와 KO/EN GUI에서 직접 설정합니다. [자동 설치·중단 복구·기존 볼륨 보호 안내](deploy/podman/OPERATING.md)를 확인하세요. 실제 운영 설치와 초기 코드 발급은 아직 수행하지 않았습니다.
+
 **최초 GUI 설정: 로컬 구현 / 운영 미적용 — 2026-10-14**
 
 공통 기본 비밀번호 없이 설치별 일회용 코드와 사용자 직접 비밀번호 입력을 지원합니다. 설정 전 API·SSE·다운로드·scheduler를 차단하고, 기존 소유자가 있는 설치의 인증은 유지합니다. [KO/EN 초기 설정·재발급·마이그레이션 안내](docs/INITIAL_SETUP.md)를 확인하세요. 이 변경을 포함한 운영 이미지 빌드·서비스 기동·실제 브라우저 검증은 아직 수행하지 않았습니다. 아래 이전 이미지/fixture 검증 결과와 구분합니다.
 
 [MIT License](LICENSE) · Copyright (c) 2026 yjj3019. [제3자 라이선스·고지](THIRD_PARTY_NOTICES.md)는 별도로 보존합니다.
 
-**운영 배포 준비됨 / 사용자 인증 입력·사용 가능한 loopback 포트 결정 대기 — 2026-10-13**
+**이전 운영 준비 기록 / 실제 설치·loopback 포트 결정 대기 — 2026-10-13**
 
 승인된 source의 rootless Podman image build와 격리 합성 readiness·restart·데이터 유지·logical restore 검증을 마쳤습니다. 전용 internal network와 새 빈 named volume만 준비했고 운영 container·DB 계정·secret·관리자/agent credential은 아직 만들지 않았습니다. 이것은 서비스 배포 완료가 아닙니다. 실제 내부 host/address·운영 credential·자료는 이 README에 기록하지 않습니다.
 
