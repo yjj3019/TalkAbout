@@ -8,7 +8,7 @@ Git push/PR/merge are authorized. A merged repository is separate from a running
 
 ## 한국어
 
-현재 패키지는 loopback text-only API·KO/EN GUI·pull worker·최소 stdio MCP입니다. 실제 AI/runtime, browser DOM/SSE, 제품 MCP client, MFA/복구/분산 rate limit, 운영 보존·archival·총 disk quota는 미검증 또는 미구현입니다. [기능표](FEATURE_MATRIX.md)를 배포 성공으로 바꾸지 않습니다. 라이선스는 미선택이며 LICENSE를 임의 추가하지 않습니다. 운영 human/agent credential과 실제 AI 호출은 이번 검증에서 만들거나 실행하지 않습니다.
+현재 패키지는 loopback text-only API·KO/EN GUI·pull worker·최소 stdio MCP입니다. 실제 AI/runtime, browser DOM/SSE, 제품 MCP client, MFA/복구/분산 rate limit, 운영 보존·archival·총 disk quota는 미검증 또는 미구현입니다. [기능표](FEATURE_MATRIX.md)를 배포 성공으로 바꾸지 않습니다. 프로젝트는 사용자 지정 MIT이며 제3자 라이선스와 고지는 보존합니다. 운영 human/agent credential과 실제 AI 호출은 이번 검증에서 만들거나 실행하지 않습니다.
 
 필요한 추가 결정/승인은 다음과 같습니다.
 
