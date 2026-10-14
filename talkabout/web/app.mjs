@@ -37,10 +37,17 @@ document.querySelectorAll('[data-action]').forEach(button=>button.onclick=()=>{c
 el('close').onclick=()=>openRoom(null);window.onpopstate=()=>openRoom(new URLSearchParams(location.search).get('room'),false);el('refresh').onclick=()=>{closeLive();refresh().then(()=>{if(view.selected&&user)watchRoom(view.selected);});};
 el('language').onclick=()=>{view.languageTo(view.language==='ko'?'en':'ko');language();if(view.room&&user)renderRoom(view.room);};
 el('logout').onclick=()=>mutate('logout',{},async()=>{await api('session/logout',{method:'POST',body:{}});signedOut();history.replaceState({},'','/');});
-let setupCsrf=null,setupContainer=null,setupPending=false,setupWatch=null,setupStatusEpoch=0;
+let setupCsrf=null,setupContainer=null,setupPending=false,setupWatch=null,setupStatusRequest=null;
 function renderSetupGuide(){el('setup-command').textContent='podman exec -it '+(setupContainer||'APP_CONTAINER')+' python -m talkabout.container setup-code';el('setup-container-note').textContent=t(setupContainer?'guideContainerKnown':'guideContainerUnknown');}
 function stopSetupWatch(){if(setupWatch!==null){window.clearInterval(setupWatch);setupWatch=null;}}
-async function syncSetupStatus(){const ticket=++setupStatusEpoch,status=await api('setup/status');if(ticket!==setupStatusEpoch)return setupPending;setupPending=status.setup_required===true;setupContainer=setupPending&&typeof status.setup_container==='string'&&/^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/.test(status.setup_container)?status.setup_container:null;renderSetupGuide();el('setup').hidden=!setupPending;if(!user)el('login').hidden=setupPending;if(!setupPending){setupCsrf=null;stopSetupWatch();for(const id of ['setup-code','setup-password','setup-confirmation'])el(id).value='';}else if(setupWatch===null&&window.setInterval){setupWatch=window.setInterval(()=>{syncSetupStatus().catch(()=>{});},5000);}return setupPending;}
+async function syncSetupStatus(fresh=false){
+ // Poll/focus callers share one request, so slow responses cannot be invalidated by the next tick.
+ // Submission checks wait for that request, then recheck server state across the mutation boundary.
+ if(setupStatusRequest){if(!fresh)return setupStatusRequest;try{await setupStatusRequest;}catch{}}
+ if(setupStatusRequest)return setupStatusRequest;
+ setupStatusRequest=(async()=>{const status=await api('setup/status');setupPending=status.setup_required===true;setupContainer=setupPending&&typeof status.setup_container==='string'&&/^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/.test(status.setup_container)?status.setup_container:null;renderSetupGuide();el('setup').hidden=!setupPending;if(!user)el('login').hidden=setupPending;if(!setupPending){setupCsrf=null;stopSetupWatch();for(const id of ['setup-code','setup-password','setup-confirmation'])el(id).value='';}else if(setupWatch===null&&window.setInterval){setupWatch=window.setInterval(()=>{syncSetupStatus().catch(()=>{});},5000);}return setupPending;})().finally(()=>{setupStatusRequest=null;});
+ return setupStatusRequest;
+}
 function refreshSetupStatus(){if(setupPending)syncSetupStatus().catch(()=>{});}
 window.addEventListener?.('focus',refreshSetupStatus);
 window.addEventListener?.('online',refreshSetupStatus);
@@ -52,10 +59,10 @@ el('setup').onsubmit=async event=>{
  const body={code:el('setup-code').value,workspace_id:el('setup-workspace').value,display_name:el('setup-name').value,username:el('setup-username').value,password:el('setup-password').value,confirmation:el('setup-confirmation').value};
  for(const id of ['setup-code','setup-password','setup-confirmation'])el(id).value='';
  try{if(!await initialSetup()){notice('setupAlreadyDone');return;}const response=await fetch('/api/v1/setup/complete',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRF-Token':setupCsrf||''},body:JSON.stringify(body)});
- if(!response.ok){let code;try{code=(await response.json()).code;}catch{}const error=new Error('setup_rejected');error.noticeKey=Object.hasOwn(setupErrors,code)?setupErrors[code]:'setupRetry';throw error;}await syncSetupStatus();el('workspace').value=body.workspace_id;el('username').value=body.username;notice('setupDone');
+ if(!response.ok){let code;try{code=(await response.json()).code;}catch{}const error=new Error('setup_rejected');error.noticeKey=Object.hasOwn(setupErrors,code)?setupErrors[code]:'setupRetry';throw error;}await syncSetupStatus(true);el('workspace').value=body.workspace_id;el('username').value=body.username;notice('setupDone');
  }catch(error){try{notice(await initialSetup()?(error.noticeKey||'setupRetry'):'setupAlreadyDone');}catch{notice('setupRefreshFailed');}}finally{setupCsrf=null;body.code=body.password=body.confirmation='';button.disabled=false;}
 };
-async function initialSetup(){setupCsrf=null;if(!await syncSetupStatus())return false;const data=await api('setup/csrf');setupCsrf=data.csrf_token;return true;}
+async function initialSetup(){setupCsrf=null;if(!await syncSetupStatus(true))return false;const data=await api('setup/csrf');if(!setupPending)return false;setupCsrf=data.csrf_token;return true;}
 language();const initialAuthEpoch=authEpoch;initialSetup().then(locked=>{if(locked)return null;return api('session');}).then(data=>{if(!data||initialAuthEpoch!==authEpoch)return;user=data.user;csrf=data.csrf_token;el('actor').textContent=user.display_name+' [human]';el('login').hidden=true;el('dashboard').hidden=false;refresh();}).catch(()=>{if(initialAuthEpoch===authEpoch)notice('setupRefreshFailed');});
 
 async function refreshHandovers(epoch){const offers=await api('admin/handovers');if(epoch!==listEpoch||!user)return;el('handovers').replaceChildren(...offers.map(offer=>{const button=document.createElement('button');button.textContent=t('acceptHandover')+' · '+offer.room_id;button.onclick=()=>{if(!user||!confirm(t('confirmHandover')))return;const body={expected_room_revision:offer.room_revision,expected_handover_revision:offer.handover_revision,acknowledge_history:true};mutate('handover',body,key=>api('rooms/'+offer.room_id+'/handover/accept',{method:'POST',body,key}));};return button;}));}
