@@ -56,6 +56,8 @@ def installer(tmp_path,engine):return module.Installer(IMAGE,None,tmp_path/'stat
 def test_first_install_rerun_and_no_secret_output_or_argv(tmp_path,capsys):
     e=FakeEngine();i=installer(tmp_path,e)
     result=i.install();snapshot=dict(e.values);calls=len(e.calls)
+    app_run=next(c for c in e.calls if c[:2]==['run','--detach'] and i.names['app'] in c)
+    assert 'TALKABOUT_APP_CONTAINER='+i.names['app'] in app_run
     assert result['secrets_returned'] is False and len(snapshot)==4
     bundle=json.loads(snapshot[i.names['bundle']]);assert bundle['owner']!=bundle['runtime'] and len(bundle['owner'])==64
     assert installer(tmp_path,e).install()==result and e.values==snapshot

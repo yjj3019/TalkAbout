@@ -15,7 +15,8 @@ from .identity import IdentityService
 from .auth import COOKIE, HumanAuth
 
 
-def create_app(store, start_scheduler=True, allow_fixture_bearer=False, allowed_hosts=None):
+def create_app(store, start_scheduler=True, allow_fixture_bearer=False, allowed_hosts=None, setup_container_name=None):
+    setup_container_name = setup_container_name if isinstance(setup_container_name, str) and re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,127}', setup_container_name) else None
     core = Core(store)
     identity = IdentityService(store)
     human_auth = HumanAuth(store)
@@ -154,7 +155,8 @@ def create_app(store, start_scheduler=True, allow_fixture_bearer=False, allowed_
             require(isinstance(body, dict), "invalid_body", 422)
         key = request.headers.get("idempotency-key")
         if path == 'setup/status' and request.method == 'GET':
-            return {'setup_required': await run_in_threadpool(store.setup_required)}
+            required = await run_in_threadpool(store.setup_required)
+            return {'setup_required': required, **({'setup_container': setup_container_name} if required and setup_container_name else {})}
         if path == 'setup/csrf' and request.method == 'GET':
             import secrets
             require(await run_in_threadpool(store.setup_required), 'setup_complete', 409)

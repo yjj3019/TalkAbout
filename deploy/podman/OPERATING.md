@@ -56,6 +56,12 @@ The installer starts only its dedicated DB/app; publish is loopback and explicit
 
 ## Sources and verification scope
 
+### First-visit instructions / 최초 접속 안내
+
+The pending KO/EN setup page explains each required field and the operator's private-terminal `setup-code` command. New automatic installs pass their chosen app name through the non-secret `TALKABOUT_APP_CONTAINER` environment variable. Independently configured containers can set the same variable at their next separately authorized deployment; without it the page explicitly asks the operator to replace `APP_CONTAINER`. Never put a server address, code or password in that variable. The server validates the name and returns it only while setup is pending. No browser command execution or code issuance is added. See [initial setup](../../docs/INITIAL_SETUP.md). Existing containers are not changed by this source patch; do not rerun installation to apply a UI update.
+
+최초 설정 전 화면에서 필수 입력값의 설명·예시와 서버 비공개 터미널 명령을 제공합니다. 서버의 설정 완료 상태에 따라 안내를 숨기며, 방문 여부를 브라우저에 저장하지 않습니다. 이 변경은 실제 운영 컨테이너에 아직 배포되지 않았습니다. 기존 코드 기반 최초 설정 정책은 유지합니다.
+
 Podman secret data can be retrieved only by an explicitly requested secret inspection; the installer captures it internally and never forwards it: [Podman secret inspect](https://docs.podman.io/en/latest/markdown/podman-secret-inspect.1.html). Provisioning uses libpq client-side SCRAM password encryption and session-scoped logging suppression: [libpq password encryption](https://www.postgresql.org/docs/current/libpq-misc.html), [PostgreSQL logging](https://www.postgresql.org/docs/current/runtime-config-logging.html). These are implementation choices, not a claim of encrypted Podman file storage.
 
 Tests cover first install, retry without rotation, interruption before/after DB commit, missing secrets/persistence, unknown existing data, mismatched credentials, output masking and concurrent locking. Rootless execution evidence and source/image identifiers are recorded separately in the PR. No actual operating credentials or user setup codes were generated or read during development.
