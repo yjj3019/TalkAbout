@@ -63,7 +63,8 @@ def test_official_images_and_build_context_match_lock():
     assert containerfile.count(images['python']['reference']) == 2
     assert images['postgres']['reference'] in (ROOT/'deploy/podman/quadlet/talkabout-db.container.example').read_text()
     assert 'USER 10001:10001' in containerfile and 'HEALTHCHECK ' in containerfile
-    assert 'COPY . ' not in containerfile and 'ARG ' not in containerfile
+    assert 'COPY . ' not in containerfile
+    assert [line for line in containerfile.splitlines() if line.startswith('ARG ')] == ['ARG SOURCE_SHA']
     ignore = (ROOT/'.containerignore').read_text().splitlines()
     assert ignore[0] == '**' and '!talkabout/*.py' in ignore
     assert not any(line.startswith('!') and any(x in line for x in ('.git', '.env', 'tests', 'secrets')) for line in ignore)
@@ -80,3 +81,19 @@ def test_quadlet_is_reference_only_without_automatic_boot_activation():
         assert 'Network=host' not in text and 'SecurityLabelDisable' not in text
     with pytest.raises(ValueError, match='source_sha_image_tag_required'):
         module.plan('localhost/talkabout:latest')
+
+
+def test_documented_build_supplies_revision_argument_without_external_label_injection():
+    import shlex
+    sha='a'*40
+    commands=[line for line in (ROOT/'deploy/podman/README.md').read_text(encoding='utf-8').splitlines() if line.startswith('podman build ')]
+    assert len(commands)==1
+    argv=shlex.split(commands[0].replace('$SOURCE_SHA',sha))
+    assert argv[:2]==['podman','build'] and '--label' not in argv
+    assert argv[argv.index('--build-arg')+1]=='SOURCE_SHA='+sha
+    assert argv[argv.index('--tag')+1]=='localhost/talkabout:'+sha
+    assert argv[argv.index('--file')+1]=='Containerfile' and argv[-1]=='.'
+    containerfile=(ROOT/'Containerfile').read_text()
+    runtime=containerfile.split(' AS build',1)[1].split('FROM ',1)[1]
+    assert 'ARG SOURCE_SHA' in runtime and 'LABEL org.opencontainers.image.revision="${SOURCE_SHA}"' in runtime
+    assert 'test "${#SOURCE_SHA}" -eq 40' in runtime

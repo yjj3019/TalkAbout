@@ -155,6 +155,32 @@ class Installer:
             if not obj['State']['Running']:self.engine.run(['start',name])
         else:self.engine.run(['run','--detach','--name',name,'--label','io.talkabout.install-config='+fingerprint,*args])
 
+    def provision_job(self,args):
+        name=self.prefix+'-provision'
+        fingerprint=hashlib.sha256(json.dumps(args).encode()).hexdigest()
+        labelled=[args[0],'--label','io.talkabout.install-config='+fingerprint,*args[1:]]
+        obj=self.owned('container',name)
+        if obj:
+            cfg=obj.get('Config',{});command=cfg.get('CreateCommand',[])
+            valid_command=False
+            if isinstance(command,list) and len(command)>2 and Path(command[0]).name=='podman':
+                if command[1]=='run':valid_command=command[2:] in (labelled[1:],args[1:])
+                elif command[1]=='create':valid_command=command[2:] in (labelled[1:],[x for x in labelled[1:] if x!='--rm'])
+            identifier=obj.get('Id','')
+            if (obj.get('Name','').lstrip('/')!=name or not re.fullmatch(r'[a-f0-9]{64}',identifier)
+                    or obj.get('ImageName')!=self.image or cfg.get('User')!='10001:10001'
+                    or cfg.get('Cmd')!=['provision-db','--installation-id',self.state['id']] or not valid_command):
+                raise InstallError('provision_job_configuration_mismatch')
+            recorded=metadata('container',obj).get('io.talkabout.install-config')
+            if recorded is not None and recorded!=fingerprint:raise InstallError('provision_job_configuration_mismatch')
+            state=obj.get('State',{})
+            if state.get('Running') or state.get('Paused') or state.get('Status') not in {'created','configured','exited','stopped'}:
+                raise InstallError('provision_job_in_progress')
+            # Immutable ID, no --force and no --volumes: a concurrent start makes
+            # Podman refuse removal; a replaced name cannot select another object.
+            self.engine.run(['container','rm',identifier])
+        self.engine.run(labelled)
+
     def install(self):
         with installation_lock(self.directory):
             if self.engine.run(['info','--format','{{.Host.Security.Rootless}}']).stdout.strip()!=b'true':raise InstallError('rootless_required')
@@ -191,8 +217,7 @@ class Installer:
                 time.sleep(.25)
             else:raise InstallError('database_readiness_timeout')
             job=self.prefix+'-provision'
-            if self.engine.inspect('container',job):raise InstallError('provision_job_in_progress')
-            self.engine.run(['run','--rm','--name',job,*self.common(),'--user=10001:10001',
+            self.provision_job(['run','--rm','--name',job,*self.common(),'--user=10001:10001',
                 '--secret',self.names['owner']+',target=talkabout-db-url,uid=10001,gid=10001,mode=0400',
                 '--secret',self.names['runtime']+',target=talkabout-runtime-url,uid=10001,gid=10001,mode=0400',self.image,'provision-db','--installation-id',self.state['id']])
             app_args=[*self.common(),'--user=10001:10001','--secret',self.names['runtime']+',target=talkabout-db-url,uid=10001,gid=10001,mode=0400']

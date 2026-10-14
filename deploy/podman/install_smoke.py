@@ -14,6 +14,9 @@ class Interrupted(m.Engine):
             self.phase=None;raise m.InstallError('synthetic_interruption')
         if self.phase=='db_committed' and args[0]=='run' and 'provision-db' in args:
             result=super().run(args,data,check);self.phase=None;raise m.InstallError('synthetic_response_lost')
+        if self.phase=='created_job' and args[0]=='run' and 'provision-db' in args:
+            super().run(['create',*args[1:]],data,check);self.phase=None
+            raise m.InstallError('synthetic_persistent_create_before_start')
         if self.phase=='existing_db' and args[0]=='run' and 'provision-db' in args:
             db=args[args.index('--name')+1][:-10]+'-db'
             super().run(['exec','-i',db,'psql','-U','talkabout_owner','-d','talkabout','-v','ON_ERROR_STOP=1'],b"CREATE SCHEMA fixture_existing; CREATE TABLE fixture_existing.data(value text); INSERT INTO fixture_existing.data VALUES('synthetic-marker');")
@@ -83,6 +86,14 @@ print('synthetic_gui_setup_pass')
     j=fresh('db_committed');expect_failure(j);before=fingerprint(j)
     repeat(j).install();assert fingerprint(j)==before
     checks.append('database_commit_response_loss_resumes_same_credentials')
+    dormant=fresh('created_job');expect_failure(dormant);before=fingerprint(dormant)
+    job=engine.inspect('container',dormant.prefix+'-provision')
+    assert job and not job['State']['Running'] and job['State']['Status'] in ('created','configured')
+    volume=engine.inspect('volume',dormant.names['volume'])
+    repeat(dormant).install()
+    assert fingerprint(dormant)==before and engine.inspect('volume',dormant.names['volume'])==volume
+    assert engine.inspect('container',dormant.prefix+'-provision') is None
+    checks.append('persistent_created_one_shot_resumes_without_rotation_or_volume_deletion')
     k=fresh('existing_db');expect_failure(k)
     assert sql(k,'SELECT value FROM fixture_existing.data;')==b'synthetic-marker'
     assert sql(k,"SELECT count(*) FROM pg_roles WHERE rolname='talkabout_app'")==b'0'

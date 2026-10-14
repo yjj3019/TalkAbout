@@ -29,7 +29,8 @@ python3 deploy/podman/install.py --install --app-image "localhost/talkabout:$SOU
 | journal 없는 기존 자원/DB/volume | 중단; 내용 보존, 수동 검토 필요 |
 | 설치 표식 불일치·미표식 기존 DB·DB 비밀번호 불일치 | 중단; 데이터·role·비밀번호 보존 |
 | 다른 installer가 lock 보유 | 즉시 중단 |
-| provisioning job 실행 중 | 중단; 기존 작업을 종료하지 않음 |
+| provisioning job 실행/일시정지/상태 불명 | 중단; 기존 작업을 종료하지 않음 |
+| 소유된 일회성 job이 created/exited 상태로 남음 | 이름·설치 label·image/user/cmd·정확한 생성 argv 확인 후 불변 ID로 non-force 제거하고 같은 DB/secret으로 재개 |
 
 이미 수동 설치했거나 기존 준비 자원이 있는 namespace에는 자동으로 덮어 설치하지 않습니다. 기존 자원을 보존하면서 새로운 설치 namespace가 필요하면 명시적으로 `--prefix talkabout-auto` 등 프로젝트 prefix를 선택합니다. 각 namespace는 별도의 private journal과 자원 이름을 사용합니다. namespace 변경으로 기존 데이터를 자동 이전하지 않습니다.
 
@@ -58,3 +59,9 @@ The installer starts only its dedicated DB/app; publish is loopback and explicit
 Podman secret data can be retrieved only by an explicitly requested secret inspection; the installer captures it internally and never forwards it: [Podman secret inspect](https://docs.podman.io/en/latest/markdown/podman-secret-inspect.1.html). Provisioning uses libpq client-side SCRAM password encryption and session-scoped logging suppression: [libpq password encryption](https://www.postgresql.org/docs/current/libpq-misc.html), [PostgreSQL logging](https://www.postgresql.org/docs/current/runtime-config-logging.html). These are implementation choices, not a claim of encrypted Podman file storage.
 
 Tests cover first install, retry without rotation, interruption before/after DB commit, missing secrets/persistence, unknown existing data, mismatched credentials, output masking and concurrent locking. Rootless execution evidence and source/image identifiers are recorded separately in the PR. No actual operating credentials or user setup codes were generated or read during development.
+
+### One-shot interruption recovery / 일회성 작업 중단 복구
+
+컨테이너가 영속화된 뒤 실제 시작 전에 프로세스 중단/재부팅으로 created job이 남을 수 있습니다. installer는 예상 이름·설치 label·image/user/cmd·생성 argv와 config fingerprint를 확인합니다. 기존 버전의 fingerprint 없는 job은 정확한 기존 생성 argv가 일치할 때만 허용합니다. 실행/일시정지 중인 job은 건드리지 않습니다. 확인된 비실행 일회성 job만 immutable container ID로 `container rm`하며 force·volume 삭제 옵션을 사용하지 않습니다. 검사 이후 누군가 job을 시작하면 Podman이 제거를 거절해 설치를 중단합니다. 이름 교체로 다른 컨테이너를 삭제할 수 없고 DB/volume/secret을 삭제하지 않습니다. 확인 실패는 수동 검토를 요구하며 임의 정리하지 않습니다.
+
+A crash between persistent container creation and startup can leave a dormant one-shot job. The installer verifies expected name, installation labels, image/user/cmd and exact create argv/config fingerprint. Legacy jobs without the fingerprint require exact legacy argv. Running/paused/unknown states remain untouched. Only a matching nonrunning job is removed by immutable ID, with no force or volume-removal flag, then provisioning resumes with the same DB and credentials. A concurrent start makes Podman refuse removal; a replaced name cannot redirect removal to another container. Database containers and volumes are never selected for this cleanup.
