@@ -220,7 +220,7 @@ class Installer:
             self.provision_job(['run','--rm','--name',job,*self.common(),'--user=10001:10001',
                 '--secret',self.names['owner']+',target=talkabout-db-url,uid=10001,gid=10001,mode=0400',
                 '--secret',self.names['runtime']+',target=talkabout-runtime-url,uid=10001,gid=10001,mode=0400',self.image,'provision-db','--installation-id',self.state['id']])
-            app_args=[*self.common(),'--user=10001:10001','--secret',self.names['runtime']+',target=talkabout-db-url,uid=10001,gid=10001,mode=0400']
+            app_args=[*self.common(),'--user=10001:10001','--env','TALKABOUT_APP_CONTAINER='+self.names['app'],'--secret',self.names['runtime']+',target=talkabout-db-url,uid=10001,gid=10001,mode=0400']
             if self.port is not None:
                 if not self.owned('container',self.names['app']):
                     self.check_port()

@@ -16,6 +16,17 @@ def body(code):
             'username': 'owner', 'password': 'synthetic-password-only', 'confirmation': 'synthetic-password-only'}
 
 
+@pytest.mark.parametrize('name', [None, 'fixture-app', 'bad; command', '../private', 'x'*129])
+def test_pending_public_container_hint_is_validated_and_disappears_after_owner(name):
+    store = MemoryStore()
+    client = TestClient(create_app(store, start_scheduler=False, allowed_hosts=['testserver'], setup_container_name=name))
+    expected = {'setup_required': True}
+    if name == 'fixture-app': expected['setup_container'] = name
+    assert client.get('/api/v1/setup/status').json() == expected
+    complete_setup(store, body(issue_code(store)))
+    assert client.get('/api/v1/setup/status').json() == {'setup_required': False}
+
+
 def test_locked_api_origin_csrf_gui_and_normal_login():
     store = MemoryStore()
     client = TestClient(create_app(store, start_scheduler=False, allowed_hosts=['testserver']))

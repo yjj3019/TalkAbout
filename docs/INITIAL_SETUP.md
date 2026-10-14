@@ -22,7 +22,7 @@ DB owner/runtime 비밀번호는 관리자 로그인 비밀번호와 별개입�
 
 | Method/path | Access and result |
 | --- | --- |
-| GET `/api/v1/setup/status` | Only `setup_required` boolean; no code, identity or DB metadata |
+| GET `/api/v1/setup/status` | `setup_required` boolean; while pending, an optional validated public `setup_container` name; no code, identity or DB metadata |
 | GET `/api/v1/setup/csrf` | Before setup; random nonce in JSON plus host-only HttpOnly SameSite=Strict cookie, 15 minutes; Secure on HTTPS |
 | POST `/api/v1/setup/complete` | Same Origin + matching `X-CSRF-Token`/cookie; JSON fields `code`, `workspace_id`, `display_name`, `username`, `password`, `confirmation` |
 
@@ -39,6 +39,18 @@ Before completion the server blocks ordinary APIs, SSE, downloads and scheduling
 Database credentials remain independent: the default installer generates/stores them per installation; the existing user-input secret helper is an explicit manual compatibility path. Owner-only schema initialization/migration precedes runtime DML grants on the new table. No DDL or host/container-management privilege is added to the application. Password recovery after setup is a separate feature; never erase data to reopen bootstrap.
 
 ## Verification scope
+
+### First-visit guide / 최초 접속 안내 (2026-10-14)
+
+This change is LOCAL IMPLEMENTATION / NOT DEPLOYED. The pending setup form contains KO/EN instructions for manually running `podman exec -it APP_CONTAINER python -m talkabout.container setup-code` in the operator's private server terminal, then entering the code and a self-chosen password. The web page does not issue a code, run the command, create a link or change the existing code requirement. No private server address is included. New automatic installs pass the non-secret `TALKABOUT_APP_CONTAINER` environment variable matching their chosen app container name. For an independently configured container, set that variable to its public container name at a separately authorized deployment, or replace the displayed `APP_CONTAINER` placeholder yourself. This patch does not update an existing operating container.
+
+All six required fields include descriptions. Workspace is 1–128 characters (example `teamspace`, reused at login; no automatic trimming). Display name is 1–48 characters after Unicode NFKC normalization/trimming (example `Operator` / `운영자`), with control/format characters and reserved names rejected. Username is 1–32 characters, starting with a lowercase letter and then only lowercase letters, digits or hyphens (example `owner`); reserved names are rejected. `admin`, `administrator`, `human`, `system` are reserved for both names, and `관리자` is also reserved as a display name. Password is self-chosen, 12–1024 characters; confirmation must match exactly. No actual code or password example/default is supplied.
+
+서버가 `setup_required=true`라고 응답할 때만 안내와 최초 설정 폼을 표시합니다. 새로고침·탭 복귀·재연결과 설정 대기 중 5초 간격 확인으로 서버 상태를 다시 읽습니다. 다른 탭에서 완료하면 폼과 비밀 입력값을 지우고 로그인 화면을 표시합니다. 최초 방문 여부를 localStorage에 저장하지 않습니다. 주기적 확인은 CSRF를 재발급하지 않습니다. 코드 발급은 서버 비공개 터미널에서 운영자가 직접 수행하며 웹 자동 발급·일회용 링크·코드 없는 가입을 추가하지 않습니다.
+
+Server status controls visibility on page load, focus, visibility restoration, reconnection and a five-second poll while pending. Once another request completes setup, the form closes and secret inputs are cleared; polling stops. There is no localStorage first-visit flag. Polling does not rotate CSRF. Failed submissions show a fixed localized explanation selected from an allowlist of server error codes; arbitrary response text is never rendered. Unknown errors retain the generic retry message. No failed POST is automatically retried.
+
+UI logic tests cover both server states, focus/reconnection/visibility/polling, non-rotating CSRF, safe command construction, localization and allowlisted error messages. API tests confirm the optional hint is validated and removed after owner creation; the installer test checks the chosen container name is passed. These are synthetic tests; actual browser DOM and operating deployment verification remain separate.
 
 The GUI refreshes setup status and CSRF immediately before each submission. A failed POST rechecks state/CSRF without automatically resubmitting. Expired cookies, operator code reissue and another tab changing the cookie therefore require no page reload to obtain a fresh nonce. Code/password fields and the temporary submitted values are cleared; the user explicitly re-enters them after failure. If another request completed setup, the form closes and normal login remains available. UI logic tests cover expired/replaced cookies, a cookie race and completion before/during submission; actual browser DOM verification remains separate.
 

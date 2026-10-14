@@ -88,7 +88,7 @@ def main(argv=None):
         return 0
     # 0.0.0.0 exists only inside the private namespace; host publish is loopback.
     import uvicorn
-    uvicorn.run(create_app(store, allowed_hosts=['127.0.0.1', 'localhost']), host='0.0.0.0', port=8080,
+    uvicorn.run(create_app(store, allowed_hosts=['127.0.0.1', 'localhost'], setup_container_name=os.environ.get('TALKABOUT_APP_CONTAINER')), host='0.0.0.0', port=8080,
                 access_log=False, proxy_headers=False, limit_concurrency=16, timeout_graceful_shutdown=10)
     return 0
 
