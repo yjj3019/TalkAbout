@@ -187,7 +187,7 @@ class Installer:
                 '--tmpfs=/var/run/postgresql:rw,nosuid,nodev,size=16m,mode=1777','--secret',self.names['password']+',target=pg-password,uid=999,gid=999,mode=0400',
                 '-e','POSTGRES_PASSWORD_FILE=/run/secrets/pg-password','-e','POSTGRES_USER=talkabout_owner','-e','POSTGRES_DB=talkabout',pg,'-c','max_connections=30','-c','shared_buffers=64MB'])
             for _ in range(40):
-                if self.engine.run(['exec',self.names['db'],'pg_isready','-U','talkabout_owner','-d','talkabout'],check=False).returncode==0:break
+                if self.engine.run(['exec',self.names['db'],'pg_isready','-h','127.0.0.1','-U','talkabout_owner','-d','talkabout'],check=False).returncode==0:break
                 time.sleep(.25)
             else:raise InstallError('database_readiness_timeout')
             job=self.prefix+'-provision'
