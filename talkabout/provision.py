@@ -32,9 +32,9 @@ def provision_database(owner_dsn, runtime_dsn, installation_id):
                 with psycopg.connect(runtime_dsn) as app:
                     if app.execute('SELECT current_user').fetchone()[0]!='talkabout_app': raise ValueError()
             else:
-                if role or conn.execute("SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname NOT IN ('pg_catalog','information_schema') AND n.nspname NOT LIKE 'pg_%' LIMIT 1").fetchone():
+                if role or conn.execute("SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname NOT IN ('pg_catalog','information_schema') AND left(n.nspname,3)<>'pg_' LIMIT 1").fetchone():
                     raise ValueError()
-                if conn.execute("SELECT 1 FROM pg_namespace WHERE nspname NOT IN ('public','information_schema') AND nspname NOT LIKE 'pg_%' LIMIT 1").fetchone():
+                if conn.execute("SELECT 1 FROM pg_namespace WHERE nspname NOT IN ('public','information_schema') AND left(nspname,3)<>'pg_' LIMIT 1").fetchone():
                     raise ValueError()
                 encrypted=conn.pgconn.encrypt_password(runtime['password'].encode(), b'talkabout_app', b'scram-sha-256').decode()
                 conn.execute(sql.SQL('CREATE ROLE talkabout_app LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD {}').format(sql.Literal(encrypted)))
