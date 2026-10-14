@@ -26,7 +26,8 @@ def create_app(store, start_scheduler=True, allow_fixture_bearer=False, allowed_
         state["scheduler"] = "running"
         while not stop.wait(0.5):
             try:
-                store.tick_all()
+                if not store.setup_required():
+                    store.tick_all()
             except Exception:
                 # Never log a database DSN, credentials, or external payload.
                 state["scheduler"] = "failed"
@@ -52,7 +53,19 @@ def create_app(store, start_scheduler=True, allow_fixture_bearer=False, allowed_
 
     @app.middleware("http")
     async def harden(request, call_next):
-        response = await call_next(request)
+        from starlette.concurrency import run_in_threadpool
+        try:
+            locked = await run_in_threadpool(store.setup_required)
+        except Exception:
+            # Schema outage must fail closed, without leaking database details.
+            locked = True
+        request.state.setup_locked = locked
+        allowed = {'/', '/health', '/web/app.mjs', '/web/state.mjs', '/web/style.css',
+                   '/api/v1/setup/status', '/api/v1/setup/csrf', '/api/v1/setup/complete'}
+        if locked and request.url.path not in allowed:
+            response = JSONResponse({'code': 'setup_required'}, status_code=503)
+        else:
+            response = await call_next(request)
         response.headers["Cache-Control"] = "no-store"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self'; style-src 'self'; frame-ancestors 'none'; base-uri 'none'"
@@ -74,7 +87,9 @@ def create_app(store, start_scheduler=True, allow_fixture_bearer=False, allowed_
         return raw
 
     @app.get("/health")
-    def health():
+    def health(request: Request):
+        if request.state.setup_locked:
+            return {"status": "alive"}
         return {"status": "development", "scheduler": state["scheduler"], "binary_uploads": False}
 
     @app.get("/ready")
@@ -138,6 +153,28 @@ def create_app(store, start_scheduler=True, allow_fixture_bearer=False, allowed_
                 raise Problem("invalid_json", 422)
             require(isinstance(body, dict), "invalid_body", 422)
         key = request.headers.get("idempotency-key")
+        if path == 'setup/status' and request.method == 'GET':
+            return {'setup_required': await run_in_threadpool(store.setup_required)}
+        if path == 'setup/csrf' and request.method == 'GET':
+            import secrets
+            require(await run_in_threadpool(store.setup_required), 'setup_complete', 409)
+            csrf = secrets.token_urlsafe(32)
+            response = JSONResponse({'csrf_token': csrf})
+            response.set_cookie('talkabout_setup_csrf', csrf, httponly=True, secure=request.url.scheme == 'https',
+                                samesite='strict', max_age=900, path='/api/v1/setup')
+            return response
+        if path == 'setup/complete' and request.method == 'POST':
+            import hmac
+            from .setup import complete_setup
+            require(await run_in_threadpool(store.setup_required), 'setup_complete', 409)
+            require(request.headers.get('origin') == str(request.base_url).rstrip('/'), 'origin_forbidden', 403)
+            supplied, cookie = request.headers.get('x-csrf-token', ''), request.cookies.get('talkabout_setup_csrf', '')
+            require(bool(cookie) and len(cookie) <= 128 and len(supplied) <= 128 and cookie.isascii() and supplied.isascii()
+                    and hmac.compare_digest(cookie, supplied), 'csrf_invalid', 403)
+            data = await run_in_threadpool(complete_setup, store, body)
+            response = JSONResponse(data)
+            response.delete_cookie('talkabout_setup_csrf', path='/api/v1/setup')
+            return response
         if path == "session" and request.method == "POST":
             require(request.headers.get("origin") == str(request.base_url).rstrip("/"), "origin_forbidden", 403)
             raw, data = await run_in_threadpool(human_auth.login, body)

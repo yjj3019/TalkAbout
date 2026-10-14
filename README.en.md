@@ -1,5 +1,9 @@
 # TalkAbout
 
+**INITIAL GUI SETUP: LOCAL IMPLEMENTATION / NOT APPLIED TO OPERATIONS — 2026-10-14**
+
+Installation-specific one-time codes replace shared default passwords; users choose passwords directly in the KO/EN GUI. APIs, SSE, downloads and scheduling stay locked before setup, while existing owned installations retain authentication. See the [initial setup, reissue and migration guide](docs/INITIAL_SETUP.md). No operating image build, service launch or actual browser verification has been performed for this change; earlier image/fixture results below apply to the prior source.
+
 [MIT License](LICENSE) · Copyright (c) 2026 yjj3019. [Third-party licenses and notices](THIRD_PARTY_NOTICES.md) remain separate and preserved.
 
 **OPERATING DEPLOYMENT PREPARED / WAITING FOR USER CREDENTIAL INPUT AND A FREE LOOPBACK PORT — 2026-10-13**

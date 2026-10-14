@@ -31,3 +31,6 @@ CREATE TABLE IF NOT EXISTS human_sessions (
   token_hash text PRIMARY KEY, principal_id text NOT NULL REFERENCES principals(id),
   expires_at double precision NOT NULL, csrf_hash text NOT NULL
 );
+CREATE TABLE IF NOT EXISTS installation_setup (
+  id smallint PRIMARY KEY CHECK (id=1), payload jsonb NOT NULL
+);

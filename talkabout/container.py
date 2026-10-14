@@ -44,7 +44,7 @@ def healthcheck():
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description='TalkAbout private container entrypoint; no automatic schema/accounts')
-    parser.add_argument('action', choices=['serve', 'preflight', 'init-db', 'bootstrap-human', 'healthcheck'])
+    parser.add_argument('action', choices=['serve', 'preflight', 'init-db', 'bootstrap-human', 'setup-code', 'healthcheck'])
     parser.add_argument('--workspace')
     parser.add_argument('--name')
     parser.add_argument('--handle')
@@ -63,6 +63,10 @@ def main(argv=None):
         return 0 if ready else 1
     if args.action == 'init-db':
         store.initialize()
+        return 0
+    if args.action == 'setup-code':
+        from .setup import terminal_issue
+        terminal_issue(store)
         return 0
     if args.action == 'bootstrap-human':
         if not all((args.workspace, args.name, args.handle)):
