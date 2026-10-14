@@ -16,7 +16,7 @@ class Interrupted(m.Engine):
             result=super().run(args,data,check);self.phase=None;raise m.InstallError('synthetic_response_lost')
         if self.phase=='existing_db' and args[0]=='run' and 'provision-db' in args:
             db=args[args.index('--name')+1][:-10]+'-db'
-            super().run(['exec','-i',db,'psql','-U','talkabout_owner','-d','talkabout','-v','ON_ERROR_STOP=1'],b"CREATE TABLE fixture_existing_data(value text); INSERT INTO fixture_existing_data VALUES('synthetic-marker');")
+            super().run(['exec','-i',db,'psql','-U','talkabout_owner','-d','talkabout','-v','ON_ERROR_STOP=1'],b"CREATE SCHEMA fixture_existing; CREATE TABLE fixture_existing.data(value text); INSERT INTO fixture_existing.data VALUES('synthetic-marker');")
             self.phase=None
         return super().run(args,data,check)
 
@@ -84,7 +84,7 @@ print('synthetic_gui_setup_pass')
     repeat(j).install();assert fingerprint(j)==before
     checks.append('database_commit_response_loss_resumes_same_credentials')
     k=fresh('existing_db');expect_failure(k)
-    assert sql(k,'SELECT value FROM fixture_existing_data;')==b'synthetic-marker'
+    assert sql(k,'SELECT value FROM fixture_existing.data;')==b'synthetic-marker'
     assert sql(k,"SELECT count(*) FROM pg_roles WHERE rolname='talkabout_app'")==b'0'
     checks.append('unmarked_existing_database_preserved')
     n=fresh();mark=uuid.uuid4().hex
