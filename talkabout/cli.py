@@ -124,6 +124,7 @@ def main():
                 if not 1 <= args.steps <= 1000 or not 1 <= args.max_seconds <= 300 or not 1 <= args.max_model_calls <= 10 or bool(args.synthetic) == bool(args.runtime):
                     parser.error("Choose exactly one runtime; steps 1..1000, max-seconds 1..300")
                 if args.runtime and not args.approve_external: parser.error('External runtime calls require explicit --approve-external')
+                if args.runtime and os.name != 'nt': parser.error('External CLI execution requires verified Windows Job containment; POSIX execution is disabled')
                 deadline = time.monotonic() + args.max_seconds
                 client.deadline = deadline
                 if args.runtime:

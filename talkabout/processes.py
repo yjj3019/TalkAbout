@@ -1,8 +1,6 @@
-"""Owned child containment: Windows kill-on-close job; POSIX session/process group."""
+"""Windows kill-on-close containment; unsupported platforms fail before launch."""
 import os
-import signal
 import subprocess
-import sys
 import threading
 import time
 
@@ -71,13 +69,6 @@ if os.name == 'nt':
         finally: kernel.CloseHandle(snapshot)
 
 
-def enable_subreaper():
-    if sys.platform.startswith('linux'):
-        import ctypes
-        libc = ctypes.CDLL(None, use_errno=True)
-        if libc.prctl(36, 1, 0, 0, 0) != 0: raise ProcessCleanupError('subreaper_unavailable')
-
-
 def stop_windows_job(job, process):
     """Synchronize descendant exit, including after the group leader has exited."""
     handles = []
@@ -117,6 +108,8 @@ class ManagedProcess:
         self.lock = threading.RLock(); self.job = None; self.closed = False
         if (cancel and cancel.is_set()) or (deadline is not None and time.monotonic() >= deadline):
             raise ProcessCleanupError('process_cancelled_before_launch')
+        if os.name != 'nt':
+            raise ProcessCleanupError('runtime_containment_unsupported')
         if os.name == 'nt':
             self.job = kernel.CreateJobObjectW(None, None)
             if not self.job: raise ProcessCleanupError('job_creation_failed')
@@ -125,8 +118,6 @@ class ManagedProcess:
                 kernel.CloseHandle(self.job); self.job = None
                 raise ProcessCleanupError('job_limits_failed')
             options['creationflags'] = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP | 4  # CREATE_SUSPENDED
-        else:
-            enable_subreaper(); options['start_new_session'] = True
         try:
             self.process = subprocess.Popen(command, **options)
             if os.name == 'nt':
@@ -150,22 +141,6 @@ class ManagedProcess:
                 job, self.job = self.job, None
                 if job is None: raise ProcessCleanupError('previous_cleanup_unconfirmed')
                 stop_windows_job(job, process)
-            else:
-                # Always target the owned group, even if poll() has reaped its leader already.
-                for sig in (signal.SIGTERM, signal.SIGKILL):
-                    try: os.killpg(process.pid, sig)
-                    except ProcessLookupError: pass
-                    if sig == signal.SIGTERM: time.sleep(.05)
-                process.wait(timeout=3)
-                deadline = time.monotonic() + 3
-                while True:
-                    try:
-                        while os.waitpid(-process.pid, os.WNOHANG)[0]: pass
-                    except ChildProcessError: pass
-                    try: os.killpg(process.pid, 0)
-                    except ProcessLookupError: break
-                    if time.monotonic() >= deadline: raise ProcessCleanupError('group_cleanup_timeout')
-                    time.sleep(.01)
             self.closed = True
             return True
 

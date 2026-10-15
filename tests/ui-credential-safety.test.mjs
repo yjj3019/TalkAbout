@@ -13,7 +13,7 @@ async function harness(){
   location:{search:'',origin:'http://127.0.0.1:18081'},history:{pushState(){},replaceState(){}},
   fetch:async(url,options)=>{calls.push({url,options});if(url.endsWith('setup/status'))return{ok:true,json:async()=>({setup_required:true})};if(url.endsWith('setup/csrf'))return{ok:true,json:async()=>({csrf_token:'synthetic-csrf'})};if(url.endsWith('/credentials'))return held;return{ok:false,status:401};}});
  vm.runInContext(source,context);await new Promise(setImmediate);
- vm.runInContext("refresh=async()=>{};user={id:'human'};view.select('room');",context);
+ vm.runInContext("refresh=async()=>{};user={id:'human',scopes:['agent:manage','credential:manage']};view.select('room');",context);
  return {node,calls,timeouts,listeners,run:code=>vm.runInContext(code,context),resolve:value=>resolve({ok:true,json:async()=>value})};
 }
 for(const boundary of ['logout','room navigation'])test('late credential response is discarded after '+boundary,async()=>{

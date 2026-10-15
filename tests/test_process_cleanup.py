@@ -28,6 +28,7 @@ def alive(pid):
     except ProcessLookupError: return False
 
 
+@pytest.mark.skipif(os.name != 'nt', reason='External CLI containment is supported only on Windows; POSIX fails closed')
 @pytest.mark.parametrize('mode', ['success', 'failure', 'timeout', 'stop', 'heartbeat'])
 def test_no_descendants_survive_cli_parent_exit(mode, tmp_path):
     pidfile = tmp_path/'owned-pids.json'
@@ -52,6 +53,7 @@ def test_shutdown_before_launch_is_fail_closed():
     assert runtime.calls == 0
 
 
+@pytest.mark.skipif(os.name != 'nt', reason='POSIX CLI execution fails closed')
 def test_fast_stderr_and_combined_output_limit():
     for program in ["import sys; sys.stderr.write('x'*2200000)",
                     "import sys; sys.stdout.write('x'*1100000); sys.stderr.write('x'*1100000)"]:
@@ -84,8 +86,25 @@ def test_containment_failure_prevents_execution(monkeypatch, tmp_path):
     if os.name == 'nt':
         monkeypatch.setattr(processes.kernel, 'AssignProcessToJobObject', lambda *args: False)
     else:
-        def fail(): raise ProcessCleanupError('synthetic_containment_unavailable')
-        monkeypatch.setattr(processes, 'enable_subreaper', fail)
+        assert os.name != 'nt'  # Unsupported platform must fail before Popen.
     with pytest.raises(ProcessCleanupError):
         ManagedProcess([sys._base_executable, '-c', 'import pathlib,sys; pathlib.Path(sys.argv[1]).write_text("bad")', str(marker)])
     assert not marker.exists()
+
+
+def test_posix_detached_descendant_program_cannot_launch(monkeypatch, tmp_path):
+    import talkabout.processes as processes
+    calls = []
+    # This program would escape a plain process group. It must never reach Popen.
+    program = "import subprocess,sys; subprocess.Popen([sys.executable,'-c','import time; time.sleep(20)'],start_new_session=True)"
+    def forbidden(*args, **kwargs):
+        calls.append(args)
+        raise AssertionError('unsupported platform launched a process')
+    with monkeypatch.context() as patch:
+        patch.setattr(processes.os, 'name', 'posix')
+        patch.setattr(processes.subprocess, 'Popen', forbidden)
+        with pytest.raises(ProcessCleanupError, match='runtime_containment_unsupported'):
+            ManagedProcess([sys.executable, '-c', program])
+        with pytest.raises(AdapterError, match='runtime_containment_unsupported'):
+            execute_bounded([sys.executable, '-c', program], '', threading.Event(), 1)
+    assert calls == []

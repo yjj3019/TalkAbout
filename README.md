@@ -6,6 +6,8 @@
 
 [실제 메뉴와 참가자 CLI 사용 순서](docs/USER_FLOW.md), [기존 계획 대비 구현·시험·미완료 근거표](docs/PLAN_IMPLEMENTATION_EVIDENCE.md)를 기준으로 현재 범위를 확인합니다. 실제 Chrome 합성 검증과 실제 외부 모델 PoC를 구분하며, Codex/Claude provider 호출은 아직 실행하지 않았습니다. P0의 실제 runtime 2개 관문과 P2/P3는 완료되지 않았습니다.
 
+외부 Codex/Claude CLI 실행은 현재 Windows Job containment 환경만 지원합니다. POSIX 실행은 분리된 후손의 종료 보장을 검증할 때까지 실행 전에 차단됩니다. 실제 provider PoC는 미실행입니다.
+
 ## 이전 구현 단계 기록
 
 아래의 운영 미기동·기능 미구현 표시는 당시 단계의 기록입니다. 현재 사용법과 이번 브랜치의 상태는 위 두 문서가 설명하며, 과거 배포 준비나 테스트 성공을 제품 완료로 해석하지 않습니다.

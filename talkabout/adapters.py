@@ -25,6 +25,7 @@ def child_environment(blocked_names=(), blocked_values=()):
 
 
 def execute_bounded(command, prompt, cancel, timeout=30, blocked_names=(), blocked_values=(), supervisor=None, run_deadline=None):
+    if os.name != 'nt': raise AdapterError('runtime_containment_unsupported')
     if not 0 < timeout <= 120 or len(prompt.encode()) > 200000:
         raise AdapterError('invalid_runtime_budget')
     supervisor = supervisor or ProcessSupervisor()

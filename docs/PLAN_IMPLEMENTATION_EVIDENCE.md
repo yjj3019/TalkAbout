@@ -65,7 +65,7 @@ This review branch connects the existing planned registration/invitation/onboard
 
 Actual Chromium validates the local fixture UI; CLI help and synthetic child processes validate adapter command/protocol/failure paths. Real Codex/Claude model calls, provider authentication, independent tool-policy verification and the two-runtime PoC remain NOTRUN. Deployment and product completion are separate gates.
 
-## 리뷰 보완 / Review corrections (2026-10-15)
+## 51d56437 검토 당시 기록 / Review snapshot (2026-10-15)
 
 이전 c3e9c4bc 상태에서 발견된 자식 프로세스 정리와 run 시간 제한 문제를 보완했습니다. CLI runtime의 shutdown은 자식 정리를 동기적으로 확인하고 늦은 실행을 막습니다. Windows Job은 leader가 먼저 종료된 경우에도 후손을 종료하고 exit handle을 기다립니다. containment 배정에 실패하면 suspended 자식을 실행하지 않습니다. POSIX 경로는 별도 process group과 Linux subreaper로 구성했으며 이번 환경에서는 실행 검증하지 못했습니다.
 
@@ -84,3 +84,23 @@ Linux 테스트용 소스 전송은 자동 승인 검토가 원격 전송에 대
 | Linux 실행 / 실제 provider / 운영 배포 | NOTRUN / NOTRUN / NOT DEPLOYED |
 
 The review corrections add synchronous managed-child shutdown, a shared run deadline, post-exit combined output checks and worker-before-start instructions with disabled reasons in both languages. Tests use synthetic Python subprocesses and isolated fixtures. Windows results do not establish Linux behavior: remote source transfer for Linux verification was rejected by automatic approval review and was not attempted through another route. Real providers and deployment remain separate, unexecuted gates.
+
+
+## 추가 GUI 검토 및 POSIX 실행 차단 / Follow-up review (2026-10-15)
+
+독립 검토에서 이전 POSIX process group/subreaper는 새 session으로 분리된 후손을 종료하지 못하는 것으로 확인됐습니다. 지원되지 않는 POSIX 외부 CLI는 현재 실행 전 `runtime_containment_unsupported`로 차단합니다. CLI 진입점에서도 사전에 거부합니다. 안전한 containment의 검증 없이 fallback하지 않으며 시스템 설정·권한을 늘리지 않았습니다. detached 후손을 만드는 합성 명령이 Popen에 도달하지 않는 회귀를 추가했습니다. Windows Job 종료 경로와 테스트는 유지합니다.
+
+GUI는 user.scopes에 따라 registry·자격증명 조회와 버튼을 제한합니다. 선택 API의 403과 방 읽기 권한 철회를 구분합니다. 503·네트워크·SSE 일시 오류에는 마지막 확인 화면을 보존하고, 다른 방 열기에 실패하면 방 목록을 제공합니다. 실제 인증/방 접근 철회는 내용을 지웁니다. paused/awaiting_adoption 안내, 캐시된 카드와 오류 문구의 KO/EN 즉시 변경, credential ID·scopes 표시, dialog 이름·설명과 tablist/tab/tabpanel·키보드 이동도 보완했습니다.
+
+확장 Chrome 시험은 별도 권한 제한 계정에서 서버의 registry 403, 선택 API를 호출하지 않는 GUI, 정상 방 유지, 503 후 재시도, 확정 403 내용 제거를 검증합니다. 초대·KO/EN 참여 안내·복수 credential metadata·일시정지·채택 대기·권한 제한·KO/EN 오류·접근 철회 화면도 합성 증거로 기록합니다. 첫 확장 fixture는 동일 workspace의 초기 owner 중복 생성 제한으로 시작하지 못했습니다. 권한 제한 계정을 별도 fixture workspace로 옮긴 뒤 제품 규칙 변경 없이 다시 검증했습니다.
+
+POSIX external CLI execution is fail-closed before launch; the prior process-group fallback has been removed. Windows Job verification remains separate. UI follow-up tests distinguish optional-feature authorization from room-access loss and temporary connectivity failures. Extended browser evidence uses only fresh synthetic accounts and profiles. Remote Linux verification remains approval-pending; no source transfer was retried or worked around.
+
+| 최종 추가 검증 | 결과 |
+| --- | --- |
+| Windows 전체 Python·격리 PostgreSQL·확장 Chrome | 166 passed, 0 skipped; 기존 Starlette/httpx deprecation 경고 1건 |
+| Node GUI logic | 59 passed; 신규 권한·오류·상태·언어·metadata·접근성 회귀 13건 포함 |
+| POSIX 미지원 경로 모의 검증 | detached 후손 명령의 Popen 호출 0회. 실제 Linux 실행 검증과 구분 |
+| 합성 화면 증거 | 13장: 기존 데스크톱/모바일, 초대, KO/EN 안내, 복수 credential metadata, 일시정지, 채택 대기, EN 방 목록·권한 제한, KO/EN 일시 오류, 접근 철회 |
+| 정적 검증 | 변경 파일 구문·문서 링크·HTML ID/번역·비밀정보 heuristic·git diff --check 통과 |
+| 실제 모델·운영 변경·병합·배포 | NOTRUN |

@@ -6,6 +6,8 @@ This branch connects the existing planned registration → room invitation → p
 
 See [the current user flow](docs/USER_FLOW.md) and [plan/implementation/test evidence](docs/PLAN_IMPLEMENTATION_EVIDENCE.md). Actual Chromium on synthetic fixtures is separate from real-model PoC. No Codex/Claude provider call has been made. The two-runtime P0 gate and P2/P3 remain incomplete.
 
+External Codex/Claude CLI execution currently requires Windows Job containment. POSIX execution is disabled before launch until detached-descendant containment is verified. Real-provider PoC remains NOTRUN.
+
 ## Historical implementation checkpoints
 
 The not-started/not-implemented statements below describe their original checkpoints. Use the current documents above for this branch; deployment preparation and synthetic test success do not mean the product is complete.
