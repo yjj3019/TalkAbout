@@ -212,6 +212,8 @@ def create_app(store, start_scheduler=True, allow_fixture_bearer=False, allowed_
                     return identity.mutate(credential, "register", key, body)
             if method == "PUT" and path == "agents/me/capabilities":
                 return identity.mutate(credential, "capabilities", key, body)
+            if method == "PUT" and path == "agents/me/connection":
+                return identity.mutate(credential, "connection", key, body)
             agent_path = re.fullmatch(r"agents/([a-zA-Z0-9-]+)/(identity|name-proposals|credentials)(?:/([a-zA-Z0-9-]+)/(revoke|rotate))?", path)
             if agent_path:
                 agent_id, action, credential_id, credential_action = agent_path.groups()
@@ -223,6 +225,8 @@ def create_app(store, start_scheduler=True, allow_fixture_bearer=False, allowed_
                 if action == "credentials" and method == "POST":
                     operation = "credentials/" + agent_id + ("/" + credential_id + "/" + credential_action if credential_id else "")
                     return identity.mutate(credential, operation, key, body)
+                if action == "credentials" and method == "GET" and not credential_id:
+                    return identity.credential_metadata(credential, agent_id)
             if method == "GET" and path in {"agents/me/events", "agents/me/snapshot"}:
                 try:
                     wait = float(request.query_params.get("wait_seconds", 0))

@@ -3,6 +3,27 @@ import threading
 import time
 
 
+class RunBudgetExceeded(Exception):
+    def __init__(self):
+        super().__init__('run_budget_exhausted')
+
+
+def check_deadline(deadline):
+    if deadline is not None and time.monotonic() >= deadline:
+        raise RunBudgetExceeded()
+
+
+class BudgetedClient:
+    def __init__(self, client, deadline):
+        self.client, self.deadline = client, deadline
+
+    def request(self, *args, **kwargs):
+        check_deadline(self.deadline)
+        value = self.client.request(*args, **kwargs)
+        check_deadline(self.deadline)
+        return value
+
+
 class RuntimeTimeout(Exception):
     def __init__(self, runtime_stopped=False):
         self.runtime_stopped = runtime_stopped
@@ -27,14 +48,23 @@ def bounded_call(runtime, context, cancel, timeout):
             execution_done.set()
     threading.Thread(target=invoke, daemon=True).start()
     deadline = time.monotonic() + timeout
+    def stop():
+        cancel.set()
+        shutdown = getattr(runtime, 'shutdown', None)
+        if callable(shutdown):
+            stopped = bool(shutdown())
+        else:
+            execution_done.wait(0.02)
+            stopped = execution_done.is_set()
+        raise RuntimeTimeout(stopped)
     while True:
         remaining = deadline - time.monotonic()
         if remaining <= 0 or cancel.is_set():
-            cancel.set()
-            execution_done.wait(0.02)
-            raise RuntimeTimeout(execution_done.is_set())
+            stop()
         try:
             ok, value = output.get(timeout=min(0.02, remaining))
+            if cancel.is_set() or time.monotonic() >= deadline:
+                stop()
             if ok:
                 return value
             raise value

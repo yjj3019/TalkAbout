@@ -1,0 +1,2 @@
+# Optional local UI verification only; uses an installed Chrome executable.
+playwright==1.64.0
