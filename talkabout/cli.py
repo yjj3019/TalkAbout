@@ -10,6 +10,7 @@ from .api import create_app
 from .config import database_config
 from .store import PostgresStore
 from .worker import APIClient, Journal, SyntheticRuntime, Worker
+from .runtime import RunBudgetExceeded, check_deadline
 
 
 def main():
@@ -123,9 +124,11 @@ def main():
                 if not 1 <= args.steps <= 1000 or not 1 <= args.max_seconds <= 300 or not 1 <= args.max_model_calls <= 10 or bool(args.synthetic) == bool(args.runtime):
                     parser.error("Choose exactly one runtime; steps 1..1000, max-seconds 1..300")
                 if args.runtime and not args.approve_external: parser.error('External runtime calls require explicit --approve-external')
+                deadline = time.monotonic() + args.max_seconds
+                client.deadline = deadline
                 if args.runtime:
                     from .adapters import CLIRuntime
-                    runtime = CLIRuntime(args.runtime, credential_env=config.get('token_env', 'TALKABOUT_TOKEN'), platform_credential=token)
+                    runtime = CLIRuntime(args.runtime, credential_env=config.get('token_env', 'TALKABOUT_TOKEN'), platform_credential=token, run_deadline=deadline)
                 else: runtime = SyntheticRuntime()
                 runtime_kind = args.runtime or 'synthetic'
                 def report(state, error_code=None):
@@ -134,12 +137,18 @@ def main():
                 class ReportedRuntime:
                     def run(self, context, cancel):
                         report('running')
+                        check_deadline(deadline)
                         return source_runtime.run(context, cancel)
+                    def shutdown(self):
+                        stop = getattr(source_runtime, 'shutdown', None)
+                        return stop() if callable(stop) else False
+                    def set_deadline(self, value):
+                        setter = getattr(source_runtime, 'set_deadline', None)
+                        if callable(setter): setter(value)
                 client.request('PUT', 'agents/me/capabilities', {'http': True, 'persistent_worker': True, 'text': True,
                     'image': False, 'file': False, 'model_label': runtime_kind+' (worker reported)'}, str(uuid.uuid4()))
                 report('idle')
-                worker = Worker(client, journal, ReportedRuntime(), adapter_policy={'external': bool(args.runtime), 'tool_limits_verified': bool(args.runtime), 'allowed_tools': []})
-                deadline = time.monotonic() + args.max_seconds
+                worker = Worker(client, journal, ReportedRuntime(), adapter_policy={'external': bool(args.runtime), 'tool_limits_verified': bool(args.runtime), 'allowed_tools': []}, run_deadline=deadline)
                 final_state = 'stopped'
                 for _ in range(args.steps):
                     if args.runtime and runtime.calls >= args.max_model_calls:
@@ -153,6 +162,9 @@ def main():
                         report('idle')
                         result = worker.step()
                         report('idle' if result in {'waiting', 'retry_wait', 'completed'} else 'stopped' if result == 'stopped' else 'failed')
+                    except RunBudgetExceeded:
+                        print('run_budget_exhausted')
+                        break
                     except Exception:
                         try: report('failed', 'runtime_failed')
                         except Exception: pass
@@ -169,7 +181,11 @@ def main():
                             time.sleep(min(0.02, max(0, until - time.monotonic())))
                 try: report(final_state, 'runtime_failed' if final_state == 'failed' else None)
                 except Exception: print('stop_report_unconfirmed')
+        except RunBudgetExceeded:
+            print('run_budget_exhausted')
         finally:
+            source = locals().get('source_runtime')
+            if callable(getattr(source, 'shutdown', None)): source.shutdown()
             client.close()
     finally:
         journal.close()

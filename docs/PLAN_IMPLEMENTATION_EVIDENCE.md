@@ -64,3 +64,23 @@ UI 회귀는 늦은 credential 응답의 logout/navigation 경계, 비밀값/역
 This review branch connects the existing planned registration/invitation/onboarding/preparation/start/text-artifact flow. It does not replace PRODUCT_PLAN or ROADMAP. Additive JSONB fields need no SQL DDL; existing rooms and automatic creation remain unchanged. UI registrations and credentials require explicit human actions; development tests create only ephemeral synthetic fixtures.
 
 Actual Chromium validates the local fixture UI; CLI help and synthetic child processes validate adapter command/protocol/failure paths. Real Codex/Claude model calls, provider authentication, independent tool-policy verification and the two-runtime PoC remain NOTRUN. Deployment and product completion are separate gates.
+
+## 리뷰 보완 / Review corrections (2026-10-15)
+
+이전 c3e9c4bc 상태에서 발견된 자식 프로세스 정리와 run 시간 제한 문제를 보완했습니다. CLI runtime의 shutdown은 자식 정리를 동기적으로 확인하고 늦은 실행을 막습니다. Windows Job은 leader가 먼저 종료된 경우에도 후손을 종료하고 exit handle을 기다립니다. containment 배정에 실패하면 suspended 자식을 실행하지 않습니다. POSIX 경로는 별도 process group과 Linux subreaper로 구성했으며 이번 환경에서는 실행 검증하지 못했습니다.
+
+CLI·HTTP·Worker·adapter가 하나의 monotonic deadline을 공유합니다. 느린 사전 조회 뒤 실제 실행과 완료 제출 직전에 기한을 검사합니다. 종료 시 stderr를 포함한 합계 출력 한도를 검사합니다. GUI 안내는 check → join → **preparing 중 worker run** → 최근 연결 확인 → 브라우저 관리에서 토론 시작 순서이며, 시작이 비활성인 이유를 KO/EN으로 표시합니다.
+
+회귀 검증은 Python 합성 프로세스만 실행합니다. 별도 CLI 부모가 종료된 뒤에도 자식·손자 PID가 살아 있지 않은지 성공·실패·timeout·stop·heartbeat 실패 각각 검사합니다. 느린 HTTP, 1초 run에서 늦은 결과 차단, 제출 직전 만료, 늦은 runtime 시작 차단, 빠른 stderr 초과, containment 실패도 검사합니다. 초기 보완 테스트에서 Windows 프로세스 종료와 OS 자원 해제 대기 차이, 취소/오류 도착 경합, 테스트 fixture import 오류가 드러났고 수정 후 재검증했습니다.
+
+Linux 테스트용 소스 전송은 자동 승인 검토가 원격 전송에 대한 명시 승인 부재로 거절하여 실행하지 않았습니다. 우회하지 않았으며 Linux 합성 회귀 검증은 NOTRUN입니다. 실제 모델·로그인·운영 변경·merge·deploy도 NOTRUN입니다.
+
+| 보완 후 검증 | 결과 |
+| --- | --- |
+| Windows 전체 Python + 격리 PostgreSQL + 새 프로필 Chrome | 164 passed, 0 skipped; 기존 Starlette/httpx deprecation 경고 1건 |
+| Node UI logic | 46 passed; KO/EN 안내 명령 순서와 시작 비활성 이유 포함 |
+| 추가 Python 회귀 | 15건: 부모 종료 뒤 자식·손자 종료 5개 경로, containment 실패, 늦은 실행 방지, 출력 합계, 공유 deadline |
+| 전체 실행 뒤 추가한 CLI 진입점 회귀 및 deadline 파일 재검증 | 6 passed. 기존 5건과 추가 1건; 전체 164건 실행 결과와 구분 |
+| Linux 실행 / 실제 provider / 운영 배포 | NOTRUN / NOTRUN / NOT DEPLOYED |
+
+The review corrections add synchronous managed-child shutdown, a shared run deadline, post-exit combined output checks and worker-before-start instructions with disabled reasons in both languages. Tests use synthetic Python subprocesses and isolated fixtures. Windows results do not establish Linux behavior: remote source transfer for Linux verification was rejected by automatic approval review and was not attempted through another route. Real providers and deployment remain separate, unexecuted gates.

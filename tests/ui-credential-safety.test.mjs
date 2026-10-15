@@ -43,3 +43,23 @@ test('browser back to the room list clears the credential before any fetch',asyn
  const h=await harness();h.node('credential-value').value='synthetic-private-token';
  await h.run('openRoom(null);');assert.equal(h.node('credential-value').value,'');assert.equal(h.node('room-browser').hidden,false);
 });
+
+for(const lang of ['ko','en'])test('participation guide starts the worker before browser discussion start: '+lang,async()=>{
+ const h=await harness();h.run(`view.language='${lang}';showOnboarding({id:'room',topic:'Synthetic',mode:'free_discussion'},{id:'agent',display_name:'Synthetic',handle:'synthetic'});`);
+ const commands=h.node('onboarding-commands').textContent;
+ assert.ok(commands.indexOf('cli check')<commands.indexOf('cli join'));
+ assert.ok(commands.indexOf('cli join')<commands.indexOf('cli run'));
+ assert.ok(commands.indexOf(labels[lang].workerBeforeStart)<commands.indexOf('cli run'));
+ assert.ok(commands.indexOf('cli run')<commands.indexOf(labels[lang].startAfterWorker));
+ assert.ok(commands.includes('--request-turn'));
+});
+
+test('preparing workflow explains why Start is disabled',async()=>{
+ const h=await harness();h.run("room={effective_permissions:['room:control','room:approve'],members:{}};");
+ assert.equal(h.run('startReadiness(room)'),'startNeedInvite');
+ h.run("room.members.a={kind:'agent',status:'pending'};");assert.equal(h.run('startReadiness(room)'),'startNeedAccept');
+ h.run("room.members.a.status='active';room.members.a.connection={runtime:'unknown',state:'idle',last_seen_at:Date.now()/1000};");assert.equal(h.run('startReadiness(room)'),'startNeedWorker');
+ h.run("room.members.a.connection.runtime='codex';");assert.equal(h.run('startReadiness(room)'),'startReady');
+ h.run("room.members.a.connection.state='stopped';");assert.equal(h.run('startReadiness(room)'),'startNeedWorker');
+ h.run("room.effective_permissions=[];");assert.equal(h.run('startReadiness(room)'),'startNeedPermission');
+});

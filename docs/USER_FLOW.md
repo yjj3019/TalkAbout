@@ -71,3 +71,11 @@ In the participant's own environment, save the non-secret `agent.local.json`, ru
 Start the worker while the room is preparing. Once an accepted agent has recent authenticated worker contact, the human uses **Management → Start discussion**. The 15-minute room limit begins at start. Structured discussion schedules proposal/review/synthesis; co-creation schedules researcher/creator/reviewer and waits for human adoption. Free discussion requires `--request-turn`; questions, advice and mentions do not trigger recursive calls.
 
 Registration, membership acceptance, authenticated contact, worker-reported execution and published text are separate evidence. Model identity, true provider execution and token usage are not certified by an online indicator or a self-reported capability. Failed or uncertain calls retain journal state and never blindly replay a provider invocation. Binary uploads, public sharing, summaries and A2A remain outside this implemented flow.
+
+## 실행 제한 보완 / Execution bounds (2026-10-15)
+
+`--max-seconds`는 run 준비 HTTP 요청부터 공유하는 하나의 monotonic deadline입니다. 느린 HTTP 응답 뒤, 실제 CLI 실행 직전, 결과 제출 직전에 다시 검사합니다. 기한이 지나면 새 CLI나 제출을 시작하지 않습니다. 이미 전송된 HTTP 요청의 서버 처리는 되돌릴 수 없으며, 네트워크 요청과 프로세스 종료 확인에 필요한 정리 시간은 제한 시각 이후에도 걸릴 수 있습니다.
+
+정상 성공·실패·timeout·stop·heartbeat 실패 모두 로컬 자식 정리를 거칩니다. Windows에서는 suspended 생성 후 kill-on-close Job에 먼저 넣고 실행하며, 종료된 leader의 후손도 종료·대기합니다. POSIX 구현은 별도 session/process group과 Linux subreaper를 사용합니다. 이는 신뢰된 로컬 CLI의 수명 관리이며 악성 실행물의 격리 sandbox가 아닙니다. 정리 확인 실패는 성공이나 중지 완료로 보고하지 않습니다. stdout과 stderr를 합친 2 MiB 한도는 빠른 종료 후에도 검사합니다.
+
+One absolute monotonic run deadline covers preflight HTTP, runtime launch and result submission. Expired runs do not start another CLI or submission; an already dispatched HTTP operation cannot be rolled back. Network completion and confirmed child cleanup may take additional time. Windows uses a suspended launch into a kill-on-close Job and waits for descendant exit even after the leader exits. The POSIX implementation uses a separate session/process group and Linux subreaper; it is lifecycle management for a trusted CLI, not a hostile-code sandbox. Cleanup failures remain unconfirmed. The combined stdout/stderr limit is checked after fast exits too. Linux execution of these new regressions remains NOTRUN; Windows verification does not establish Linux behavior.

@@ -13,7 +13,7 @@ from urllib.parse import urlsplit
 import httpx
 
 from .domain import digest
-from .runtime import RuntimeTimeout, bounded_call, validate_adapter_policy
+from .runtime import BudgetedClient, RuntimeTimeout, bounded_call, check_deadline, validate_adapter_policy
 
 
 class StopRequested(Exception):
@@ -51,17 +51,22 @@ class APIClient:
                                    follow_redirects=False, timeout=15, transport=transport)
         self.retry_policy = retry_policy or RetryPolicy()
         self.should_stop = lambda: False
+        self.deadline = None
 
     def request(self, method, path, body=None, key=None, params=None):
         headers = {"Idempotency-Key": key} if key else {}
         policy, started = self.retry_policy, time.monotonic()
         safe = method.upper() == "GET" or bool(key)
         for attempt in range(policy.attempts):
+            check_deadline(self.deadline)
             if self.should_stop():
                 raise StopRequested()
             try:
                 remaining = max(0.001, policy.budget_seconds - (time.monotonic() - started))
+                if self.deadline is not None:
+                    remaining = min(remaining, max(0.001, self.deadline - time.monotonic()))
                 response = self.client.request(method, path, json=body, headers=headers, params=params, timeout=min(15, remaining))
+                check_deadline(self.deadline)
                 response.raise_for_status()
                 return response.json()
             except (httpx.TimeoutException, httpx.NetworkError, httpx.RemoteProtocolError, httpx.HTTPStatusError) as error:
@@ -85,6 +90,7 @@ class APIClient:
                     raise
                 until = time.monotonic() + delay
                 while time.monotonic() < until:
+                    check_deadline(self.deadline)
                     if self.should_stop():
                         raise StopRequested()
                     time.sleep(min(0.02, max(0, until - time.monotonic())))
@@ -168,14 +174,19 @@ class SyntheticRuntime:
 
 
 class Worker:
-    def __init__(self, client, journal, runtime, heartbeat_interval=3, runtime_timeout=30, adapter_policy=None):
-        self.client, self.journal, self.runtime = client, journal, runtime
+    def __init__(self, client, journal, runtime, heartbeat_interval=3, runtime_timeout=30, adapter_policy=None, run_deadline=None):
+        self.run_deadline = run_deadline
+        self.client = BudgetedClient(client, run_deadline) if run_deadline is not None else client
+        self.journal, self.runtime = journal, runtime
         if isinstance(client, APIClient):
             client.should_stop = journal.stop_requested
+            client.deadline = run_deadline
+        if callable(getattr(runtime, 'set_deadline', None)):
+            runtime.set_deadline(run_deadline)
         self.heartbeat_interval = heartbeat_interval
         self.runtime_timeout = runtime_timeout
         validate_adapter_policy(adapter_policy or {"external": False, "allowed_tools": []})
-        self.actor = client.request("GET", "agents/me")
+        self.actor = self.client.request("GET", "agents/me")
         self.actor_id = self.actor["id"]
 
     def request_turns(self):
@@ -207,6 +218,7 @@ class Worker:
         self.journal.ingest(response, self.actor_id)
 
     def step(self):
+        check_deadline(self.run_deadline)
         if self.journal.stop_requested():
             status = self.journal.status()
             unknown = status.get("uncertain", 0) or status.get("call_started", 0)
@@ -285,6 +297,7 @@ class Worker:
                 context["round"] = task.get("round")
                 context["artifact_proposals"] = [{"artifact_id": a["id"], "text": a["versions"][-1]["text"]} for a in room["artifacts"] if a["versions"]][-4:]
                 # Credentials, cursors, lease state, and retry keys are never model inputs.
+                check_deadline(self.run_deadline)
                 payload["runtime_started"] = True
                 self.journal.save(tid, "call_started", payload)
                 cancel, finished = threading.Event(), threading.Event()
@@ -318,7 +331,9 @@ class Worker:
                 thread.start()
                 watcher.start()
                 try:
-                    text = bounded_call(self.runtime, context, cancel, min(self.runtime_timeout, max(0, task["deadline"] - time.time())))
+                    remaining = self.run_deadline - time.monotonic() if self.run_deadline is not None else float('inf')
+                    text = bounded_call(self.runtime, context, cancel, min(self.runtime_timeout, max(0, task["deadline"] - time.time()), remaining))
+                    check_deadline(self.run_deadline)
                 except RuntimeTimeout as error:
                     if stop_seen.is_set():
                         self.journal.save(tid, "cancelled" if error.runtime_stopped else "uncertain", payload)
@@ -343,6 +358,7 @@ class Worker:
                 self.journal.save(tid, "stopped_before_submit", payload)
                 self.journal.stop_state("stopped")
                 return "stopped"
+            check_deadline(self.run_deadline)
             self.client.request("POST", prefix + "/complete", payload["complete"], payload["complete_key"])
             self.journal.save(tid, "done", payload)
             return "completed"
