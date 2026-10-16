@@ -223,7 +223,10 @@ class StructuredRuntime:
     probe() reports installation, not authentication or provider readiness. The
     Grok ACP path uses an empty GROK_HOME and requires an explicit XAI_API_KEY;
     native Grok login currently fails closed because config/auth share one home.
-    Explicit auth_mode='api_key' enables its isolated-home ACP implementation.
+    Explicit auth_mode='api_key' selects its isolated-home ACP implementation,
+    but launch remains gated until the exact binary's profile and repository
+    discovery has passed a credential-free startup canary. There is no user
+    trust/bypass switch for this missing isolation evidence.
     No adapter reads/copies OAuth tokens or falls back to API-key billing.
     """
     def __init__(self, kind, executable=None, platform_credential=None,
@@ -279,6 +282,7 @@ class StructuredRuntime:
                   'runtime_shell_wrapper_unsupported' if script else
                   'runtime_auth_mode_unsupported' if self.kind == 'grok' and self.auth_mode == 'native' else
                   'runtime_auth_required' if self.auth_mode == 'api_key' and not key_present else
+                  'runtime_workspace_isolation_unverified' if self.kind == 'grok' else
                   'runtime_containment_unsupported' if not _containment_supported() else None)
         return {'kind': self.kind, 'available': available and not script,
                 'containment_supported': _containment_supported(), 'runtime_version': self.runtime_version,
@@ -415,6 +419,25 @@ class StructuredRuntime:
         return [self.executable, '--no-auto-update', '--tools', '', '--deny', '*', '--sandbox', 'read-only',
                 '--no-plan', '--no-subagents', '--disable-web-search', 'agent', 'stdio']
 
+    def _ensure_grok_repo_boundary(self):
+        """Bound pinned-source RepoDirChain discovery to this owned workspace.
+
+        This is a real empty non-bare Git layout, not just a .git marker. No
+        git init subprocess, global Git config, hooks, remotes, or user repo is
+        consulted. Installed Grok's discovery behavior remains separately gated.
+        """
+        if getattr(self, '_grok_repo_initialized', False):
+            return
+        git = Path(self._workspace.name) / '.git'
+        if git.exists():
+            raise AdapterError('runtime_workspace_isolation_unverified')
+        git.mkdir(mode=0o700)
+        for name in ('objects/info', 'objects/pack', 'refs/heads', 'refs/tags'):
+            (git / name).mkdir(parents=True, exist_ok=True)
+        (git / 'HEAD').write_text('ref: refs/heads/main\n', encoding='ascii')
+        (git / 'config').write_text('[core]\n\trepositoryformatversion = 0\n\tbare = false\n\tfilemode = false\n', encoding='ascii')
+        self._grok_repo_initialized = True
+
     def _environment(self):
         env = runtime_environment(self.kind, self.blocked_names, self.blocked_values)
         if self.auth_mode == 'api_key':
@@ -432,9 +455,29 @@ class StructuredRuntime:
                 raise AdapterError('runtime_auth_mode_unsupported')
             if not env.get('XAI_API_KEY'):
                 raise AdapterError('runtime_auth_required')
-            home = Path(self._workspace.name) / 'grok-home'
-            home.mkdir(exist_ok=True)
-            env['GROK_HOME'] = str(home)
+            self._ensure_grok_repo_boundary()
+            # Grok's Windows home discovery uses USERPROFILE, not just GROK_HOME.
+            # Isolate all profile/config/cache roots; otherwise global hooks, plugins,
+            # .agents, or compatibility files could still load from the real user.
+            profile = Path(self._workspace.name) / 'profile'
+            roots = {
+                'HOME': profile, 'USERPROFILE': profile,
+                'APPDATA': profile / 'AppData' / 'Roaming',
+                'LOCALAPPDATA': profile / 'AppData' / 'Local',
+                'XDG_CONFIG_HOME': profile / '.config',
+                'XDG_DATA_HOME': profile / '.local' / 'share',
+                'XDG_CACHE_HOME': profile / '.cache',
+                'XDG_STATE_HOME': profile / '.local' / 'state',
+                'GROK_HOME': profile / '.grok',
+                'TEMP': profile / 'tmp', 'TMP': profile / 'tmp',
+                'TMPDIR': profile / 'tmp',
+            }
+            for key in list(env):
+                if key.upper() in roots or key.upper() in {'HOMEDRIVE', 'HOMEPATH'}:
+                    env.pop(key)
+            for key, directory in roots.items():
+                directory.mkdir(parents=True, exist_ok=True)
+                env[key] = str(directory)
             env['GROK_DISABLE_AUTOUPDATER'] = '1'
             for source in ('CURSOR', 'CLAUDE'):
                 for feature in ('SKILLS', 'RULES', 'AGENTS', 'MCPS', 'HOOKS'):
@@ -858,7 +901,7 @@ class StructuredRuntime:
             if time.monotonic() >= self._deadline:
                 raise AdapterError('runtime_timeout')
             probe = self.probe()
-            if not probe['available'] or probe['reason'] in {'runtime_auth_required', 'runtime_auth_mode_unsupported'}:
+            if not probe['available'] or probe['reason'] in {'runtime_auth_required', 'runtime_auth_mode_unsupported', 'runtime_workspace_isolation_unverified'}:
                 raise AdapterError(probe['reason'])
             self._room_id = room_id
             if self._workspace is None:

@@ -135,6 +135,10 @@ def runtime(monkeypatch, kind, behavior='success'):
     monkeypatch.setattr('talkabout.agent_runtime.execute_bounded', lambda *args, **kwargs: json.dumps({'authMethod': 'claude.ai', 'loggedIn': True}))
     monkeypatch.setenv('XAI_API_KEY', 'synthetic-test-key-not-real')
     adapter = StructuredRuntime(kind, executable=sys.executable, auth_mode='api_key' if kind == 'grok' else 'native', codex_transport='app-server')
+    if kind == 'grok':
+        # Synthetic peers test ACP independently of unverified vendor startup.
+        real_probe = adapter.probe
+        adapter.probe = lambda: {**real_probe(), 'reason': None}
     return adapter, peer
 
 
@@ -567,6 +571,10 @@ def preflight_fixture(monkeypatch, kind, missing=None, version=None):
         pytest.fail('Preflight attempted something other than help/version')
     monkeypatch.setattr('talkabout.agent_runtime.execute_bounded', local)
     adapter = StructuredRuntime(kind, executable=sys.executable, auth_mode='api_key' if kind == 'grok' else 'native', codex_transport='app-server')
+    if kind == 'grok':
+        # Synthetic peers test ACP independently of unverified vendor startup.
+        real_probe = adapter.probe
+        adapter.probe = lambda: {**real_probe(), 'reason': None}
     return adapter, seen
 
 
@@ -787,3 +795,73 @@ def test_codex_explicit_api_mode_scopes_official_exec_key_without_saved_login(mo
     assert 'CODEX_API_KEY' not in native._environment()
     assert 'OPENAI_API_KEY' not in native._environment()
     adapter.shutdown(); native.shutdown()
+
+
+def test_grok_explicit_api_isolates_every_profile_root_and_native_auth(monkeypatch):
+    original_profile = '/synthetic-original-user-profile'
+    profile_names = ('HOME', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA', 'XDG_CONFIG_HOME',
+                     'XDG_DATA_HOME', 'XDG_CACHE_HOME', 'XDG_STATE_HOME', 'TEMP', 'TMP', 'TMPDIR')
+    for name in profile_names:
+        monkeypatch.setenv(name, original_profile + '/' + name.lower())
+    for name in ('GROK_HOME', 'GROK_AUTH', 'GROK_AUTH_PATH', 'GROK_MODELS_BASE_URL',
+                 'GROK_XAI_API_BASE_URL', 'HOMEDRIVE', 'HOMEPATH'):
+        monkeypatch.setenv(name, 'synthetic-inherited-value-that-must-not-leak')
+    monkeypatch.setenv('OPENAI_API_KEY', 'synthetic-unselected-openai')
+    monkeypatch.setenv('ANTHROPIC_API_KEY', 'synthetic-unselected-anthropic')
+    adapter, peer = runtime(monkeypatch, 'grok')
+    try:
+        adapter.run({'room_id': 'room-one'}, threading.Event())
+        env = peer.transports[0].env
+        from pathlib import Path
+        profile = Path(peer.transports[0].cwd) / 'profile'
+        for name in profile_names + ('GROK_HOME',):
+            directory = Path(env[name])
+            assert directory == profile or profile in directory.parents
+            assert directory.is_dir()
+            assert original_profile not in env[name]
+        assert env['HOME'] == env['USERPROFILE']
+        assert env['APPDATA'] != env['LOCALAPPDATA']
+        assert env['XAI_API_KEY'] == 'synthetic-test-key-not-real'
+        assert not {'GROK_AUTH', 'GROK_AUTH_PATH', 'GROK_MODELS_BASE_URL', 'GROK_XAI_API_BASE_URL',
+                    'HOMEDRIVE', 'HOMEPATH', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY'} & env.keys()
+        assert env['GROK_MEMORY'] == '0'
+        assert env['GROK_CLAUDE_HOOKS_ENABLED'] == env['GROK_CURSOR_HOOKS_ENABLED'] == '0'
+    finally:
+        adapter.shutdown()
+
+
+def test_grok_owned_repo_boundary_is_a_valid_nonbare_git_workdir(monkeypatch, tmp_path):
+    import shutil
+    import subprocess
+    git = shutil.which('git')
+    if not git:
+        pytest.skip('Local Git unavailable for credential-free layout validation')
+    monkeypatch.setenv('XAI_API_KEY', 'synthetic-only')
+    adapter = StructuredRuntime('grok', executable=sys.executable, auth_mode='api_key')
+    adapter._workspace = type('Workspace', (), {'name': str(tmp_path)})()
+    env = adapter._environment()
+    nested = tmp_path / 'nested'; nested.mkdir()
+    env.update(GIT_CONFIG_NOSYSTEM='1', GIT_CONFIG_GLOBAL=os.devnull)
+    result = subprocess.run([git, '-C', str(nested), 'rev-parse', '--show-toplevel', '--is-bare-repository'],
+                            env=env, capture_output=True, text=True, timeout=5, shell=False)
+    assert result.returncode == 0
+    lines = result.stdout.splitlines()
+    assert os.path.realpath(lines[0]) == os.path.realpath(tmp_path)
+    assert lines[1] == 'false'
+    assert not (tmp_path / '.git' / 'hooks').exists()
+    assert 'remote' not in (tmp_path / '.git' / 'config').read_text()
+    adapter._workspace = None
+    adapter.shutdown()
+
+
+def test_grok_api_launch_remains_blocked_until_exact_binary_isolation_verified(monkeypatch):
+    monkeypatch.setenv('XAI_API_KEY', 'synthetic-test-key')
+    monkeypatch.setattr('talkabout.agent_runtime._JSONLTransport', lambda *args: pytest.fail('Unverified binary must not start'))
+    adapter = StructuredRuntime('grok', executable=sys.executable, auth_mode='api_key')
+    assert adapter.probe()['reason'] == 'runtime_workspace_isolation_unverified'
+    with pytest.raises(AdapterError, match='runtime_workspace_isolation_unverified'):
+        adapter.preflight()
+    with pytest.raises(AdapterError, match='runtime_workspace_isolation_unverified'):
+        adapter.run({'room_id': 'room-one'}, threading.Event())
+    assert adapter.calls == 0 and adapter._workspace is None
+    adapter.shutdown()

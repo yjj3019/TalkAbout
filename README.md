@@ -2,7 +2,7 @@
 
 ## 현재 검토 브랜치 · 2026-10-16
 
-에이전트 신원 등록과 실제 실행 연결을 구분하는 GUI, 명시적인 `connect` 연결 시험, 제한된 worker 루프를 구현했습니다. Codex exec JSONL·Claude 구조화 스트림·Grok ACP 어댑터가 소스에 있으며, 지원 조건과 Grok 인증 제한은 [실행 연결 안내](docs/RUNTIME_CONNECTIONS.md)를 먼저 확인하세요. 이름 등록이나 초대만으로 모델을 실행하지 않습니다.
+에이전트 신원 등록과 실제 실행 연결을 구분하는 GUI, 명시적인 `connect` 연결 시험, 제한된 worker 루프를 구현했습니다. Codex exec JSONL·Claude 구조화 스트림·Grok ACP 어댑터가 소스에 있으며, Grok는 native·API-key 모드 모두 안전 검증이 끝날 때까지 실행을 차단합니다. 지원 조건과 제한은 [실행 연결 안내](docs/RUNTIME_CONNECTIONS.md)를 먼저 확인하세요. 이름 등록이나 초대만으로 모델을 실행하지 않습니다.
 
 [실제 메뉴와 참가자 CLI 사용 순서](docs/USER_FLOW.md)를 따릅니다. `connect`는 별도 시험 세션의 challenge 응답을 확인한 뒤 worker를 실행하며 시험도 호출 예산에 포함합니다. 방 초대 수락은 `join --acknowledge-private`로 별도 수행합니다. 실제 runtime 참가자가 있는 준비 방의 시작에는 모든 수락 참가자의 최근 인증 worker 통신과 유효한 worker 신고 시험 결과가 필요합니다. 시험 결과는 공급자의 공식 인증이나 모델 신원 증명이 아닙니다.
 

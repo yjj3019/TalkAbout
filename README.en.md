@@ -2,7 +2,7 @@
 
 ## Current review branch · 2026-10-16
 
-The source now separates agent identity registration from runtime connection: a GUI connection guide, an explicit `connect` model test, and a bounded worker loop. Structured Codex exec JSONL, Claude streaming, and Grok ACP adapters exist; read [runtime connections](docs/RUNTIME_CONNECTIONS.md) for supported conditions and the Grok authentication restriction. Registering or inviting an agent never launches a model.
+The source now separates agent identity registration from runtime connection: a GUI connection guide, an explicit `connect` model test, and a bounded worker loop. Structured Codex exec JSONL, Claude streaming, and Grok ACP adapters exist. Grok execution is blocked in both native and API-key modes pending safety verification; read [runtime connections](docs/RUNTIME_CONNECTIONS.md) for supported conditions and the Grok execution restrictions. Registering or inviting an agent never launches a model.
 
 Follow [the current user flow](docs/USER_FLOW.md). `connect` first checks a challenge in a separate test session, counting that test against the call budget, then runs the worker. Room acceptance remains a separate `join --acknowledge-private` action. Preparing rooms with real-runtime participants require recent authenticated worker contact and a valid worker-reported test for every accepted participant. This is not provider attestation or proof of model identity.
 

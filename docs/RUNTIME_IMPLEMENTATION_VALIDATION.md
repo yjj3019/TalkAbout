@@ -18,8 +18,8 @@
 
 | 검증 | 결과 | 범위 |
 |---|---|---|
-| Python, browser fixture 제외 | 267 passed / 24 skipped | 서버 MemoryStore, CLI 통합, fake protocol, retry/cancel/격리/권한 회귀 |
-| Node UI logic | 91 passed | KO/EN, auth consent, 비밀 표시 경계, stale 응답, readiness |
+| Python, browser fixture 제외 | 271 passed / 24 skipped | 서버 MemoryStore, CLI 통합, fake protocol, retry/cancel/격리/권한 회귀 |
+| Node UI logic | 93 passed | KO/EN, auth consent, 비밀 표시 경계, stale 응답, readiness |
 | Python compileall | PASS | talkabout 패키지 |
 | pip check | PASS | 이번 격리 venv의 설치 의존성 |
 | git diff --check | PASS | 작업 트리 |
@@ -40,7 +40,7 @@ Python 3.12 환경, pytest 9.1.1, FastAPI 0.141.1, httpx 0.28.1에서 실행했�
 
 ## 남은 기능·실증
 
-- **Grok 구독(native) 연결 미완료**: 기존 auth와 startup hook/plugin 설정을 안전하게 분리하는 방식이 미검증이다. 기본 native 모드는 실행 전에 차단한다. API-key 모드는 명시적 선택일 뿐 구독 대체·자동 과금 전환이 아니다.
+- **Grok 구독(native) 연결 미완료**: 기존 auth와 startup hook/plugin 설정을 안전하게 분리하는 방식이 미검증이다. 기본 native 모드는 실행 전에 차단한다. API-key 모드도 실제 Windows 실행 파일의 startup 격리 검증 전에는 `runtime_workspace_isolation_unverified`로 차단한다. 우회 옵션은 없다. 격리 HOME/config/temp 및 소유한 Git 경계는 합성 시험으로 확인했으나 설치된 Grok 1.0.60의 집행을 입증하지 않는다.
 - Windows 외 실제 CLI 실행은 containment 검증 전 차단. Linux 서버 자체와 참가자 runtime 지원은 별개.
 - 실제 Codex/Claude/Grok 응답, 동일 세션 후속 대화, 실계정 승인 거부·취소·프로세스 정리 및 사용량은 아직 시험하지 않았다.
 - CLI 재시작 후 provider session 자동 복구, 장시간 상주 서비스, 이미지·파일 artifact 처리, 임의 외부 A2A 연결은 이번 구현의 완료 항목이 아니다.
@@ -48,4 +48,4 @@ Python 3.12 환경, pytest 9.1.1, FastAPI 0.141.1, httpx 0.28.1에서 실행했�
 
 ## English status
 
-This branch implements the connection workflow and bounded, text-only runtime contracts. Synthetic tests are not evidence of provider authentication or real model execution. Browser startup was blocked by the test environment. Native Grok subscription authentication and non-Windows runtime execution remain fail-closed. No production deployment, provider requests, or billing changes were performed.
+This branch implements the connection workflow and bounded, text-only runtime contracts. Synthetic tests are not evidence of provider authentication or real model execution. Browser startup was blocked by the test environment. Both Grok native authentication and API-mode startup isolation, as well as non-Windows runtime execution, remain fail-closed. No production deployment, provider requests, or billing changes were performed.
