@@ -166,7 +166,8 @@ def test_cli_check_is_read_only_and_preserves_runtime_receipt(fixture,tmp_path,m
     assert IdentityService(store).list('fixture-human')[0]['runtime_check']==before
 
 
-def test_cli_connect_integrates_check_then_real_adapter_contract(fixture,tmp_path,monkeypatch,capsys):
+@pytest.mark.parametrize("stopped", [False, True], ids=["fresh", "explicit-resume"])
+def test_cli_connect_integrates_check_then_real_adapter_contract(fixture,tmp_path,monkeypatch,capsys,stopped):
     import os,sys,json
     from talkabout import cli,agent_runtime
     store,core,rid=fixture
@@ -188,7 +189,27 @@ def test_cli_connect_integrates_check_then_real_adapter_contract(fixture,tmp_pat
     monkeypatch.setattr(cli,'APIClient',lambda *a:client)
     monkeypatch.setattr(agent_runtime,'StructuredRuntime',ProtocolFixture)
     monkeypatch.setattr(sys,'argv',['talkabout','connect','--config',str(config),'--runtime','codex','--approve-external','--max-model-calls','2','--steps','1','--max-seconds','10'])
+    if stopped:
+        journal = Journal(tmp_path/'cli.sqlite')
+        with journal.db:
+            journal.set_setting('stop', True)
+            journal.set_setting('stop_state', 'stop_requested')
+        journal.close()
+        with pytest.raises(SystemExit, match='connector_stopped'):
+            cli.main()
+        assert all(runtime.calls == 0 and runtime.closed for runtime in runtimes)
+        assert client.calls == []
+        journal = Journal(tmp_path/'cli.sqlite')
+        assert journal.stop_requested()
+        journal.close()
+        runtimes.clear()
+        client = LocalClient(store)
+        client.close = client.http.close
+        sys.argv.append('--resume-worker')
     cli.main()
+    journal = Journal(tmp_path/'cli.sqlite')
+    assert not journal.stop_requested()
+    journal.close()
     assert len(runtimes)==2 and all(r.closed for r in runtimes)
     assert sum(r.calls for r in runtimes)==2
     assert core.read('fixture-human',rid)['messages'][0]['text']=='Synthetic adapter integration output'
@@ -214,3 +235,62 @@ def test_cli_preflight_failure_precedes_server_challenge(fixture,tmp_path,monkey
     monkeypatch.setattr(sys,'argv',['talkabout','connect','--config',str(config),'--runtime','codex','--approve-external'])
     with pytest.raises(SystemExit,match='runtime_version_unsupported'):cli.main()
     assert not any('runtime-checks' in path for _,path in client.calls)
+
+
+@pytest.mark.parametrize('command,membership', [('check', None), ('join', 'pending'),
+                                               ('join', 'accepted')],
+                         ids=['check', 'join-pending', 'join-already-accepted'])
+def test_cli_recovery_preserves_stop_without_model(tmp_path, monkeypatch, capsys, command, membership):
+    import json
+    import sys
+    import httpx
+    from talkabout import cli, agent_runtime
+    from talkabout.worker import APIClient
+
+    journal_path = tmp_path/'stopped.sqlite'
+    journal = Journal(journal_path)
+    with journal.db:
+        journal.set_setting('stop', True)
+        journal.set_setting('stop_state', 'stop_requested')
+    journal.close()
+    config = tmp_path/'agent.json'
+    config.write_text(json.dumps({'base_url': 'https://fixture.invalid',
+                                 'allowed_origin': 'https://fixture.invalid',
+                                 'journal_path': str(journal_path)}))
+    requests = []
+    def handler(request):
+        path = request.url.path.removeprefix('/api/v1/')
+        requests.append((request.method, path))
+        if path == 'agents/me':
+            return httpx.Response(200, json={'id': 'fixture-a', 'kind': 'agent'})
+        if path == 'agents/me/invitations':
+            return httpx.Response(200, json=[{'room_id': 'fixture-room', 'membership_revision': 3}]
+                                  if membership == 'pending' else [])
+        if path == 'rooms':
+            return httpx.Response(200, json=[{'id': 'fixture-room', 'state': 'active'}])
+        assert path == 'rooms/fixture-room/memberships/me/accept'
+        assert request.method == 'POST' and request.headers['Idempotency-Key']
+        assert json.loads(request.content) == {'expected_revision': 3, 'acknowledge_private': True}
+        return httpx.Response(200, json={})
+    def no_model(*args, **kwargs):
+        pytest.fail('Recovery commands must never construct a model runtime')
+    monkeypatch.setattr(agent_runtime, 'StructuredRuntime', no_model)
+    monkeypatch.setattr(cli, 'SyntheticRuntime', no_model)
+    monkeypatch.setattr(cli, 'APIClient', lambda *args: APIClient(*args, transport=httpx.MockTransport(handler)))
+    monkeypatch.setenv('TALKABOUT_TOKEN', 'fixture-a')
+    argv = ['talkabout', command, '--config', str(config)]
+    if command == 'join':
+        argv += ['--room', 'fixture-room', '--acknowledge-private']
+    monkeypatch.setattr(sys, 'argv', argv)
+    cli.main()
+    assert json.loads(capsys.readouterr().out)['external_runtime'] == 'NOTRUN'
+    expected = [('GET', 'agents/me')] if command == 'check' else [
+        ('GET', 'agents/me/invitations'),
+        ('POST', 'rooms/fixture-room/memberships/me/accept') if membership == 'pending' else ('GET', 'rooms')]
+    assert requests == expected
+    journal = Journal(journal_path)
+    try:
+        assert journal.stop_requested()
+        assert journal.setting('stop_state') == 'stop_requested'
+    finally:
+        journal.close()

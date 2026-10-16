@@ -101,3 +101,39 @@ for(const language of ['ko','en'])test('resume-worker is explained as optional, 
 for(const runtime of ['codex','claude'])test(runtime+' API mode still requires explicit billing consent',async()=>{
  const h=await harness();h.run('showConnection(agents[0]);');h.node('connection-runtime').value=runtime;h.node('connection-runtime').onchange();h.node('connection-auth-mode').value='api_key';h.node('connection-auth-mode').onchange();assert.equal(h.node('connection-command').textContent,'');assert.equal(h.node('connection-issue').disabled,true);h.node('connection-api-consent').checked=true;h.node('connection-api-consent').onchange();assert.ok(h.node('connection-command').textContent.includes('--runtime '+runtime+' --auth-mode api_key'));assert.equal(h.node('connection-issue').disabled,false);
 });
+for(const language of ['ko','en'])test('room-specific budgets and free-turn opt-in '+language,async()=>{
+ const h=await harness();h.run(`view.language='${language}';showOnboarding({id:'room',topic:'Synthetic',mode:'bounded_rounds',limits:{rounds:1}},agents[0]);`);let command=h.node('onboarding-commands').textContent;assert.match(command,/cli connect.*--max-model-calls 4/);assert.ok(command.indexOf('cli join')<command.indexOf('cli connect'));assert.ok(!command.includes('--request-turn'));
+ h.run("showOnboarding({id:'room',topic:'Synthetic',mode:'bounded_rounds',limits:{rounds:2}},agents[0]);");assert.match(h.node('onboarding-commands').textContent,/--max-model-calls 7/);
+ h.run("showOnboarding({id:'room',topic:'Synthetic',mode:'bounded_rounds',limits:{rounds:4}},agents[0]);");assert.match(h.node('onboarding-commands').textContent,/--max-model-calls 10/);assert.ok(h.node('onboarding-budget').textContent.includes(labels[language].roomBudgetContinuation));
+ h.run("showOnboarding({id:'room',topic:'Synthetic',mode:'co_creation'},agents[0]);");assert.match(h.node('onboarding-commands').textContent,/--max-model-calls 4/);
+ h.run("showOnboarding({id:'room',topic:'Synthetic',mode:'free_discussion'},agents[0]);");assert.ok(!h.node('onboarding-commands').textContent.includes('cli connect'));h.node('onboarding-turn-consent').checked=true;h.node('onboarding-turn-consent').onchange();assert.match(h.node('onboarding-commands').textContent,/cli connect.*--max-model-calls 3.*--request-turn/);
+});
+test('recent worker defaults to join-only; restart is explicit and waits for previous exit',async()=>{
+ const h=await harness();h.run("agents[0].connection={runtime:'codex',state:'idle',last_seen_at:Date.now()/1000};showOnboarding({id:'room',topic:'Synthetic',mode:'bounded_rounds'},agents[0]);");assert.equal(h.node('onboarding-action').value,'join_only');assert.ok(!h.node('onboarding-commands').textContent.includes('cli connect'));assert.ok(!h.node('onboarding-commands').textContent.includes('cli run'));assert.match(h.node('onboarding-commands').textContent,/cli join/);
+ h.node('onboarding-action').value='restart';h.node('onboarding-action').onchange();const command=h.node('onboarding-commands').textContent;assert.ok(command.indexOf('cli stop')<command.indexOf('cli connect'));assert.ok(command.includes(labels.ko.roomWaitForExit));assert.match(command,/cli connect.*--max-model-calls 4.*--resume-worker/);assert.equal(h.calls.filter(c=>c.options.method==='POST').length,0);
+});
+test('registry prioritizes room setup and clearly makes generic connector optional',()=>{
+ assert.match(html,/<details><summary data-i18n="optionalRegistryConnection"/);assert.equal((html.match(/id="connection-rooms"/g)||[]).length,1);for(const language of ['ko','en']){assert.ok(labels[language].clientSetupHelp.includes('3.12'));assert.ok(labels[language].clientSetupHelp.includes('python -m pip install .'));assert.ok(labels[language].connectionInviteHelp.includes('300'));}
+});
+test('room-first flow preserves explicitly selected Claude runtime without launching it',async()=>{
+ const h=await harness();h.run('showConnection(agents[0]);');h.node('connection-runtime').value='claude';h.node('connection-runtime').onchange();h.run("clearConnection();showOnboarding({id:'room',topic:'Synthetic',mode:'bounded_rounds'},agents[0]);");assert.match(h.node('onboarding-commands').textContent,/--runtime claude --auth-mode native/);assert.equal(h.calls.filter(c=>c.options.method==='POST').length,0);
+});
+test('stopped failed stale future and invalid heartbeat never defaults to join-only',async()=>{
+ const h=await harness(),now=Date.now()/1000;for(const connection of [{state:'stopped',last_seen_at:now},{state:'failed',last_seen_at:now},{state:'idle',last_seen_at:now-76},{state:'idle',last_seen_at:now+60},{state:'idle',last_seen_at:'invalid'}]){h.run(`agents[0].connection=${JSON.stringify({runtime:'codex',...connection})};showOnboarding({id:'room',topic:'Synthetic',mode:'bounded_rounds'},agents[0]);`);assert.equal(h.node('onboarding-action').value,'start');}
+});
+test('recent other-room scoped worker requires explicit restart choice and a valid current-room credential',async()=>{
+ const h=await harness();h.run("agents[0].connection={runtime:'codex',state:'idle',last_seen_at:Date.now()/1000,room_id:'other-room'};showOnboarding({id:'room',topic:'Synthetic',mode:'bounded_rounds'},agents[0]);");assert.equal(h.node('onboarding-action').value,'');assert.ok(!h.node('onboarding-commands').textContent.includes('cli connect'));assert.ok(h.node('onboarding-commands').textContent.includes(labels.ko.roomScopeMismatch));
+ h.run("agents[0].connection.room_id='room';showOnboarding({id:'room',topic:'Synthetic',mode:'bounded_rounds'},agents[0]);");assert.equal(h.node('onboarding-action').value,'join_only');
+});
+test('ineligible memberships suppress paid launch; pending full-permission invite stays supported',async()=>{
+ const h=await harness();for(const membership of [null,{status:'blocked'},{status:'left'},{status:'active',permissions:['room:read']},{status:'pending',permissions:['room:read']}]){h.run(`room={id:'room',topic:'Synthetic',mode:'bounded_rounds',members:{}};if(${JSON.stringify(membership)}!==null)room.members[agents[0].id]={permissions:[...participantPermissions],...${JSON.stringify(membership)}};showOnboarding(room,agents[0]);`);assert.ok(!h.node('onboarding-commands').textContent.includes('cli connect'));assert.ok(h.node('onboarding-commands').textContent.includes(labels.ko.roomMembershipRepair));}
+ h.run("room.members[agents[0].id]={status:'pending',permissions:[...participantPermissions]};showOnboarding(room,agents[0]);");assert.match(h.node('onboarding-commands').textContent,/cli join/);assert.match(h.node('onboarding-commands').textContent,/cli connect/);assert.equal(h.calls.filter(c=>c.options.method==='POST').length,0);
+});
+for(const language of ['ko','en'])test('invite candidate empty state distinguishes no identities from already-invited agents '+language,async()=>{
+ const h=await harness();h.run(`view.language='${language}';room={id:'room',state:'preparing',members:{}};agents=[];`);
+ // Supply select option support used by the browser renderer.
+ Object.defineProperty(h.node('invite-agent-id'),'options',{get(){return this.children;}});
+ h.run('renderParticipants(room);');assert.ok(h.node('invite-agent-id').textContent.includes(labels[language].noInviteCandidates));
+ h.run(`agents=[${JSON.stringify(agent)}];room.members[agents[0].id]={kind:'agent',status:'pending',permissions:[...participantPermissions]};renderParticipants(room);`);
+ assert.ok(h.node('invite-agent-id').textContent.includes(labels[language].allAgentsAlreadyMembers));assert.ok(!h.node('invite-agent-id').textContent.includes(labels[language].noInviteCandidates));assert.ok(h.node('members').textContent.includes(labels[language].pendingAcceptanceHelp));assert.ok(h.node('members').textContent.includes(labels[language].pendingParticipationGuide));assert.equal(h.calls.filter(c=>c.options.method==='POST').length,0);
+});

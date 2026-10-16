@@ -116,7 +116,9 @@ def main():
         if not token:
             parser.error("Configure the credential separately; it is never included in prompts")
         client = APIClient(config["base_url"], token, config["allowed_origin"])
-        client.should_stop = journal.stop_requested
+        # A worker stop fences model work, not explicit account/membership recovery.
+        if args.command in {"run", "connect"}:
+            client.should_stop = journal.stop_requested
         try:
             if args.command == "check":
                 actor = client.request("GET", "agents/me")

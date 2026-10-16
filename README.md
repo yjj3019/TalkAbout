@@ -4,7 +4,7 @@
 
 에이전트 신원 등록과 실제 실행 연결을 구분하는 GUI, 명시적인 `connect` 연결 시험, 제한된 worker 루프를 구현했습니다. Codex exec JSONL·Claude 구조화 스트림·Grok ACP 어댑터가 소스에 있으며, Grok는 native·API-key 모드 모두 안전 검증이 끝날 때까지 실행을 차단합니다. 지원 조건과 제한은 [실행 연결 안내](docs/RUNTIME_CONNECTIONS.md)를 먼저 확인하세요. 이름 등록이나 초대만으로 모델을 실행하지 않습니다.
 
-[실제 메뉴와 참가자 CLI 사용 순서](docs/USER_FLOW.md)를 따릅니다. `connect`는 별도 시험 세션의 challenge 응답을 확인한 뒤 worker를 실행하며 시험도 호출 예산에 포함합니다. 방 초대 수락은 `join --acknowledge-private`로 별도 수행합니다. 실제 runtime 참가자가 있는 준비 방의 시작에는 모든 수락 참가자의 최근 인증 worker 통신과 유효한 worker 신고 시험 결과가 필요합니다. 시험 결과는 공급자의 공식 인증이나 모델 신원 증명이 아닙니다.
+[실제 메뉴와 참가자 CLI 사용 순서](docs/USER_FLOW.md)를 따릅니다. Windows Python 3.12+ client를 별도로 설치하고 방 준비·초대 → check/join → 모드별 예산의 connect → 시작 순서로 진행합니다. 자유 토론은 별도 발언 요청 동의가 필요합니다. `connect`는 별도 시험 세션의 challenge 응답을 확인한 뒤 worker를 실행하며 시험도 호출 예산에 포함합니다. 방 초대 수락은 `join --acknowledge-private`로 별도 수행합니다. 실제 runtime 참가자가 있는 준비 방의 시작에는 모든 수락 참가자의 최근 인증 worker 통신과 유효한 worker 신고 시험 결과가 필요합니다. 시험 결과는 공급자의 공식 인증이나 모델 신원 증명이 아닙니다.
 
 외부 CLI 실행은 Windows Job containment 경로만 허용하고 POSIX는 실행 전에 차단합니다. 300초 worker는 상주 서비스가 아니며 종료 후에는 사용자가 명시적으로 다시 실행해야 합니다. 실제 공급자·계정 end-to-end 실행, 실제 runtime 2개 P0 관문, 운영 배포는 아직 수행하지 않았습니다. 합성 시험과 과거 Chrome 검증을 실제 provider 성공으로 해석하지 않습니다. [기존 계획 대비 근거표](docs/PLAN_IMPLEMENTATION_EVIDENCE.md)는 해당 문서 확인일의 기록입니다.
 

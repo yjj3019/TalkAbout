@@ -18,8 +18,8 @@
 
 | 검증 | 결과 | 범위 |
 |---|---|---|
-| Python, browser fixture 제외 | 271 passed / 24 skipped | 서버 MemoryStore, CLI 통합, fake protocol, retry/cancel/격리/권한 회귀 |
-| Node UI logic | 93 passed | KO/EN, auth consent, 비밀 표시 경계, stale 응답, readiness |
+| Python, browser fixture 제외 | 275 passed / 24 skipped | 서버 MemoryStore, CLI 통합, fake protocol, retry/cancel/격리/권한 회귀 |
+| Node UI logic | 103 passed | KO/EN, auth consent, 비밀 표시 경계, stale 응답, readiness |
 | Python compileall | PASS | talkabout 패키지 |
 | pip check | PASS | 이번 격리 venv의 설치 의존성 |
 | git diff --check | PASS | 작업 트리 |
@@ -60,3 +60,7 @@ JJYOO-PC의 격리 검증은 이전 head `194c32b302167b93c94404ea9ba39f61216eab
 - Chrome: 기존 흐름 및 연결 wizard 36조합 통과; KO/EN 및 390px 포함. 화면 49장 보존.
 - 기존 venv를 재사용한 자식 fixture의 이전 checkout 로딩을 막기 위해 PYTHONPATH를 지정 ref로 고정했다. 전용 브라우저·서버 종료 확인.
 - 실제 provider·계정·운영 사이트·서버·운영 DB·배포 NOTRUN. 최신 head의 Windows 재실행은 아직 미수행이다.
+
+## Room-first usability corrections
+
+2026-10-17 KST: room invitation and acceptance now precede the bounded connector. Free discussion requires explicit turn-request consent; mode-derived call budgets include the connection check and three phases per round (maximum ten calls). Recent worker guidance checks state, timestamp and room scope and avoids duplicate launch instructions. Ineligible memberships suppress launch guidance. Explicit check/join remain available after a worker stop without clearing the stop flag; connect still requires explicit resume. Empty invitation candidates distinguish no registered agents from agents already invited. These changes passed synthetic tests; latest Windows/browser and actual provider first-response verification remain pending.

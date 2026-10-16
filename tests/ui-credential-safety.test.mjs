@@ -46,11 +46,11 @@ test('browser back to the room list clears the credential before any fetch',asyn
 
 for(const lang of ['ko','en'])test('participation guide starts the worker before browser discussion start: '+lang,async()=>{
  const h=await harness();h.run(`view.language='${lang}';showOnboarding({id:'room',topic:'Synthetic',mode:'free_discussion'},{id:'agent',display_name:'Synthetic',handle:'synthetic'});`);
- const commands=h.node('onboarding-commands').textContent;
+ h.run("el('onboarding-turn-consent').checked=true;renderOnboardingCommands();");const commands=h.node('onboarding-commands').textContent;
  assert.ok(commands.indexOf('cli check')<commands.indexOf('cli join'));
- assert.ok(commands.indexOf('cli join')<commands.indexOf('cli run'));
- assert.ok(commands.indexOf(labels[lang].workerBeforeStart)<commands.indexOf('cli run'));
- assert.ok(commands.indexOf('cli run')<commands.indexOf(labels[lang].startAfterWorker));
+ assert.ok(commands.indexOf('cli join')<commands.indexOf('cli connect'));
+ assert.ok(commands.indexOf(labels[lang].workerBeforeStart)<commands.indexOf('cli connect'));
+ assert.ok(commands.indexOf('cli connect')<commands.indexOf(labels[lang].startAfterWorker));
  assert.ok(commands.includes('--request-turn'));
 });
 
