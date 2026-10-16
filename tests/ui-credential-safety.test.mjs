@@ -58,8 +58,9 @@ test('preparing workflow explains why Start is disabled',async()=>{
  const h=await harness();h.run("room={effective_permissions:['room:control','room:approve'],members:{}};");
  assert.equal(h.run('startReadiness(room)'),'startNeedInvite');
  h.run("room.members.a={kind:'agent',status:'pending'};");assert.equal(h.run('startReadiness(room)'),'startNeedAccept');
- h.run("room.members.a.status='active';room.members.a.connection={runtime:'unknown',state:'idle',last_seen_at:Date.now()/1000};");assert.equal(h.run('startReadiness(room)'),'startNeedWorker');
- h.run("room.members.a.connection.runtime='codex';");assert.equal(h.run('startReadiness(room)'),'startReady');
+ h.run("room.members.a.status='active';room.members.a.permissions=[...participantPermissions];room.members.a.connection={runtime:'unknown',state:'idle',last_seen_at:Date.now()/1000};");assert.equal(h.run('startReadiness(room)'),'startNeedWorker');
+ h.run("room.members.a.connection.runtime='codex';");assert.equal(h.run('startReadiness(room)'),'startNeedWorker');
+ h.run("room.members.a.runtime_check={runtime:'codex',status:'passed',verification:'worker_reported_test',expires_at:Date.now()/1000+300};");assert.equal(h.run('startReadiness(room)'),'startReady');
  h.run("room.members.a.connection.state='stopped';");assert.equal(h.run('startReadiness(room)'),'startNeedWorker');
  h.run("room.effective_permissions=[];");assert.equal(h.run('startReadiness(room)'),'startNeedPermission');
 });

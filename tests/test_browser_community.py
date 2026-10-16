@@ -13,8 +13,8 @@ from talkabout.worker import APIClient, Journal, SyntheticRuntime, Worker
 
 def test_browser_register_invite_setup_start_and_text_artifact(tmp_path):
     playwright=pytest.importorskip('playwright.sync_api')
-    chrome=Path('C:/Program Files/Google/Chrome/Application/chrome.exe')
-    if not chrome.exists():pytest.skip('Installed isolated Chromium executable unavailable; browser NOTRUN')
+    chrome=Path(os.environ.get('TALKABOUT_TEST_CHROMIUM') or 'C:/Program Files/Google/Chrome/Application/chrome.exe')
+    if not chrome.exists():pytest.skip('Browser NOTRUN: set TALKABOUT_TEST_CHROMIUM for an isolated executable or install test Chrome')
     with socket.socket() as sock:sock.bind(('127.0.0.1',0));port=sock.getsockname()[1]
     base='http://127.0.0.1:'+str(port)
     env={**os.environ,'TALKABOUT_FIXTURE_PORT':str(port)}
@@ -44,6 +44,8 @@ def test_browser_register_invite_setup_start_and_text_artifact(tmp_path):
             page.locator('#nav-agents').click();page.locator('#agent-name').fill('Fixture Blue');page.locator('#agent-handle').fill('fixture-blue')
             page.locator('#register-agent button[type=submit]').click()
             playwright.expect(page.locator('#agents-list')).to_contain_text('Fixture Blue')
+            # Registration opens the new connection wizard, without issuing a credential.
+            page.locator('#connection-close').click()
             page.locator('#nav-rooms').click();page.locator('#topic').fill('Synthetic shared text');page.locator('#mode').select_option('co_creation')
             page.locator('#create button').click();page.locator('.room-card',has_text='Synthetic shared text').click()
             playwright.expect(page.locator('#room-state')).to_contain_text('준비 중')

@@ -3,6 +3,8 @@ from __future__ import annotations
 import copy
 import time
 
+from .identity import REAL_RUNTIMES, public_connection, public_runtime_check
+
 from .domain import (AGENT_PERMISSIONS, HUMAN_PERMISSIONS, Problem, active, authorize,
                      cancel_tasks, digest, emit, fencing, ident, message, new_room,
                      replay, require, save_response, schedule)
@@ -18,7 +20,9 @@ def public_room(room, actor, principals=None):
             listed_member.update({k: principal.get(k) for k in ("display_name", "handle", "identity_revision")})
             if actor["kind"] == "human":
                 connection = principal.get("connection")
-                listed_member["connection"] = copy.deepcopy(connection) if connection and connection.get("room_id") in {None, room["id"]} else None
+                listed_member["connection"] = public_connection(principal) if connection and connection.get("room_id") in {None, room["id"]} else None
+                check = principal.get("runtime_check")
+                listed_member["runtime_check"] = public_runtime_check(principal) if check and check.get("_room_id") in {None, room["id"]} else None
                 posted = [m for m in room["messages"].values() if m["actor_id"] == pid and m["actor_kind"] == "agent"]
                 listed_member["published_contributions"] = len(posted)
     return {k: copy.deepcopy(room[k]) for k in ("id", "topic", "mode", "state", "generation", "room_revision", "limits", "last_seq")} | {"members": members,
@@ -58,10 +62,26 @@ class Core:
     def __init__(self, store):
         self.store = store
 
+    def _worker_ready(self, principal, room_id, now):
+        connection = principal.get("connection", {})
+        binding = connection.get("_credential_binding")
+        if not (binding and connection.get("state") in {"idle", "running"}
+                and connection.get("room_id") in {None, room_id}
+                and 0 <= now - connection.get("last_seen_at", 0) <= 75
+                and self.store.credential_active(binding, principal["id"], room_id, AGENT_PERMISSIONS - {"room:contribute"})):
+            return False
+        if connection.get("runtime") == "synthetic":
+            return connection.get("execution_evidence") == "synthetic_test_only"
+        check = principal.get("runtime_check", {})
+        return (connection.get("runtime") in REAL_RUNTIMES and check.get("status") == "passed"
+                and check.get("runtime") == connection["runtime"] and check.get("expires_at", 0) > now
+                and check.get("_credential_binding") == binding and check.get("_room_id") in {None, room_id}
+                and check.get("verification") == "worker_reported_test")
+
     def me(self, token):
         actor = self.store.auth(token)
         require("agent:self_read" in actor["scopes"] or actor["kind"] == "human", "forbidden", 403)
-        return {k: actor.get(k) for k in ("id", "display_name", "handle", "kind", "identity_revision", "scopes", "capabilities", "model")} | {"agent_id": actor["id"] if actor["kind"] == "agent" else None}
+        return {k: actor.get(k) for k in ("id", "display_name", "handle", "kind", "identity_revision", "scopes", "capabilities", "model")} | {"agent_id": actor["id"] if actor["kind"] == "agent" else None, "connection": public_connection(actor), "runtime_check": public_runtime_check(actor)}
 
     def invitations(self, token):
         actor, rooms, principals = self.store.snapshot(token)
@@ -305,13 +325,9 @@ class Core:
                     if action == "start":
                         require(room["state"] == "preparing", "invalid_transition")
                         require(any(m["kind"] == "agent" and m["status"] == "active" and (AGENT_PERMISSIONS - {"room:contribute"}) <= set(m["permissions"]) for m in room["members"].values()), "participants_required")
-                        require(any(m["kind"] == "agent" and m["status"] == "active"
-                            and (AGENT_PERMISSIONS - {"room:contribute"}) <= set(m["permissions"])
-                            and principals.get(pid, {}).get("connection", {}).get("runtime") in {"synthetic", "codex", "claude"}
-                            and principals.get(pid, {}).get("connection", {}).get("state") in {"idle", "running"}
-                            and principals.get(pid, {}).get("connection", {}).get("room_id") in {None, room["id"]}
-                            and now - principals.get(pid, {}).get("connection", {}).get("last_seen_at", 0) <= 75
-                            for pid, m in room["members"].items()), "worker_connection_required")
+                        require(all(self._worker_ready(principals.get(pid, {}), room["id"], now)
+                            for pid, m in room["members"].items() if m["kind"] == "agent" and m["status"] == "active"
+                            and (AGENT_PERMISSIONS - {"room:contribute"}) <= set(m["permissions"])), "worker_connection_required")
                         room.update(state="active", started_at=now, deadline=now + room.get("duration_seconds", 900))
                     elif action == "pause":
                         require(room["state"] == "active", "invalid_transition")

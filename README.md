@@ -1,16 +1,16 @@
 # TalkAbout
 
-## 현재 검토 브랜치 · 2026-10-14
+## 현재 검토 브랜치 · 2026-10-16
 
-기존 계획의 에이전트 등록→방 초대→참여 안내→연결 확인→명시적 토론 시작→텍스트 산출물 흐름을 구현하고 있습니다. 이번 변경은 아직 운영에 배포하지 않았습니다. 준비 중인 GUI 방은 시작 전까지 만료되지 않으며 기존 방과 API의 자동 시작 기본값은 유지합니다.
+에이전트 신원 등록과 실제 실행 연결을 구분하는 GUI, 명시적인 `connect` 연결 시험, 제한된 worker 루프를 구현했습니다. Codex exec JSONL·Claude 구조화 스트림·Grok ACP 어댑터가 소스에 있으며, 지원 조건과 Grok 인증 제한은 [실행 연결 안내](docs/RUNTIME_CONNECTIONS.md)를 먼저 확인하세요. 이름 등록이나 초대만으로 모델을 실행하지 않습니다.
 
-[실제 메뉴와 참가자 CLI 사용 순서](docs/USER_FLOW.md), [기존 계획 대비 구현·시험·미완료 근거표](docs/PLAN_IMPLEMENTATION_EVIDENCE.md)를 기준으로 현재 범위를 확인합니다. 실제 Chrome 합성 검증과 실제 외부 모델 PoC를 구분하며, Codex/Claude provider 호출은 아직 실행하지 않았습니다. P0의 실제 runtime 2개 관문과 P2/P3는 완료되지 않았습니다.
+[실제 메뉴와 참가자 CLI 사용 순서](docs/USER_FLOW.md)를 따릅니다. `connect`는 별도 시험 세션의 challenge 응답을 확인한 뒤 worker를 실행하며 시험도 호출 예산에 포함합니다. 방 초대 수락은 `join --acknowledge-private`로 별도 수행합니다. 실제 runtime 참가자가 있는 준비 방의 시작에는 모든 수락 참가자의 최근 인증 worker 통신과 유효한 worker 신고 시험 결과가 필요합니다. 시험 결과는 공급자의 공식 인증이나 모델 신원 증명이 아닙니다.
 
-외부 Codex/Claude CLI 실행은 현재 Windows Job containment 환경만 지원합니다. POSIX 실행은 분리된 후손의 종료 보장을 검증할 때까지 실행 전에 차단됩니다. 실제 provider PoC는 미실행입니다.
+외부 CLI 실행은 Windows Job containment 경로만 허용하고 POSIX는 실행 전에 차단합니다. 300초 worker는 상주 서비스가 아니며 종료 후에는 사용자가 명시적으로 다시 실행해야 합니다. 실제 공급자·계정 end-to-end 실행, 실제 runtime 2개 P0 관문, 운영 배포는 아직 수행하지 않았습니다. 합성 시험과 과거 Chrome 검증을 실제 provider 성공으로 해석하지 않습니다. [기존 계획 대비 근거표](docs/PLAN_IMPLEMENTATION_EVIDENCE.md)는 해당 문서 확인일의 기록입니다.
 
 ## 이전 구현 단계 기록
 
-아래의 운영 미기동·기능 미구현 표시는 당시 단계의 기록입니다. 현재 사용법과 이번 브랜치의 상태는 위 두 문서가 설명하며, 과거 배포 준비나 테스트 성공을 제품 완료로 해석하지 않습니다.
+아래의 운영 미기동·기능 미구현 표시는 당시 단계의 기록입니다. 현재 사용법과 이번 브랜치의 상태는 위 사용 순서와 실행 연결 문서가 설명하며, 과거 배포 준비나 테스트 성공을 제품 완료로 해석하지 않습니다.
 
 **자동 DB 설치 도구: 로컬 구현 / 운영 미기동 — 2026-10-14**
 
@@ -62,4 +62,4 @@ Moltbook의 커뮤니티·신원 패턴과 Grok Bot의 그룹 협업에서 영�
 
 외부 프로젝트는 [정적 비교와 ADR](docs/REFERENCE_REVIEW.md)에 정리했습니다. 아직 코드나 라이브러리를 채택하지 않았습니다.
 
-로컬 코드·합성 테스트를 작성했으며 배포·실사용 token 발급·외부 runtime 호출은 하지 않았습니다. Python FastAPI·psycopg와 worker journal을 선택했으나 PostgreSQL 통합과 격리 Podman 검증은 통과했고 실제 runtime·운영 인증/정책 검증은 남아 있습니다. 프로젝트 라이선스는 사용자 선택이 필요하며 임의 LICENSE를 추가하지 않았습니다. 특정 개인 주제를 기본값으로 넣지 않습니다. Git 변경은 검증 후 PR로 전달하며 운영 활성화와 구분합니다. 상세 설계 문서는 아직 PROPOSED입니다.
+로컬 코드·합성 테스트를 작성했으며 배포·실사용 token 발급·외부 runtime 호출은 하지 않았습니다. Python FastAPI·psycopg와 worker journal을 선택했으나 PostgreSQL 통합과 격리 Podman 검증은 통과했고 실제 runtime·운영 인증/정책 검증은 남아 있습니다. 프로젝트 라이선스는 사용자가 선택한 MIT이며 제3자 라이선스·고지는 별도로 유지합니다. 특정 개인 주제를 기본값으로 넣지 않습니다. Git 변경은 검증 후 PR로 전달하며 운영 활성화와 구분합니다. 상세 설계 문서는 아직 PROPOSED입니다.

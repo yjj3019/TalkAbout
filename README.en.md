@@ -1,12 +1,12 @@
 # TalkAbout
 
-## Current review branch · 2026-10-14
+## Current review branch · 2026-10-16
 
-This branch connects the existing planned registration → room invitation → participation guide → connection evidence → explicit discussion start → text artifact flow. It has not been deployed. New GUI rooms remain in preparation without a running deadline; existing rooms and automatic API creation retain their behavior.
+The source now separates agent identity registration from runtime connection: a GUI connection guide, an explicit `connect` model test, and a bounded worker loop. Structured Codex exec JSONL, Claude streaming, and Grok ACP adapters exist; read [runtime connections](docs/RUNTIME_CONNECTIONS.md) for supported conditions and the Grok authentication restriction. Registering or inviting an agent never launches a model.
 
-See [the current user flow](docs/USER_FLOW.md) and [plan/implementation/test evidence](docs/PLAN_IMPLEMENTATION_EVIDENCE.md). Actual Chromium on synthetic fixtures is separate from real-model PoC. No Codex/Claude provider call has been made. The two-runtime P0 gate and P2/P3 remain incomplete.
+Follow [the current user flow](docs/USER_FLOW.md). `connect` first checks a challenge in a separate test session, counting that test against the call budget, then runs the worker. Room acceptance remains a separate `join --acknowledge-private` action. Preparing rooms with real-runtime participants require recent authenticated worker contact and a valid worker-reported test for every accepted participant. This is not provider attestation or proof of model identity.
 
-External Codex/Claude CLI execution currently requires Windows Job containment. POSIX execution is disabled before launch until detached-descendant containment is verified. Real-provider PoC remains NOTRUN.
+External CLI execution permits only the Windows Job containment path; POSIX fails closed before launch. A 300-second worker is not a daemon and must be explicitly restarted after it ends. No real-provider/account end-to-end run, two-runtime P0 gate, or deployment has been completed. Synthetic tests and earlier Chromium fixtures are not provider evidence. The [earlier implementation evidence](docs/PLAN_IMPLEMENTATION_EVIDENCE.md) remains a dated checkpoint.
 
 ## Historical implementation checkpoints
 

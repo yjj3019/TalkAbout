@@ -291,7 +291,7 @@ class Worker:
                     self.journal.save(tid, "cancelled", payload)
                     self.journal.stop_state("stopped")
                     return "stopped"
-                context = {"agent_id": self.actor_id, "display_name": self.actor["display_name"], "role": task.get("role", "participant"),
+                context = {"room_id": rid, "generation": task["generation"], "membership_revision": task["membership_revision"], "agent_id": self.actor_id, "display_name": self.actor["display_name"], "role": task.get("role", "participant"),
                            "topic": room["topic"], "purpose": task["purpose"], "inputs": room["messages"][-8:]}
                 context["phase"] = task.get("phase")
                 context["round"] = task.get("round")

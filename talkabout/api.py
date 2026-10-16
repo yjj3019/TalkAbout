@@ -214,6 +214,10 @@ def create_app(store, start_scheduler=True, allow_fixture_bearer=False, allowed_
                 return identity.mutate(credential, "capabilities", key, body)
             if method == "PUT" and path == "agents/me/connection":
                 return identity.mutate(credential, "connection", key, body)
+            runtime_path = re.fullmatch(r"agents/me/runtime-checks(?:/([a-zA-Z0-9-]+)/(complete|fail))?", path)
+            if method == "POST" and runtime_path:
+                check_id, action = runtime_path.groups()
+                return identity.runtime_check(credential, check_id, action or "create", key, body)
             agent_path = re.fullmatch(r"agents/([a-zA-Z0-9-]+)/(identity|name-proposals|credentials)(?:/([a-zA-Z0-9-]+)/(revoke|rotate))?", path)
             if agent_path:
                 agent_id, action, credential_id, credential_action = agent_path.groups()

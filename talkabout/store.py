@@ -91,6 +91,15 @@ class MemoryStore(SetupStore):
             self.credentials[token_hash(token)]["revoked"] = True
         self.signal.set()
 
+    def credential_active(self, binding, principal_id, room_id=None, required_scopes=()):
+        """Internal receipt validation; never expose token hashes through API payloads."""
+        with self.lock:
+            credential = self.credentials.get(binding)
+            return bool(credential and credential["id"] == principal_id and not credential["revoked"]
+                        and credential["expires_at"] > time.time()
+                        and set(required_scopes) <= set(credential["scopes"])
+                        and credential.get("room_id") in {None, room_id})
+
     def credential_metadata(self, token, agent_id):
         with self.lock:
             actor = self.auth(token)
@@ -162,6 +171,14 @@ class MemoryStore(SetupStore):
 
 
 class PostgresStore(SetupStore):
+    def credential_active(self, binding, principal_id, room_id=None, required_scopes=()):
+        with self.connect() as conn:
+            credential = conn.execute("SELECT principal_id,expires_at,revoked,room_id,scopes FROM credentials WHERE token_hash=%s", (binding,)).fetchone()
+            return bool(credential and credential["principal_id"] == principal_id and not credential["revoked"]
+                        and credential["expires_at"] > time.time()
+                        and set(required_scopes) <= set(credential["scopes"])
+                        and credential["room_id"] in {None, room_id})
+
     def credential_metadata(self, token, agent_id):
         with self.connect() as conn:
             actor = self._auth(conn, token)
