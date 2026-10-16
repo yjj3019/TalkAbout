@@ -307,7 +307,8 @@ def test_posix_real_launch_fails_closed():
     adapter.shutdown()
 
 
-@pytest.mark.parametrize('context', [{}, {'room_id': ''}, {'room_id': 'room', 'bad': float('nan')}, {'room_id': 'room', 'text': 'x' * 200001}])
+@pytest.mark.parametrize('context', [{}, {'room_id': ''}, {'room_id': 'room', 'bad': float('nan')}, {'room_id': 'room', 'text': 'x' * 200001}],
+                         ids=['missing-room', 'empty-room', 'nonfinite-json', 'oversized-context'])
 def test_invalid_context_rejected_without_launch(context):
     adapter = StructuredRuntime('claude', executable=sys.executable)
     with pytest.raises(AdapterError):
@@ -332,7 +333,9 @@ class PipeSupervisor:
                                     (b'[]\n', 'runtime_invalid_output'),
                                     (b'\xff\n', 'runtime_invalid_output'),
                                     (b'x' * (MAX_LINE + 1), 'runtime_output_limit'),
-                                    (b'', 'runtime_outcome_unknown')])
+                                    (b'', 'runtime_outcome_unknown')],
+                         ids=['malformed-json', 'truncated-line', 'nonobject-json',
+                              'invalid-utf8', 'oversized-line', 'empty-output'])
 def test_bounded_transport_malformed_truncated_and_eof(raw, code):
     supervisor = PipeSupervisor(raw)
     transport = _JSONLTransport(supervisor, ['synthetic'], '.', {}, threading.Event(), time.monotonic() + 1)

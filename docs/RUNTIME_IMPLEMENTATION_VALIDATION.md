@@ -49,3 +49,14 @@ Python 3.12 환경, pytest 9.1.1, FastAPI 0.141.1, httpx 0.28.1에서 실행했�
 ## English status
 
 This branch implements the connection workflow and bounded, text-only runtime contracts. Synthetic tests are not evidence of provider authentication or real model execution. Browser startup was blocked by the test environment. Both Grok native authentication and API-mode startup isolation, as well as non-Windows runtime execution, remain fail-closed. No production deployment, provider requests, or billing changes were performed.
+
+## Windows verification checkpoint
+
+JJYOO-PC의 격리 검증은 이전 head `194c32b302167b93c94404ea9ba39f61216eab43`, tree `b33b94d742bf12568ef94efe6a96b8349b962562` 대상으로 수행했다. 최신 Grok 차단 변경의 Windows 재검증 결과가 아니다.
+
+- Python: 275 passed, 17 skipped, 2 errors, 0 failed. PostgreSQL 16건과 POSIX 전용 1건 skip.
+- 오류 2건은 큰 매개변수의 자동 test ID가 262,247자로 확장되어 Windows 환경 변수 한도를 넘은 한 케이스의 setup/teardown이다. 짧은 ID를 사용한 별도 보조 시험 6 passed는 원본 suite 통과를 대체하지 않는다.
+- Node: 91 passed.
+- Chrome: 기존 흐름 및 연결 wizard 36조합 통과; KO/EN 및 390px 포함. 화면 49장 보존.
+- 기존 venv를 재사용한 자식 fixture의 이전 checkout 로딩을 막기 위해 PYTHONPATH를 지정 ref로 고정했다. 전용 브라우저·서버 종료 확인.
+- 실제 provider·계정·운영 사이트·서버·운영 DB·배포 NOTRUN. 최신 head의 Windows 재실행은 아직 미수행이다.
