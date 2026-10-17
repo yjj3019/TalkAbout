@@ -1040,8 +1040,6 @@ class StructuredRuntime:
                 raise AdapterError('runtime_observation_failed') from None
 
     def _run(self, context, cancel):
-        self.last_observation = self.last_observation_error = None
-        self.native_launch_state = 'not_requested'
         if not isinstance(context, dict):
             raise AdapterError('invalid_runtime_context')
         room_id = context.get('room_id')
@@ -1064,6 +1062,8 @@ class StructuredRuntime:
                 raise AdapterError('runtime_outcome_unknown')
             if self._room_id is not None and self._room_id != room_id:
                 raise AdapterError('runtime_room_mismatch')
+            self.last_observation = self.last_observation_error = None
+            self.native_launch_state = 'not_requested'
             self._deadline = min(time.monotonic() + self.timeout, self.run_deadline if self.run_deadline is not None else float('inf'))
             if time.monotonic() >= self._deadline:
                 raise AdapterError('runtime_timeout')
