@@ -35,7 +35,7 @@ MAX_INPUT = 200000
 # these fixed labels survive the reader; no message, path, URL or identifier does.
 _STDERR_HINTS = {
     'arguments': (b'unexpected argument', b'unrecognized option', b'invalid argument'),
-    'configuration': (b'error loading config', b'unknown field', b'failed to parse config'),
+    'configuration': (b'error loading config', b'unknown field', b'unknown configuration field', b'failed to parse config'),
     'authentication': (b'unauthorized', b'not logged in', b'authentication failed'),
     'network': (b'connection refused', b'connection reset', b'failed to connect'),
 }
@@ -43,6 +43,59 @@ _DIAGNOSTIC_EVENTS = frozenset({
     'thread.started', 'turn.started', 'turn.completed', 'turn.failed',
     'item.started', 'item.updated', 'item.completed', 'error',
 })
+_CONFIG_KEYS = frozenset({
+    'approval_policy', 'web_search', 'skills.include_instructions', 'tools.view_image',
+    'features.view_image', 'features.shell_tool', 'features.unified_exec',
+    'features.apply_patch_freeform', 'features.multi_agent', 'features.hooks',
+    'features.remote_plugin', 'features.skill_mcp_dependency_install', 'features.plugins',
+    'features.plugin_hooks', 'features.apps', 'features.tool_search',
+    'features.skip_host_skill_discovery',
+})
+_CONFIG_OPTIONS = frozenset({
+    '--ignore-user-config', '--strict-config', '--ignore-rules', '--skip-git-repo-check',
+    '--sandbox', '--config', '--json', '--enable', '--disable',
+})
+_CONFIG_TYPES = frozenset({'boolean', 'integer', 'float', 'string', 'sequence', 'map'})
+
+
+def _safe_stderr_details(raw):
+    """Extract only fixed keys/options/types from a bounded, transient window.
+
+    These are untrusted reported errors, never a verdict about provider state.
+    Arbitrary field names, enum values, paths and message text cannot be returned.
+    """
+    text = raw.decode('utf-8', errors='replace').lower()
+    details = set()
+    errors = list(re.finditer(r'unknown (?:configuration )?field|invalid type:|unknown variant|unexpected argument|unrecognized option', text))
+    for index, match in enumerate(errors):
+        end = errors[index + 1].start() if index + 1 < len(errors) else len(text)
+        fragment = text[match.start():min(end, match.start() + 1024)]
+        contexts = set(re.findall(r"\b(?:in|at)\s+[`']([a-z_.]+)[`']", fragment))
+        keys = contexts & _CONFIG_KEYS
+        if match.group() in {'unknown field', 'unknown configuration field'}:
+            field = re.match(r"unknown (?:configuration )?field\s+[`']([a-z_.]+)[`']", fragment)
+            if field:
+                name = field.group(1)
+                if name in _CONFIG_KEYS:
+                    keys.add(name)
+                keys.update(context + '.' + name for context in contexts
+                            if context + '.' + name in _CONFIG_KEYS)
+            kind = 'unknown_field'
+        elif match.group() == 'invalid type:':
+            kind = 'invalid_type'
+        elif match.group() == 'unknown variant':
+            kind = 'invalid_enum'
+        else:
+            options = set(re.findall(r"[`'](--[a-z-]+)[`']", fragment)) & _CONFIG_OPTIONS
+            details.add(('invalid_option', next(iter(options)) if len(options) == 1 else '', '', ''))
+            continue
+        key = next(iter(keys)) if len(keys) == 1 else ''
+        actual = re.match(r'invalid type:\s+([a-z]+)\b', fragment)
+        expected = re.search(r'\bexpected\s+(?:(?:a|an)\s+)?([a-z]+)\b', fragment)
+        actual = actual.group(1) if actual and actual.group(1) in _CONFIG_TYPES else ''
+        expected = expected.group(1) if expected and expected.group(1) in _CONFIG_TYPES else ''
+        details.add((kind, key, actual, expected))
+    return details
 
 
 def _containment_supported():
@@ -103,6 +156,7 @@ class _JSONLTransport:
         self.stdout_eof = self.stderr_eof = False
         self.event_counts = {}
         self.stderr_hints = set()
+        self.stderr_details = set()
         self.exit_code_before_cleanup = None
         self.cleanup_started = self.cleanup_confirmed = False
         self.lock = threading.Lock()
@@ -122,7 +176,7 @@ class _JSONLTransport:
             reader.start()
 
     def _read(self, stream, output):
-        tail = b''  # At most 64 transient bytes to recognize split hints.
+        tail = b''  # At most 8192 transient bytes; no raw text survives the reader.
         try:
             while True:
                 raw = stream.readline(MAX_LINE + 1) if output else stream.read(4096)
@@ -149,7 +203,8 @@ class _JSONLTransport:
                     with self.lock:
                         self.stderr_hints.update(label for label, hints in _STDERR_HINTS.items()
                                                  if any(hint in window for hint in hints))
-                    tail = window[-64:]
+                        self.stderr_details = set(sorted(self.stderr_details | _safe_stderr_details(window))[:32])
+                    tail = window[-8192:]  # Transient only; never included in a snapshot.
                 if output:
                     if len(raw) > MAX_LINE:
                         self.failure = 'runtime_output_limit'
@@ -231,6 +286,13 @@ class _JSONLTransport:
             except queue.Empty:
                 continue
             if value is None:
+                # Pipe EOF can precede kernel process exit. Observe at most 100ms
+                # within the existing deadline; never turn EOF into success.
+                poll = getattr(self.process, 'poll', None)
+                until = min(deadline, time.monotonic() + .1)
+                while poll and poll() is None and time.monotonic() < until:
+                    self.check(cancel, deadline)
+                    time.sleep(min(.005, max(0, until - time.monotonic())))
                 raise AdapterError('runtime_outcome_unknown')
             return value
 
@@ -281,6 +343,10 @@ class _JSONLTransport:
                 'stderr_eof': self.stderr_eof,
                 'stderr_hints': sorted(self.stderr_hints) or
                                 (['unclassified'] if self.stderr_bytes else []),
+                'stderr_reported_details': [
+                    {'kind': kind, **({'option' if kind == 'invalid_option' else 'key': key} if key else {}),
+                     **({'actual_type': actual} if actual else {}), **({'expected_type': expected} if expected else {})}
+                    for kind, key, actual, expected in sorted(self.stderr_details)],
             }
 
 
@@ -471,7 +537,7 @@ class StructuredRuntime:
             for option in ('features.shell_tool=false', 'features.unified_exec=false',
                            'features.apply_patch_freeform=false', 'features.multi_agent=false',
                            'features.hooks=false', 'features.remote_plugin=false',
-                           'features.skill_mcp_dependency_install=false', 'tools.view_image=false',
+                           'features.skill_mcp_dependency_install=false', 'features.view_image=false',
                            'features.plugins=false', 'features.plugin_hooks=false', 'features.apps=false',
                            'features.tool_search=false', 'features.skip_host_skill_discovery=true',
                            'skills.include_instructions=false', 'web_search="disabled"'):

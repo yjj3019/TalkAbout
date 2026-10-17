@@ -777,7 +777,7 @@ def test_codex_exec_default_two_turns_use_explicit_session_and_stdin(monkeypatch
     assert '--last' not in command and '--ephemeral' not in command
     assert all(flag in command for flag in ['--ignore-user-config', '--strict-config', '--ignore-rules', '--json'])
     assert 'approval_policy="never"' in command
-    assert 'features.hooks=false' in command and 'tools.view_image=false' in command
+    assert 'features.hooks=false' in command and 'features.view_image=false' in command
     assert 'continue' not in command
     assert all(transport.exit_verified and transport.closed for transport in peer.transports)
     adapter.shutdown()

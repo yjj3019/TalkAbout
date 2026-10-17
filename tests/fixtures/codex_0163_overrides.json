@@ -1,0 +1,65 @@
+{
+  "scope": "Only the argv override keys used by TalkAbout, extracted from the official schema; not a complete schema or a native CLI parse-only result.",
+  "source": "https://raw.githubusercontent.com/openai/codex/rust-v0.163.0/codex-rs/core/config.schema.json",
+  "sha256": "e9dd16b9d1710e57b020e42da4af6d6606e8f44cb028a2e94196dee3890d9170",
+  "used_keys": {
+    "approval_policy": {
+      "type": "string",
+      "enum": [
+        "on-request",
+        "never"
+      ]
+    },
+    "features.shell_tool": {
+      "type": "boolean"
+    },
+    "features.unified_exec": {
+      "type": "boolean"
+    },
+    "features.apply_patch_freeform": {
+      "type": "boolean"
+    },
+    "features.multi_agent": {
+      "type": "boolean"
+    },
+    "features.hooks": {
+      "type": "boolean"
+    },
+    "features.remote_plugin": {
+      "type": "boolean"
+    },
+    "features.skill_mcp_dependency_install": {
+      "type": "boolean"
+    },
+    "features.view_image": {
+      "type": "boolean"
+    },
+    "features.plugins": {
+      "type": "boolean"
+    },
+    "features.plugin_hooks": {
+      "type": "boolean"
+    },
+    "features.apps": {
+      "type": "boolean"
+    },
+    "features.tool_search": {
+      "type": "boolean"
+    },
+    "features.skip_host_skill_discovery": {
+      "type": "boolean"
+    },
+    "skills.include_instructions": {
+      "type": "boolean"
+    },
+    "web_search": {
+      "type": "string",
+      "enum": [
+        "disabled",
+        "cached",
+        "indexed",
+        "live"
+      ]
+    }
+  }
+}
