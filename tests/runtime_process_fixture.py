@@ -31,7 +31,9 @@ def main():
         client = LocalClient(store)
         original = client.request
         def request(method, path, *args, **kwargs):
-            if mode == 'heartbeat' and path.endswith('/heartbeat'):
+            # Inject failure only after the synthetic descendants are observable.
+            # An early heartbeat can legitimately cancel before they are created.
+            if mode == 'heartbeat' and path.endswith('/heartbeat') and Path(pidfile).exists():
                 raise RuntimeError('synthetic heartbeat failure')
             return original(method, path, *args, **kwargs)
         client.request = request

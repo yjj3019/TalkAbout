@@ -25,6 +25,7 @@ import uuid
 
 from .adapters import AdapterError, execute_bounded
 from .processes import ProcessSupervisor, ProcessCleanupError
+from .trial_observation import OBSERVATION_STAGES, TrialRecordError, safe_io_failure
 
 MAX_WIRE = 2 * 1024 * 1024
 MAX_LINE = 256 * 1024
@@ -147,7 +148,7 @@ def _text(value):
 
 class _JSONLTransport:
     """Bounded pipes. Readers never execute provider requests or retain stderr."""
-    def __init__(self, supervisor, command, cwd, env, cancel, deadline):
+    def __init__(self, supervisor, command, cwd, env, cancel, deadline, observer=None):
         self.supervisor = supervisor
         self.events = queue.Queue(maxsize=1024)
         self.failure = None
@@ -162,9 +163,11 @@ class _JSONLTransport:
         self.lock = threading.Lock()
         self.readers = []
         try:
+            if observer: observer('native_start_requested')
             self.process = supervisor.start(command, cancel, deadline=deadline,
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                 cwd=cwd, env=env, shell=False, bufsize=0)
+            if observer: observer('native_started')
         except ProcessCleanupError as error:
             code = 'runtime_containment_unsupported' if str(error) == 'runtime_containment_unsupported' else 'runtime_unavailable'
             raise AdapterError(code) from None
@@ -363,7 +366,13 @@ class StructuredRuntime:
     No adapter reads/copies OAuth tokens or falls back to API-key billing.
     """
     def __init__(self, kind, executable=None, platform_credential=None,
-                 credential_env='TALKABOUT_TOKEN', run_deadline=None, auth_mode='native', codex_transport='exec-json'):
+                 credential_env='TALKABOUT_TOKEN', run_deadline=None, auth_mode='native', codex_transport='exec-json', observer=None):
+        if observer is not None and not callable(observer):
+            raise AdapterError('invalid_runtime_observer')
+        self.observer = observer
+        self.last_observation = None
+        self.last_observation_error = None
+        self.native_launch_state = 'not_requested'
         if kind == 'grok-build':
             kind = 'grok'
         if kind not in {'codex', 'claude', 'grok'}:
@@ -724,8 +733,10 @@ class StructuredRuntime:
                     raise AdapterError('runtime_cleanup_unconfirmed')
 
     def _codex_exec(self, prompt):
+        self._observe('prompt_submission_requested')
         self._prompt_sent = True
         self._transport.send_text(prompt, self._cancel, self._deadline)
+        self._observe('prompt_submitted')
         started = False
         session_seen = False
         completed = {}
@@ -1008,7 +1019,29 @@ class StructuredRuntime:
         finally:
             self._run_lock.release()
 
+    def _observe(self, stage):
+        if stage not in OBSERVATION_STAGES:
+            raise AdapterError('invalid_runtime_observation')
+        self.last_observation = stage
+        if stage == 'native_start_requested': self.native_launch_state = 'requested'
+        elif stage == 'native_started': self.native_launch_state = 'started'
+        if self.observer is not None:
+            try:
+                self.observer(stage)
+            except Exception as error:
+                # A failed pre-launch audit prevents launch. A failed post-launch
+                # audit never erases the fact that the native child already exists.
+                if stage == 'native_start_requested': self.native_launch_state = 'not_requested'
+                safe = dict(error.safe) if isinstance(error, TrialRecordError) else safe_io_failure(error, 'observer')
+                safe['event'] = stage
+                self.last_observation_error = self.last_observation_error or safe
+                self._failed = True
+                self.last_outcome = 'unknown' if self._prompt_sent else 'not_started'
+                raise AdapterError('runtime_observation_failed') from None
+
     def _run(self, context, cancel):
+        self.last_observation = self.last_observation_error = None
+        self.native_launch_state = 'not_requested'
         if not isinstance(context, dict):
             raise AdapterError('invalid_runtime_context')
         room_id = context.get('room_id')
@@ -1039,7 +1072,9 @@ class StructuredRuntime:
                 raise AdapterError(probe['reason'])
             self._room_id = room_id
             if self._workspace is None:
+                self._observe('workspace_preparing')
                 self._workspace = tempfile.TemporaryDirectory(prefix='talkabout-agent-')
+                self._observe('workspace_ready')
             self._cancel = cancel
             self._pending = []
             self._turn_id = None
@@ -1051,16 +1086,21 @@ class StructuredRuntime:
         try:
             env = self._environment()
             if self.kind == 'claude' or (self.kind == 'codex' and self.codex_transport == 'exec-json' and self.auth_mode == 'native'):
+                self._observe('auth_check_started')
                 if self.kind == 'claude':
                     self._check_claude_auth(cancel, supervisor)
                 else:
                     self._check_codex_exec_auth(cancel, supervisor)
+                self._observe('auth_check_completed')
                 with self._state_lock:
                     if self._shutdown or cancel.is_set():
                         raise AdapterError('runtime_cancelled')
                     supervisor = ProcessSupervisor()
                     self._supervisor = supervisor
-            transport = _JSONLTransport(supervisor, self.command(), self._workspace.name, env, cancel, self._deadline)
+            if self.observer is None: self._observe('native_start_requested')
+            transport = _JSONLTransport(supervisor, self.command(), self._workspace.name, env, cancel, self._deadline,
+                                        **({'observer': self._observe} if self.observer is not None else {}))
+            if self.observer is None: self._observe('native_started')
             with self._state_lock:
                 self._transport = transport
             self.calls += 1
@@ -1070,6 +1110,7 @@ class StructuredRuntime:
             transport.check(cancel, self._deadline)
             if not text:
                 raise AdapterError('runtime_invalid_output')
+            self._observe('native_result_observed')
             # No output is returned until containment cleanup also succeeds.
             self.last_outcome = 'completed'
             return text
@@ -1085,6 +1126,7 @@ class StructuredRuntime:
                 stopped = transport.close() if transport else supervisor.stop()
                 if stopped is not True:
                     raise ProcessCleanupError('cleanup_unconfirmed')
+                self._observe('cleanup_completed')
             except (ProcessCleanupError, OSError, ValueError):
                 self._failed = True
                 self.last_outcome = 'unknown'

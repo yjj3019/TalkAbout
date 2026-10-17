@@ -1,0 +1,146 @@
+{
+  "reviewed_on": "2026-10-17",
+  "base": "99d9bf5b66660e143725d0c7452af039cb2943a6",
+  "evidence_class": "OFFLINE_SOURCE_TRIAGE_AND_SYNTHETIC_OBSERVATION_FIX_NOT_ACTUAL_PROVIDER_RETEST",
+  "historical_trial": {
+    "attempt": 3,
+    "controller_error_class": "PermissionError",
+    "active_record": "reserved",
+    "completion_instrumentation": "not persisted",
+    "receipt_at_cleanup_snapshot": "pending, not passed",
+    "worker_process_creation": "confirmed: worker ran canonical CLI, preflight gate, created runtime-check and saved ordinal 3 reservation",
+    "native_model_process_creation": "unknown: reservation precedes auth check and native transport construction; no start/completion event was retained",
+    "native_exit_code": null,
+    "native_frame_count": null,
+    "native_stderr_category": null,
+    "actual_room_response": "NOTRUN",
+    "reconnect": "NOTRUN"
+  },
+  "operation_attribution": {
+    "exact_failing_operation": "not established; no stack frame, stage, errno or winerror was retained",
+    "controller_boundary": "The reported exception was caught by the controller outer try. Child exceptions do not directly cross the subprocess boundary. Child nonzero exit is translated to cli_nonzero; published child fatal would remain in the active ledger, which instead stayed null.",
+    "candidate_operations": "Controller finish/safe performs direct original/prior/current record reads and process polling/cleanup. Direct record I/O is a plausible candidate; the specific read, replace or OS call cannot be selected from this record.",
+    "before_after_boundary": "After worker subprocess creation and reservation; before/after native model subprocess creation remains unknown.",
+    "os_permission_denial": "PermissionError alone does not establish an ACL denial, Windows sharing violation, denied path or provider failure. No OS permission or security setting was changed."
+  },
+  "confirmed_harness_defects": [
+    "Writer used the one-byte lock and os.replace, while controller state() read the JSON without that lock.",
+    "Counts used row.get(native_process_starts,0), turning absent completion metadata into a false zero-start implication.",
+    "Only reservation and finalization were persisted; interruption between them lost the native-start boundary.",
+    "The controller retained only exception class, without a safe operation/stage or numeric OS error context.",
+    "Outer fixture cleanup was confirmed, but a separate native temporary working directory was not individually manifested."
+  ],
+  "controlled_reproduction": {
+    "scope": "fresh owned synthetic file only; no provider, user credential/session/log path or permission-setting change",
+    "operation": "read handle left open while a separate writer replaces the same JSON",
+    "observed_safe_os_fields": {
+      "operation": "replace",
+      "category": "permission_denied",
+      "errno": 13,
+      "winerror": 5
+    },
+    "interpretation": "This proves a concrete Windows file-sharing failure mode in the old protocol, not that it caused the historical controller PermissionError."
+  },
+  "fixes": {
+    "TrialRecord": "Opt-in replacement metadata helper: reader and writer acquire the same OS lock before opening JSON; atomic write and fsync remain, failed .pending evidence is preserved without automatic deletion/replay.",
+    "safe_failure": "Operation plus permission category, errno and winerror only; messages, filenames, credentials and traceback text are excluded.",
+    "summary": "Missing or incomplete native-start evidence is null/unknown, never default zero; a reserved attempt still consumes one conservative reservation.",
+    "runtime_observer": "Opt-in fixed-stage callback around workspace/auth/native start/prompt/result/cleanup. Native creation is observed immediately after supervisor.start, independently of the older calls counter.",
+    "failure_policy": "Pre-launch observer failure prevents launch; post-launch failure keeps the started fact, stops the owned supervisor and poisons the instance against replay. No CLI safety flag/auth/billing/ACL changes.",
+    "adoption_limit": "Historical launchers and records are frozen. The replacement helper and runtime observer are unit-tested integration points, not an authorization to execute a fresh trial. No actual launch has used them yet."
+  },
+  "integration_contract": {
+    "controller_read": "TrialRecord(directory, record_name).read()",
+    "worker_write": "The same TrialRecord.update(action), using the same .lock",
+    "worker_observer": "StructuredRuntime(..., observer=lambda stage: record.observe(ordinal,stage))",
+    "failure_report": "Record TrialRecordError.safe and the last fixed runtime observation/launch state, not str(error) or a zero default.",
+    "private_temp": "Any future authorized launcher must put native TEMP/TMP beneath its known owned fixture root or record an owned-path manifest before launch. This review does not search/delete old unidentified temp directories."
+  },
+  "preserved_state": {
+    "prior_two_unknown_records": "hashes unchanged",
+    "third_record_and_original_summary": "unchanged; the misleading zero-default interpretation is withdrawn in a separate adjudication",
+    "budget": "three conservative Codex reservations; two earlier native starts observed, third unknown; Claude zero",
+    "remaining_model_budget": {
+      "codex": 3,
+      "claude": 3
+    },
+    "actual_trial_credentials_created_total": 3,
+    "remaining_credential_cap": 0,
+    "provider_usage": "unknown",
+    "provider_billing": "unknown",
+    "stop_latches": "preserved"
+  },
+  "cleanup": {
+    "confirmed": "third owned worker job stopped, fixture room closed, token revoked and rejected with 401, server stopped, outer private config/journal directory removed",
+    "unconfirmed": "individual native temporary working-directory deletion; no owned-path manifest was saved",
+    "additional_historical_temp_deletions": 0
+  },
+  "execution_limits": {
+    "new_actual_models": 0,
+    "new_actual_accounts": 0,
+    "new_actual_trial_credentials": 0,
+    "credential_session_or_provider_log_search": false,
+    "security_or_permission_setting_changes": false,
+    "merge": "NOTRUN",
+    "deployment": "NOTRUN"
+  },
+  "remaining_blockers": [
+    "historical PermissionError exact operation and cause unresolved",
+    "third native start/processing/completion unknown",
+    "actual connection/room response/reconnect unverified",
+    "old native temporary working directory individually unidentified"
+  ],
+  "validation_harness_findings": {
+    "initial_full_result": "457 passed, 3 failed, 1 POSIX skip. New observation tests and all Chrome tests passed.",
+    "unchanged_focused_reproduction": "All three initially failing timing cases passed without source/timeout/assertion changes.",
+    "preflight_test_scope_fix": "The 150ms deadline can correctly expire during Worker identity/capability construction. The test now expects RunBudgetExceeded across construction plus step; zero runtime calls and zero completion submissions are still asserted.",
+    "heartbeat_fixture_phase_fix": "A 400ms heartbeat could fail before the cold synthetic child wrote its PID file. Inject the heartbeat failure only after that owned descendant-readiness signal exists, so the cleanup test actually exercises live descendants.",
+    "retained_limits": "No timeout increase or assertion deletion. The one-second CLI timing threshold remains 1.35s. No production run-budget or heartbeat behavior changes.",
+    "causal_limit": "These test synchronization findings do not establish the historical PermissionError cause."
+  },
+  "completed_validation": {
+    "source_tested_tree": "65a9b3ec48c2e82e7e792fa188e1e1ed13fac981",
+    "python": {
+      "passed": 459,
+      "failed": 1,
+      "skipped": 1
+    },
+    "node": {
+      "passed": 136,
+      "failed": 0
+    },
+    "chrome": {
+      "passed": 5,
+      "failed": 0
+    },
+    "remaining_failed_case": "test_no_descendants_survive_cli_parent_exit[timeout]",
+    "remaining_failure_condition": "Parent fixture exited successfully, but the owned synthetic-runtime PID file did not exist; native fixture launch was not demonstrated. Descendant cleanup for this timeout case remains unverified.",
+    "remaining_failure_cause": "Unresolved; do not infer provider behavior or historical PermissionError cause.",
+    "release_gate": "NOT PASSED; Draft PR only, no merge or deployment",
+    "repeat_policy": "Existing run collected once; no further suite or provider rerun",
+    "initial_run": {
+      "passed": 457,
+      "failed": 3,
+      "skipped": 1
+    },
+    "initial_failure_conditions": [
+      {
+        "case": "heartbeat descendant cleanup",
+        "condition": "Injected heartbeat error after 0.4 seconds could fire before a cold synthetic runtime wrote its PID file.",
+        "change": "Inject failure only after the owned PID file exists; retain child/grandchild liveness assertions and 0.4/5/15 second limits."
+      },
+      {
+        "case": "slow preflight deadline",
+        "condition": "150 ms deadline expired inside Worker construction and identity/capability preflight, before the old exception assertion scope.",
+        "change": "Cover Worker construction and step in the same expected-deadline assertion; retain 150 ms limit, zero runtime calls and no completion assertions."
+      },
+      {
+        "case": "one-second CLI budget",
+        "condition": "Observed elapsed time 1.3659 seconds exceeded the unchanged 1.35 second test bound.",
+        "change": "None; retain the one-second budget, 1.35-second wall-clock bound and all assertions."
+      }
+    ],
+    "regression_visibility": "No production deadline or heartbeat behavior changed, no timeout increased, no assertion removed. The final independent timeout-fixture failure remains recorded rather than waived.",
+    "post_suite_changes": "Documentation of actual results only; Python source and test bytes unchanged."
+  }
+}
