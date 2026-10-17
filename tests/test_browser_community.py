@@ -53,23 +53,35 @@ def test_browser_register_invite_setup_start_and_text_artifact(tmp_path):
             page.locator('#invite-agent-id').select_option(label='Fixture Blue @fixture-blue');page.locator('#invite-agent button[type=submit]').click()
             playwright.expect(page.locator('#members')).to_contain_text('초대 대기')
             page.screenshot(path=str(shots/'community-invitation-ko.png'),full_page=True)
-            participant=page.locator('.member-card',has_text='Fixture Blue')
-            participant.get_by_role('button',name='참여 안내',exact=True).click()
+            participant=page.locator('#members .member-card',has_text='Fixture Blue')
+            participant.get_by_role('button',name='초대 수락·연결 안내 열기',exact=True).click()
             assert 'Synthetic shared text' in page.locator('#onboarding-prompt').input_value()
             assert 'TALKABOUT_TOKEN' not in page.locator('#onboarding-prompt').input_value()
             config=page.locator('#onboarding-config').input_value();assert base in config
             playwright.expect(page.get_by_role('dialog',name='이 방의 참여·연결 안내',exact=True)).to_be_visible()
             commands=page.locator('#onboarding-commands').inner_text()
-            assert commands.index('cli run') < commands.index('브라우저 관리 탭')
+            room_id=page.evaluate('new URLSearchParams(location.search).get("room")')
+            expected_commands=[
+                'python -m talkabout.cli check --config agent.local.json --prompt-token',
+                'python -m talkabout.cli join --config agent.local.json --room '+room_id+' --acknowledge-private --prompt-token',
+                'python -m talkabout.cli connect --config agent.local.json --runtime codex --auth-mode native --approve-external --max-model-calls 4 --steps 1000 --max-seconds 300 --prompt-token',
+            ]
+            assert page.locator('#onboarding-action').input_value()=='start'
+            assert [line for line in commands.splitlines() if line.startswith('python -m talkabout.cli ')]==expected_commands
+            assert commands.index('cli connect') < commands.index('브라우저 관리 탭')
             page.locator('#onboarding-commands').scroll_into_view_if_needed()
             page.screenshot(path=str(shots/'community-guide-ko.png'),full_page=True)
             page.locator('#onboarding-close').click();page.locator('#language').click()
-            participant.get_by_role('button',name='Participation guide',exact=True).click()
+            participant.get_by_role('button',name='Open acceptance and connection guide',exact=True).click()
             playwright.expect(page.get_by_role('dialog',name='Room participation and connection',exact=True)).to_be_visible()
+            commands=page.locator('#onboarding-commands').inner_text()
+            assert page.locator('#onboarding-action').input_value()=='start'
+            assert [line for line in commands.splitlines() if line.startswith('python -m talkabout.cli ')]==expected_commands
+            assert commands.index('cli connect') < commands.index('Start discussion in the browser Management tab')
             page.locator('#onboarding-commands').scroll_into_view_if_needed()
             page.screenshot(path=str(shots/'community-guide-en.png'),full_page=True)
             page.locator('#onboarding-close').click();page.locator('#language').click()
-            participant.get_by_role('button',name='참여 안내',exact=True).click()
+            participant.get_by_role('button',name='초대 수락·연결 안내 열기',exact=True).click()
             page.locator('#onboarding-close').click()
             participant.get_by_role('button',name='1시간 토큰 발급',exact=True).click()
             page.locator('#credential-dialog').wait_for(state='visible')
