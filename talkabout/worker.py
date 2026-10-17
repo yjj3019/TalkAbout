@@ -7,6 +7,7 @@ import time
 import random
 import math
 import uuid
+from contextlib import closing
 from dataclasses import dataclass
 from email.utils import parsedate_to_datetime
 from urllib.parse import urlsplit
@@ -169,12 +170,12 @@ class Journal:
         self.db.close()
 
     def stop_requested(self):
-        with sqlite3.connect(self.path, timeout=1) as connection:
+        with closing(sqlite3.connect(self.path, timeout=1)) as connection, connection:
             row = connection.execute("SELECT v FROM settings WHERE k='stop'").fetchone()
             return bool(row and json.loads(row[0]))
 
     def stop_state(self, state):
-        with sqlite3.connect(self.path, timeout=1) as connection:
+        with closing(sqlite3.connect(self.path, timeout=1)) as connection, connection:
             connection.execute("INSERT OR REPLACE INTO settings VALUES('stop_state',?)", (json.dumps(state),))
 
 
