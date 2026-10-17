@@ -1,0 +1,14 @@
+{
+  "date": "2026-10-17",
+  "base_commit": "b3ac8fad669be97f4f369b29cfa789c293780c86",
+  "scope": "Browser test expectations only; synthetic fixtures, no provider or operating-service access",
+  "change": "Assert exact KO/EN pending-invitation guide names and ordered check/join/connect commands, including room, privacy acknowledgement, auth mode and bounded execution flags. Scope the participant locator to the room member list.",
+  "python_full": {"passed": 282, "failed": 1, "skipped": 17},
+  "python_full_failure": "test_no_descendants_survive_cli_parent_exit[heartbeat]: synthetic runtime never launched; unrelated to browser expectations",
+  "focused_rerun": {"passed": 11, "failed": 0, "scope": "test_browser_community.py and test_process_cleanup.py"},
+  "node_ui": {"passed": 103, "failed": 0},
+  "skips": {"postgres_fixture_not_configured": 16, "posix_only": 1},
+  "provider": "NOTRUN",
+  "operating_service": "NOTRUN",
+  "push_merge_deploy": "NOTRUN"
+}

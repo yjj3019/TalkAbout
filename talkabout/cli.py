@@ -24,19 +24,22 @@ def main():
     bootstrap.add_argument("--workspace", required=True)
     bootstrap.add_argument("--name", required=True)
     bootstrap.add_argument("--handle", required=True)
-    for name in ("check", "join", "run", "status", "stop", "mcp"):
+    for name in ("check", "join", "run", "connect", "status", "stop", "mcp"):
         command = sub.add_parser(name)
         command.add_argument("--config", type=Path, required=True)
-        if name in {"check", "join", "run"}:
+        if name in {"check", "join", "run", "connect"}:
             command.add_argument("--prompt-token", action="store_true", help="Read bearer credential privately from your TTY; never pass it as an argument")
         if name == "join":
             command.add_argument("--room", required=True)
             command.add_argument("--acknowledge-private", action="store_true")
-        if name == "run":
+        if name in {"run", "connect"}:
             command.add_argument("--steps", type=int, default=1)
             command.add_argument("--synthetic", action="store_true")
             command.add_argument("--max-seconds", type=int, default=60)
-            command.add_argument("--runtime", choices=['codex', 'claude'])
+            command.add_argument("--runtime", choices=['codex', 'claude', 'grok'])
+            command.add_argument("--auth-mode", choices=["native", "api_key"], default="native", help="Native CLI login by default; explicit api_key may use separately billed provider quota, never automatic fallback")
+            command.add_argument("--resume-worker", action="store_true", help="Explicitly clear a previous local stop request; uncertain tasks remain blocked")
+            command.add_argument("--retry-check", action="store_true", help="Explicitly allow a new provider test after an uncertain prior test; it may consume usage again")
             command.add_argument("--approve-external", action="store_true", help="Explicitly authorize provider calls in your own environment")
             command.add_argument("--request-turn", action="store_true", help="Request a bounded free-discussion turn while idle")
             command.add_argument("--max-model-calls", type=int, default=1, help="External CLI invocation ceiling, 1..10; provider-internal retries may differ")
@@ -84,7 +87,18 @@ def main():
             client.close()
         return
     journal = Journal(config["journal_path"])
+    connector_lease = None
     try:
+        if args.command in {'connect', 'run'}:
+            from .connector import ConnectorLease, ConnectionCheckError
+            try:
+                connector_lease = ConnectorLease(config['journal_path']).acquire()
+            except ConnectionCheckError as error:
+                raise SystemExit(str(error)) from None
+            if args.resume_worker:
+                with journal.db:
+                    journal.set_setting('stop', False)
+                    journal.set_setting('stop_state', 'running')
         if args.command == "status":
             print(json.dumps({"queue": journal.status(), "stop_state": journal.setting("stop_state", "running")}))
             return
@@ -102,11 +116,12 @@ def main():
         if not token:
             parser.error("Configure the credential separately; it is never included in prompts")
         client = APIClient(config["base_url"], token, config["allowed_origin"])
+        # A worker stop fences model work, not explicit account/membership recovery.
+        if args.command in {"run", "connect"}:
+            client.should_stop = journal.stop_requested
         try:
             if args.command == "check":
                 actor = client.request("GET", "agents/me")
-                if 'agent:capabilities_write' in actor.get('scopes', []):
-                    client.request('PUT', 'agents/me/connection', {'runtime': 'unknown', 'state': 'idle'}, str(uuid.uuid4()))
                 print(json.dumps({"agent_id": actor["id"], "kind": actor["kind"], "http": "confirmed", "external_runtime": "NOTRUN"}))
             elif args.command == "join":
                 if not args.acknowledge_private: parser.error('Read the private-room notice and explicitly acknowledge it')
@@ -123,15 +138,35 @@ def main():
             else:
                 if not 1 <= args.steps <= 1000 or not 1 <= args.max_seconds <= 300 or not 1 <= args.max_model_calls <= 10 or bool(args.synthetic) == bool(args.runtime):
                     parser.error("Choose exactly one runtime; steps 1..1000, max-seconds 1..300")
+                if args.command == "connect" and not args.runtime: parser.error("connect requires a real runtime; synthetic is test-only")
                 if args.runtime and not args.approve_external: parser.error('External runtime calls require explicit --approve-external')
                 if args.runtime and os.name != 'nt': parser.error('External CLI execution requires verified Windows Job containment; POSIX execution is disabled')
                 deadline = time.monotonic() + args.max_seconds
                 client.deadline = deadline
                 if args.runtime:
-                    from .adapters import CLIRuntime
-                    runtime = CLIRuntime(args.runtime, credential_env=config.get('token_env', 'TALKABOUT_TOKEN'), platform_credential=token, run_deadline=deadline)
-                else: runtime = SyntheticRuntime()
+                    from .agent_runtime import StructuredRuntime
+                    from .connector import verify_runtime, ConnectionCheckError, RoomRuntimePool
+                    test_runtime = StructuredRuntime(args.runtime, credential_env=config.get('token_env', 'TALKABOUT_TOKEN'), platform_credential=token, run_deadline=deadline, auth_mode=args.auth_mode)
+                    probe = test_runtime.probe()
+                    if probe.get('reason') or not probe.get('available'):
+                        test_runtime.shutdown()
+                        raise SystemExit(probe.get('reason') or 'runtime_unavailable')
+                    try:
+                        if journal.stop_requested(): raise ConnectionCheckError('connector_stopped')
+                        test_runtime.preflight()
+                        receipt, check_calls = verify_runtime(client, journal, test_runtime, args.runtime, token, deadline, args.retry_check)
+                    except Exception as error:
+                        test_runtime.shutdown()
+                        from .adapters import AdapterError
+                        code = error.code if isinstance(error, AdapterError) else str(error) if isinstance(error, ConnectionCheckError) else 'runtime_check_failed'
+                        raise SystemExit(code + ': inspect connection state; use --retry-check only to explicitly authorize another test; additional provider usage may occur') from None
+                    print(json.dumps({'runtime': args.runtime, 'check': receipt.get('status'), 'evidence': 'worker_reported_test'}))
+                    runtime = RoomRuntimePool(lambda: StructuredRuntime(args.runtime, credential_env=config.get('token_env', 'TALKABOUT_TOKEN'), platform_credential=token, run_deadline=deadline, auth_mode=args.auth_mode))
+                else:
+                    runtime = SyntheticRuntime()
+                    check_calls = 0
                 runtime_kind = args.runtime or 'synthetic'
+                final_state = 'failed'
                 def report(state, error_code=None):
                     client.request('PUT', 'agents/me/connection', {'runtime': runtime_kind, 'state': state, 'error_code': error_code}, str(uuid.uuid4()))
                 source_runtime = runtime
@@ -152,7 +187,7 @@ def main():
                 worker = Worker(client, journal, ReportedRuntime(), adapter_policy={'external': bool(args.runtime), 'tool_limits_verified': bool(args.runtime), 'allowed_tools': []}, run_deadline=deadline)
                 final_state = 'stopped'
                 for _ in range(args.steps):
-                    if args.runtime and runtime.calls >= args.max_model_calls:
+                    if args.runtime and runtime.calls + check_calls >= args.max_model_calls:
                         print('model_call_budget_exhausted')
                         break
                     if time.monotonic() >= deadline:
@@ -162,13 +197,12 @@ def main():
                         if args.request_turn: worker.request_turns()
                         report('idle')
                         result = worker.step()
-                        report('idle' if result in {'waiting', 'retry_wait', 'completed'} else 'stopped' if result == 'stopped' else 'failed')
+                        if result in {'waiting', 'retry_wait', 'completed'}: report('idle')
                     except RunBudgetExceeded:
                         print('run_budget_exhausted')
                         break
                     except Exception:
-                        try: report('failed', 'runtime_failed')
-                        except Exception: pass
+                        final_state = 'failed'
                         raise SystemExit('worker_failed: result retained as uncertain; inspect status, do not blindly rerun') from None
                     print(result)
                     if result in {'uncertain', 'stale', 'unavailable', 'heartbeat_failed', 'runtime_timeout'}:
@@ -180,15 +214,24 @@ def main():
                         until = min(deadline, time.monotonic() + 0.25)
                         while time.monotonic() < until and not journal.stop_requested():
                             time.sleep(min(0.02, max(0, until - time.monotonic())))
-                try: report(final_state, 'runtime_failed' if final_state == 'failed' else None)
-                except Exception: print('stop_report_unconfirmed')
         except RunBudgetExceeded:
             print('run_budget_exhausted')
         finally:
             source = locals().get('source_runtime')
-            if callable(getattr(source, 'shutdown', None)): source.shutdown()
-            client.close()
+            try:
+                if callable(getattr(source, 'shutdown', None)):
+                    if source.shutdown() is not True: final_state = 'failed'
+            except Exception:
+                final_state = 'failed'
+                raise
+            finally:
+                try:
+                    if source is not None:
+                        client.report_terminal(runtime_kind, final_state, 'runtime_failed' if final_state == 'failed' else None)
+                except Exception: print('stop_report_unconfirmed')
+                client.close()
     finally:
+        if connector_lease is not None: connector_lease.close()
         journal.close()
 
 

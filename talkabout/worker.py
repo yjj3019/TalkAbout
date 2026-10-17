@@ -6,6 +6,7 @@ import threading
 import time
 import random
 import math
+import uuid
 from dataclasses import dataclass
 from email.utils import parsedate_to_datetime
 from urllib.parse import urlsplit
@@ -97,6 +98,16 @@ class APIClient:
 
     def close(self):
         self.client.close()
+
+    def report_terminal(self, runtime, state, error_code=None):
+        """One bounded status-only cleanup request; never bypass work fences."""
+        if runtime not in {'codex', 'claude', 'grok', 'synthetic'} or state not in {'stopped', 'failed'}:
+            raise ValueError('invalid_terminal_report')
+        response = self.client.request('PUT', 'agents/me/connection',
+            json={'runtime': runtime, 'state': state, 'error_code': error_code},
+            headers={'Idempotency-Key': str(uuid.uuid4())}, timeout=2)
+        response.raise_for_status()
+        return response.json()
 
 
 class Journal:
@@ -261,11 +272,17 @@ class Worker:
                     self.journal.save(tid, "failed", payload)
                     return "unavailable"
                 payload["claim"] = {"generation": task["generation"], "membership_revision": task["membership_revision"]}
-                payload["claim_key"] = f"claim:{tid}:{task['attempt'] + 1}"
+                # Durable for retries of this claim, distinct across worker journals.
+                payload["claim_key"] = f"claim:{tid}:{uuid.uuid4().hex}"
                 payload["runtime_started"] = False
                 self.journal.save(tid, "claim_pending", payload)
                 state = "claim_pending"
             if state == "claim_pending":
+                suffix = str(payload.get('claim_key', '')).rsplit(':', 1)[-1]
+                if len(suffix) != 32 or any(c not in '0123456789abcdef' for c in suffix):
+                    # Legacy globally shared claim keys cannot prove this journal's ownership.
+                    self.journal.save(tid, 'failed', payload)
+                    return 'stale'
                 if self.journal.stop_requested():
                     self.journal.stop_state("stopped")
                     return "stopped"
@@ -274,6 +291,10 @@ class Worker:
                 self.journal.save(tid, "claimed", payload)
                 state = "claimed"
             if state == "claimed":
+                suffix = str(payload.get('claim_key', '')).rsplit(':', 1)[-1]
+                if len(suffix) != 32 or any(c not in '0123456789abcdef' for c in suffix):
+                    self.journal.save(tid, 'failed', payload)
+                    return 'stale'
                 task = self.client.request("GET", prefix)
                 if task["state"] == "queued" and task["attempt"] == payload["task"]["attempt"] and task["generation"] == payload["task"]["generation"] and task["membership_revision"] == payload["task"]["membership_revision"]:
                     payload.update(safe_pre_call_retry=True, runtime_started=False)
@@ -287,11 +308,20 @@ class Worker:
                     self.journal.save(tid, "failed", payload)
                     return "stale"
                 room = self.client.request("GET", f"rooms/{rid}")
+                latest = next((item for item in room['tasks'] if item['id'] == tid), None)
+                if (room['state'] != 'active' or room['generation'] != task['generation']
+                        or room['membership_revision'] != task['membership_revision']
+                        or not latest or latest['state'] != 'leased'
+                        or latest['assignee'] != self.actor_id
+                        or any(latest[k] != payload['task'][k] for k in ('attempt', 'generation', 'membership_revision'))
+                        or latest['lease_expires_at'] <= time.time() or latest['deadline'] <= time.time()):
+                    self.journal.save(tid, 'failed', payload)
+                    return 'stale'
                 if self.journal.stop_requested():
                     self.journal.save(tid, "cancelled", payload)
                     self.journal.stop_state("stopped")
                     return "stopped"
-                context = {"agent_id": self.actor_id, "display_name": self.actor["display_name"], "role": task.get("role", "participant"),
+                context = {"room_id": rid, "generation": task["generation"], "membership_revision": task["membership_revision"], "agent_id": self.actor_id, "display_name": self.actor["display_name"], "role": task.get("role", "participant"),
                            "topic": room["topic"], "purpose": task["purpose"], "inputs": room["messages"][-8:]}
                 context["phase"] = task.get("phase")
                 context["round"] = task.get("round")
