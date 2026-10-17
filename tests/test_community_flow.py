@@ -34,6 +34,30 @@ def test_legacy_creation_remains_automatic_and_manual_is_human_only(fixture):
     with pytest.raises(Problem):core.create('fixture-a',{'topic':'Agent','start_policy':'manual'},'forbidden-manual')
 
 
+@pytest.mark.parametrize('mode',['free_discussion','bounded_rounds','co_creation'])
+@pytest.mark.parametrize('contribute',[False,True])
+def test_mode_permissions_match_start_readiness_and_scheduler(fixture,mode,contribute):
+    store,core,_=fixture
+    room=core.create('fixture-human',{'topic':'Mode permission fixture','mode':mode,'start_policy':'manual'},'mode-prepare')
+    permissions=AGENT_PERMISSIONS if contribute else AGENT_PERMISSIONS-{'room:contribute'}
+    invitation=core.mutation('fixture-human',room['id'],'memberships','invite-mode',{'principal_id':'a','permissions':sorted(permissions)})
+    core.accept('fixture-a',room['id'],'accept-mode',{'expected_revision':invitation['revision'],'acknowledge_private':True})
+    IdentityService(store).mutate('fixture-a','connection','mode-contact',{'runtime':'synthetic','state':'idle'})
+    if mode=='co_creation' and not contribute:
+        with pytest.raises(Problem,match='participant_permissions_required'):control(core,core.read('fixture-human',room['id']),'start','missing-contribute')
+        current=core.read('fixture-human',room['id'])
+        assert current['state']=='preparing' and not current['tasks']
+        store.rooms[room['id']]['members']['a']['permissions'].append('room:contribute')
+    control(core,core.read('fixture-human',room['id']),'start','mode-start')
+    started=core.read('fixture-human',room['id'])
+    assert started['state']=='active'
+    if mode=='free_discussion':
+        member=started['members']['a']
+        core.mutation('fixture-a',room['id'],'turn-requests','explicit-turn',{'generation':started['generation'],'membership_revision':member['revision']})
+        started=core.read('fixture-human',room['id'])
+    assert len(started['tasks'])==1 and started['tasks'][0]['assignee']=='a'
+
+
 def test_postgres_preparation_connection_and_start_persist_without_new_ddl(postgres_fixture):
     from talkabout.store import PostgresStore
     store,core,_=postgres_fixture

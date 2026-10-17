@@ -7,7 +7,7 @@ from .identity import REAL_RUNTIMES, public_connection, public_runtime_check
 
 from .domain import (AGENT_PERMISSIONS, HUMAN_PERMISSIONS, Problem, active, authorize,
                      cancel_tasks, digest, emit, fencing, ident, message, new_room,
-                     replay, require, save_response, schedule)
+                     replay, require, save_response, schedule, participant_permissions)
 
 
 def public_room(room, actor, principals=None):
@@ -62,13 +62,13 @@ class Core:
     def __init__(self, store):
         self.store = store
 
-    def _worker_ready(self, principal, room_id, now):
+    def _worker_ready(self, principal, room_id, now, required=None):
         connection = principal.get("connection", {})
         binding = connection.get("_credential_binding")
         if not (binding and connection.get("state") in {"idle", "running"}
                 and connection.get("room_id") in {None, room_id}
                 and 0 <= now - connection.get("last_seen_at", 0) <= 75
-                and self.store.credential_active(binding, principal["id"], room_id, AGENT_PERMISSIONS - {"room:contribute"})):
+                and self.store.credential_active(binding, principal["id"], room_id, required if required is not None else participant_permissions('bounded_rounds'))):
             return False
         if connection.get("runtime") == "synthetic":
             return connection.get("execution_evidence") == "synthetic_test_only"
@@ -324,10 +324,13 @@ class Core:
                     require(room["state"] != "closed", "room_closed")
                     if action == "start":
                         require(room["state"] == "preparing", "invalid_transition")
-                        require(any(m["kind"] == "agent" and m["status"] == "active" and (AGENT_PERMISSIONS - {"room:contribute"}) <= set(m["permissions"]) for m in room["members"].values()), "participants_required")
-                        require(all(self._worker_ready(principals.get(pid, {}), room["id"], now)
-                            for pid, m in room["members"].items() if m["kind"] == "agent" and m["status"] == "active"
-                            and (AGENT_PERMISSIONS - {"room:contribute"}) <= set(m["permissions"])), "worker_connection_required")
+                        candidates = [(pid, m) for pid, m in room['members'].items() if m['kind']=='agent' and m['status']=='active'
+                                      and participant_permissions('bounded_rounds') <= set(m['permissions'])]
+                        require(candidates, 'participants_required')
+                        required = participant_permissions(room['mode'])
+                        require(all(required <= set(m['permissions']) for _, m in candidates), 'participant_permissions_required')
+                        require(all(self._worker_ready(principals.get(pid, {}), room['id'], now, required)
+                                    for pid, _ in candidates), 'worker_connection_required')
                         room.update(state="active", started_at=now, deadline=now + room.get("duration_seconds", 900))
                     elif action == "pause":
                         require(room["state"] == "active", "invalid_transition")

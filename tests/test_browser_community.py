@@ -39,7 +39,10 @@ def test_browser_register_invite_setup_start_and_text_artifact(tmp_path):
             shots=Path(__file__).resolve().parents[2]/'release-artifacts';shots.mkdir(exist_ok=True)
             page.goto(base)
             page.locator('#workspace').fill('browser-fixture');page.locator('#username').fill('owner')
-            page.locator('#password').fill('fixture-password-not-real');page.locator('#login button').click()
+            page.locator('#password').fill('fixture-password-not-real')
+            with page.expect_response(lambda response:response.url==base+'/api/v1/session' and response.request.method=='POST') as login_response:
+                page.locator('#login button').click()
+            fixture_csrf=login_response.value.json()['csrf_token']
             page.locator('#dashboard').wait_for(state='visible')
             page.locator('#nav-agents').click();page.locator('#agent-name').fill('Fixture Blue');page.locator('#agent-handle').fill('fixture-blue')
             page.locator('#register-agent button[type=submit]').click()
@@ -54,6 +57,23 @@ def test_browser_register_invite_setup_start_and_text_artifact(tmp_path):
             playwright.expect(page.locator('#members')).to_contain_text('초대 대기')
             page.screenshot(path=str(shots/'community-invitation-ko.png'),full_page=True)
             participant=page.locator('#members .member-card',has_text='Fixture Blue')
+            # Prepare a missing-scope fixture through the authenticated owner API.
+            room_id=page.evaluate('new URLSearchParams(location.search).get("room")')
+            agent=next(a for a in page.request.get(base+'/api/v1/agents').json() if a['handle']=='fixture-blue')
+            permissions=page.request.get(base+'/api/v1/rooms/'+room_id).json()['members'][agent['id']]['permissions']
+            def set_permissions(scopes):
+                member=page.request.get(base+'/api/v1/rooms/'+room_id).json()['members'][agent['id']]
+                response=page.request.patch(base+'/api/v1/rooms/'+room_id+'/memberships/'+agent['id'],
+                    headers={'Origin':base,'X-CSRF-Token':fixture_csrf,'Idempotency-Key':str(uuid.uuid4())},
+                    data={'expected_revision':member['revision'],'permissions':scopes,'status':'pending'})
+                assert response.status==200
+                with page.expect_response(lambda reply:reply.url==base+'/api/v1/rooms/'+room_id and reply.request.method=='GET'):
+                    page.locator('#refresh').click()
+            set_permissions([p for p in permissions if p!='room:contribute'])
+            participant.get_by_role('button',name='초대 수락·연결 안내 열기',exact=True).click()
+            assert 'cli connect' not in page.locator('#onboarding-commands').inner_text()
+            playwright.expect(page.locator('#onboarding-commands')).to_contain_text('작업 권한')
+            page.locator('#onboarding-close').click();set_permissions(permissions)
             participant.get_by_role('button',name='초대 수락·연결 안내 열기',exact=True).click()
             assert 'Synthetic shared text' in page.locator('#onboarding-prompt').input_value()
             assert 'TALKABOUT_TOKEN' not in page.locator('#onboarding-prompt').input_value()
@@ -110,6 +130,23 @@ def test_browser_register_invite_setup_start_and_text_artifact(tmp_path):
                 worker=Worker(client,journal,SyntheticRuntime())
                 for _ in range(3):assert worker.step()=='completed'
             finally:journal.close()
+            client.request('PUT','agents/me/connection',{'runtime':'synthetic','state':'stopped'},str(uuid.uuid4()))
+            page.locator('#refresh').click();page.locator('[data-tab=participants]').click()
+            playwright.expect(participant).to_contain_text('worker 중지')
+            participant.get_by_role('button',name='참여 안내',exact=True).click()
+            assert page.locator('#onboarding-action').input_value()==''
+            commands=page.locator('#onboarding-commands').inner_text()
+            assert 'cli check' in commands and 'cli join' in commands and 'cli connect' not in commands
+            playwright.expect(page.locator('#onboarding-commands')).to_contain_text('--resume-worker')
+            page.locator('#onboarding-action').select_option('start')
+            assert 'cli connect' not in page.locator('#onboarding-commands').inner_text()
+            page.locator('#onboarding-action').select_option('restart')
+            commands=page.locator('#onboarding-commands').inner_text()
+            assert commands.index('cli stop')<commands.index('cli check')<commands.index('cli join')<commands.index('cli connect')
+            assert '--resume-worker' in commands
+            page.locator('#onboarding-commands').scroll_into_view_if_needed()
+            page.screenshot(path=str(shots/'community-stopped-recovery-ko.png'),full_page=True)
+            page.locator('#onboarding-close').click()
             page.locator('#refresh').click();page.locator('[data-tab=management]').click()
             page.locator('[data-action=pause]').click()
             playwright.expect(page.locator('#workflow')).to_contain_text('일시정지')
