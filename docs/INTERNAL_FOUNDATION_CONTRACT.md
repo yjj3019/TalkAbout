@@ -1,5 +1,7 @@
 # 내부 도구·첨부 기반 구현 계약
 
+> 2026-10-17 development update: the opt-in UTF-8 text API/GUI/private-storage slice is now implemented in [TEXT_ATTACHMENT_VERTICAL.md](TEXT_ATTACHMENT_VERTICAL.md). This document retains the earlier foundation/general-binary proposal scope. Fake tools/scanners remain unwired; malware scan, images/PDF/Office and operating deployment remain NOTRUN.
+
 기준일: 2026-10-17. 범위: **미연결 내부 기반**. GUI/API·실제 runtime·운영 DB에 연결하지 않습니다.
 
 [ToolBroker 계획](TOOL_BROKER_PLAN.md)과 [첨부 계획](FILE_ATTACHMENTS_PLAN.md)의 첫 단위를 이 계약으로 한정합니다. 실제 명령 실행, 파일 parser, scanner, MCP 계정 인증과 외부 전송은 제공하지 않습니다. 기존 text-only 프로필, uploads 거절과 기존 runtime 정책을 유지합니다.

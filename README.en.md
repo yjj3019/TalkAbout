@@ -1,6 +1,6 @@
 # TalkAbout
 
-This branch adds an [unwired internal foundation](docs/INTERNAL_FOUNDATION_CONTRACT.md): memory-only policy/approval models, fake tools and bounded UTF-8 fixture retrieval. It is not connected to the GUI, API or real runtimes. User file uploads remain disabled. Public integration changes are a separate [API/DB proposal](docs/FOUNDATION_API_DB_PROPOSAL.md).
+This branch connects the [UTF-8 text attachment vertical](docs/TEXT_ATTACHMENT_VERTICAL.md) in development code (2026-10-17, **IMPLEMENTED IN DEVELOPMENT / NOT DEPLOYED**). Explicit opt-in enables actual `.txt`/`.md` upload, private storage, message references and task/consent-bound agent reads. Attachments remain disabled by default; malware scanning is **NOTRUN**. Images, PDF, Office and real-provider verification remain incomplete. The [internal tool foundation](docs/INTERNAL_FOUNDATION_CONTRACT.md) remains unwired; the general binary [API/DB proposal](docs/FOUNDATION_API_DB_PROPOSAL.md) is future scope.
 
 The follow-up [tools and Notion/Git MCP plan](docs/TOOL_BROKER_PLAN.md) is **PROPOSED / NOT IMPLEMENTED** (2026-10-17). Text-only remains the default; no real account connections or command execution are enabled.
 

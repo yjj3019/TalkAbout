@@ -4,6 +4,7 @@ import copy
 import time
 
 from .identity import REAL_RUNTIMES, public_connection, public_runtime_check
+from .text_files import (claim_proof, filter_refs, public_task, token_hash, validate_refs)
 
 from .domain import (AGENT_PERMISSIONS, HUMAN_PERMISSIONS, Problem, active, authorize,
                      cancel_tasks, digest, emit, fencing, ident, message, new_room,
@@ -12,7 +13,15 @@ from .domain import (AGENT_PERMISSIONS, HUMAN_PERMISSIONS, Problem, active, auth
 
 def public_room(room, actor, principals=None):
     viewer_member = authorize(actor, room, "room:read")
-    tasks = [copy.deepcopy(t) for t in room["tasks"].values() if actor["kind"] == "human" or t["assignee"] == actor["id"]]
+    tasks = [public_task(t) for t in room["tasks"].values() if actor["kind"] == "human" or t["assignee"] == actor["id"]]
+    for task in tasks:
+        if 'attachment_refs' in task:task['attachment_refs']=filter_refs(actor,room,viewer_member,task['attachment_refs'])
+    messages=[]
+    for original in sorted(room['messages'].values(),key=lambda m:m['seq']):
+        if original['seq']<viewer_member['read_start_seq']:continue
+        msg=copy.deepcopy(original)
+        if 'attachment_refs' in msg:msg['attachment_refs']=filter_refs(actor,room,viewer_member,msg['attachment_refs'])
+        messages.append(msg)
     members = copy.deepcopy(room["members"])
     if principals:
         for pid, listed_member in members.items():
@@ -26,7 +35,7 @@ def public_room(room, actor, principals=None):
                 posted = [m for m in room["messages"].values() if m["actor_id"] == pid and m["actor_kind"] == "agent"]
                 listed_member["published_contributions"] = len(posted)
     return {k: copy.deepcopy(room[k]) for k in ("id", "topic", "mode", "state", "generation", "room_revision", "limits", "last_seq")} | {"members": members,
-        "messages": [m for m in room["messages"].values() if m["seq"] >= viewer_member["read_start_seq"]], "tasks": tasks,
+        "messages": messages, "tasks": tasks,
         "artifacts": [{**a, "versions": [v for v in a["versions"] if v["seq"] >= viewer_member["read_start_seq"]]}
                       for a in room["artifacts"].values() if any(v["seq"] >= viewer_member["read_start_seq"] for v in a["versions"])],
         "membership_revision": viewer_member["revision"],
@@ -59,8 +68,9 @@ def control_parameters(action, parameters, room, member):
 
 
 class Core:
-    def __init__(self, store):
+    def __init__(self, store, text_files=None):
         self.store = store
+        self.text_files = text_files
 
     def _worker_ready(self, principal, room_id, now, required=None):
         connection = principal.get("connection", {})
@@ -200,6 +210,8 @@ class Core:
                 authorize(actor, room, "room:speak")
             previous, lookup, fingerprint = replay(room, actor, operation, key, body)
             if previous is not None:
+                if self.text_files and bits[0]=='tasks' and verb=='claim' and 'lease_id' in previous:
+                    return {**previous,'lease_proof':claim_proof(token,room_id,previous,key)}
                 return previous
             now = time.time()
             if bits[0] == "turn-requests":
@@ -225,7 +237,7 @@ class Core:
                     if prior:
                         require(prior.get("epoch") == member["epoch"], "client_message_epoch_conflict")
                         require(prior["digest"] == fingerprint, "client_message_conflict")
-                        response = {"message": room["messages"][prior["id"]], "task": copy.deepcopy(task)}
+                        response = {"message": room["messages"][prior["id"]], "task": public_task(task)}
                         return save_response(room, lookup, fingerprint, response, member["epoch"])
                 if verb == "claim":
                     active(room)
@@ -234,6 +246,13 @@ class Core:
                     task["attempt"] += 1
                     task["state"] = "leased"
                     task["lease_expires_at"] = min(task["deadline"], now + room["limits"]["lease"])
+                    if self.text_files:
+                        task['lease_id']=ident()
+                        task['_file_credential_binding']=token_hash(token)
+                        task['_file_lease_hash']=token_hash(claim_proof(token,room_id,task,key))
+                        visible=sorted((m for m in room['messages'].values() if m['seq']>=member['read_start_seq']),key=lambda m:m['seq'])[-8:]
+                        refs={r['file_id']:r for m in visible for r in filter_refs(actor,room,member,m.get('attachment_refs',[]))}
+                        task['attachment_refs']=list(refs.values())[:8]
                     emit(room, "task.claimed", task_id=target, attempt=task["attempt"])
                     response = copy.deepcopy(task)
                 else:
@@ -273,6 +292,9 @@ class Core:
                         response = copy.deepcopy(task)
                     schedule(room, principals, now)
             elif bits[0] == "messages":
+                if body.get('attachment_refs'):
+                    require(self.text_files is not None,'feature_disabled',409)
+                    validate_refs(actor,room,member,body['attachment_refs'])
                 require(room["state"] in {"preparing", "active", "paused"}, "room_closed")
                 response = message(room, actor, body, now, fingerprint=fingerprint)
                 # Human messages never create extra recursive turns.
@@ -398,7 +420,13 @@ class Core:
                     emit(room, "room.closed", actor_id=actor["id"], reason="artifact_adopted")
                 response = copy.deepcopy(artifact)
                 response["versions"] = [v for v in response["versions"] if v["seq"] >= member["read_start_seq"]]
-            return save_response(room, lookup, fingerprint, copy.deepcopy(response), member["epoch"])
+            if bits[0]=='tasks':
+                if response.get('id')==target:response=public_task(response)
+                elif 'task' in response:response={**response,'task':public_task(response['task'])}
+            saved=save_response(room, lookup, fingerprint, copy.deepcopy(response), member["epoch"])
+            if self.text_files and bits[0]=='tasks' and verb=='claim':
+                return {**saved,'lease_proof':claim_proof(token,room_id,saved,key)}
+            return saved
 
     def accept(self, token, room_id, key, body):
         _, _, principals = self.store.snapshot(token)

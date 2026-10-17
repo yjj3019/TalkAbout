@@ -181,7 +181,10 @@ class Journal:
 class SyntheticRuntime:
     """Local fixture only; never represents a real model or external agent."""
     def run(self, context, cancel):
-        return f"Synthetic fixture contribution: {context['topic']}"
+        result=f"Synthetic fixture contribution: {context['topic']}"
+        for excerpt in context.get('file_excerpts',[]):
+            result+=f"\nSynthetic file read {excerpt['ref']['file_id']} lines {excerpt['line_start']}-{excerpt['line_end']}: {excerpt['text']}"
+        return result[:16000]
 
 
 class Worker:
@@ -326,6 +329,37 @@ class Worker:
                 context["phase"] = task.get("phase")
                 context["round"] = task.get("round")
                 context["artifact_proposals"] = [{"artifact_id": a["id"], "text": a["versions"][-1]["text"]} for a in room["artifacts"] if a["versions"]][-4:]
+                claimed=payload['task']
+                if claimed.get('attachment_refs'):
+                    require_proof=claimed.get('lease_proof')
+                    if not require_proof:raise ValueError('attachment_lease_proof_required')
+                    excerpts=[]
+                    for ref in claimed['attachment_refs'][:4]:
+                        read_fence={k:claimed[k] for k in ('generation','membership_revision','attempt')}
+                        chunk=self.client.request('POST',prefix+'/files/'+ref['file_id']+'/read',
+                            {**read_fence,'lease_proof':require_proof,'start':0,'end':2000},
+                            f"file-read:{tid}:{claimed['attempt']}:{ref['file_id']}")
+                        excerpts.append({k:chunk[k] for k in ('ref','name','text','start','end','line_start','line_end',
+                                                             'truncated','untrusted_data','malware_scan')})
+                    context['file_excerpts']=excerpts
+                    # Reads may wait on the network. Recheck consent and fencing immediately
+                    # before handing any fetched text to a runtime; no remote revocation can
+                    # recall bytes already delivered to that runtime.
+                    allowed=self.client.request('GET',f'rooms/{rid}/files')
+                    current_files={item['file_id'] for item in allowed}
+                    room_now=self.client.request('GET',f'rooms/{rid}')
+                    latest=next((item for item in room_now['tasks'] if item['id']==tid),None)
+                    if (not all(ref['file_id'] in current_files for ref in claimed['attachment_refs'][:4])
+                            or room_now['state']!='active' or room_now['generation']!=claimed['generation']
+                            or room_now['membership_revision']!=claimed['membership_revision']
+                            or not latest or latest['state']!='leased' or latest['assignee']!=self.actor_id
+                            or any(latest[k]!=claimed[k] for k in ('attempt','generation','membership_revision'))
+                            or latest['lease_expires_at']<=time.time() or latest['deadline']<=time.time()):
+                        self.journal.save(tid,'failed',payload)
+                        return 'stale'
+                    if self.journal.stop_requested():
+                        self.journal.save(tid,'cancelled',payload);self.journal.stop_state('stopped')
+                        return 'stopped'
                 # Credentials, cursors, lease state, and retry keys are never model inputs.
                 check_deadline(self.run_deadline)
                 payload["runtime_started"] = True
@@ -362,7 +396,8 @@ class Worker:
                 watcher.start()
                 try:
                     remaining = self.run_deadline - time.monotonic() if self.run_deadline is not None else float('inf')
-                    text = bounded_call(self.runtime, context, cancel, min(self.runtime_timeout, max(0, task["deadline"] - time.time()), remaining))
+                    lease_remaining=max(0,latest['lease_expires_at']-time.time()) if claimed.get('attachment_refs') else float('inf')
+                    text = bounded_call(self.runtime, context, cancel, min(self.runtime_timeout, max(0, task["deadline"] - time.time()), lease_remaining, remaining))
                     check_deadline(self.run_deadline)
                 except RuntimeTimeout as error:
                     if stop_seen.is_set():

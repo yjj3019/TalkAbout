@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse, Response
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from .core import Core
@@ -15,9 +15,11 @@ from .identity import IdentityService
 from .auth import COOKIE, HumanAuth
 
 
-def create_app(store, start_scheduler=True, allow_fixture_bearer=False, allowed_hosts=None, setup_container_name=None):
+def create_app(store, start_scheduler=True, allow_fixture_bearer=False, allowed_hosts=None, setup_container_name=None, text_storage=None):
     setup_container_name = setup_container_name if isinstance(setup_container_name, str) and re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,127}', setup_container_name) else None
-    core = Core(store)
+    from .text_files import TextAttachments,MAX_BYTES
+    text_files=TextAttachments(store,text_storage) if text_storage is not None else None
+    core = Core(store,text_files=text_files)
     identity = IdentityService(store)
     human_auth = HumanAuth(store)
     stop = threading.Event()
@@ -91,7 +93,8 @@ def create_app(store, start_scheduler=True, allow_fixture_bearer=False, allowed_
     def health(request: Request):
         if request.state.setup_locked:
             return {"status": "alive"}
-        return {"status": "development", "scheduler": state["scheduler"], "binary_uploads": False}
+        return {"status": "development", "scheduler": state["scheduler"], "binary_uploads": False,
+                **({'text_attachments':True} if text_files else {})}
 
     @app.get("/ready")
     async def ready():
@@ -139,9 +142,29 @@ def create_app(store, start_scheduler=True, allow_fixture_bearer=False, allowed_
                     return
         return StreamingResponse(stream(), media_type="text/event-stream", headers={"X-Accel-Buffering": "no"})
 
-    @app.api_route("/api/v1/{path:path}", methods=["GET", "POST", "PATCH", "PUT"])
+    @app.api_route("/api/v1/{path:path}", methods=["GET", "POST", "PATCH", "PUT", "DELETE"])
     async def api(request: Request, path: str):
         from starlette.concurrency import run_in_threadpool
+        upload_content=re.fullmatch(r'rooms/([a-zA-Z0-9-]+)/uploads/([a-f0-9]{32})/content',path)
+        if request.method=='PUT' and upload_content:
+            require(text_files is not None,'feature_disabled',409)
+            credential=token(request)
+            require(request.headers.get('content-type','').split(';')[0]=='application/octet-stream','invalid_upload_content_type',415)
+            try:actor=await run_in_threadpool(store.auth,credential)
+            except Problem:raise
+            except Exception:raise Problem('service_unavailable',503) from None
+            require(actor['kind']=='human','human_required',403)
+            raw=bytearray()
+            async for chunk in request.stream():
+                require(len(raw)+len(chunk)<=MAX_BYTES,'file_size_limit',413)
+                raw.extend(chunk)
+            import hashlib
+            rid,fid=upload_content.groups();content=bytes(raw)
+            try:
+                return await run_in_threadpool(text_files.mutate,credential,rid,fid+'/content',
+                    request.headers.get('idempotency-key'),{'sha256':hashlib.sha256(content).hexdigest(),'size':len(content)},content)
+            except Problem:raise
+            except Exception:raise Problem('service_unavailable',503) from None
         body = {}
         if request.method != "GET":
             raw = bytearray()
@@ -197,8 +220,39 @@ def create_app(store, start_scheduler=True, allow_fixture_bearer=False, allowed_
         def dispatch():
             method = request.method
             store.auth(credential)
+            if path=='capabilities' and method=='GET':
+                return {'text_attachments':text_files.capabilities() if text_files else {'enabled':False}}
             if "uploads" in path.split("/"):
-                raise Problem("feature_disabled")
+                require(text_files is not None,'feature_disabled',409)
+                init=re.fullmatch(r'rooms/([a-zA-Z0-9-]+)/uploads',path)
+                complete=re.fullmatch(r'rooms/([a-zA-Z0-9-]+)/uploads/([a-f0-9]{32})/complete',path)
+                if init and method=='POST':return text_files.mutate(credential,init[1],'init',key,body)
+                if complete and method=='POST':return text_files.mutate(credential,complete[1],complete[2]+'/complete',key,body)
+                raise Problem('not_found',404)
+            file_path=re.fullmatch(r'rooms/([a-zA-Z0-9-]+)/files(?:/([a-f0-9]{32})(?:/(download|text|consent))?)?',path)
+            if file_path:
+                require(text_files is not None,'feature_disabled',409)
+                rid,fid,action=file_path.groups()
+                if method=='GET' and not fid:return text_files.list(credential,rid)
+                if method=='GET' and fid and action is None:
+                    items=text_files.list(credential,rid)
+                    item=next((f for f in items if f['file_id']==fid),None)
+                    require(item,'attachment_not_found',404)
+                    return item
+                if method=='GET' and action in {'download','text'}:
+                    result=text_files.human_read(credential,rid,fid,action)
+                    if action=='text':return result
+                    content,name=result
+                    return Response(content,media_type='text/plain; charset=utf-8',headers={
+                        'Content-Disposition':'attachment; filename="'+name+'"','X-Content-Type-Options':'nosniff'})
+                if method=='DELETE' and fid and action is None:return text_files.mutate(credential,rid,fid+'/delete',key,body)
+                if method=='PATCH' and action=='consent':return text_files.mutate(credential,rid,fid+'/consent',key,body)
+                raise Problem('not_found',404)
+            file_read=re.fullmatch(r'rooms/([a-zA-Z0-9-]+)/tasks/([a-zA-Z0-9-]+)/files/([a-f0-9]{32})/read',path)
+            if file_read:
+                require(text_files is not None,'feature_disabled',409)
+                require(method=='POST','not_found',404)
+                return text_files.agent_read(credential,*file_read.groups(),key,body)
             if method == "GET" and path == "agents/me":
                 return core.me(credential)
             if method == "GET" and path == "agents/me/invitations":
