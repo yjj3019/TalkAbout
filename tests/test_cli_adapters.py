@@ -27,10 +27,12 @@ def test_platform_secrets_are_removed_from_child_environment(monkeypatch):
 
 @pytest.mark.skipif(os.name != 'nt', reason='POSIX external CLI fails closed until containment is verified')
 def test_actual_synthetic_child_reads_stdin_and_failure_is_sanitized():
+    # Check normal I/O and error sanitization without using cold interpreter
+    # startup as a two-second benchmark. The separate timeout test stays strict.
     command=[sys.executable,'-c','import sys; print(sys.stdin.read())']
-    assert execute_bounded(command,'synthetic-input',threading.Event(),2).strip()=='synthetic-input'
+    assert execute_bounded(command,'synthetic-input',threading.Event(),10).strip()=='synthetic-input'
     with pytest.raises(AdapterError,match='^runtime_failed$'):
-        execute_bounded([sys.executable,'-c',"import sys; print('synthetic-stderr-secret',file=sys.stderr); sys.exit(1)"],'',threading.Event(),2)
+        execute_bounded([sys.executable,'-c',"import sys; print('synthetic-stderr-secret',file=sys.stderr); sys.exit(1)"],'',threading.Event(),10)
 
 
 @pytest.mark.skipif(os.name != 'nt', reason='POSIX external CLI fails closed until containment is verified')
