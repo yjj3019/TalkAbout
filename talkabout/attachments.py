@@ -300,13 +300,16 @@ class AttachmentService:
         positive(limit,4)
         with self.store.lock:
             require('text' in self.resolve_capabilities(fence.agent_id),'runtime_text_unsupported')
+            self._task_access(fence)
+            require(self.store.budgets.get(fence.identity(),0)<self.task_chars,'retrieval_budget_exhausted')
             hits=[]
             for version in self.task_context(fence):
+                if self.store.budgets.get(fence.identity(),0)>=self.task_chars:break
                 if version.state!='fixture_ready' or version.extraction_state!='ready':continue
                 text=self.store.texts[version.ref.version_id]
                 start=text.find(query)
                 if start>=0:
-                    hits.append(self.retrieve(fence,version.ref,start,min(len(text),start+self.max_chunk)))
+                    hits.append(self.retrieve(fence,version.ref,start,len(text)))
                 if len(hits)>=limit:break
             self._task_access(fence)
             return tuple(hits)

@@ -178,6 +178,7 @@ def test_search_is_task_scoped_and_counts_toward_the_same_read_budget(files_env)
     hits=e.service.search(e.fence,'second')
     assert len(hits)==1 and hits[0].ref==ref and hits[0].start==6 and hits[0].line_start==2
     assert hits[0].text.startswith('second') and hits[0].untrusted_data
+    assert hits[0].truncated
     e.service.search(e.fence,'first')
     with pytest.raises(FoundationError,match='retrieval_budget_exhausted'):e.service.retrieve(e.fence,ref,0,1)
 
@@ -189,6 +190,19 @@ def test_agent_upload_requires_current_task_authority(files_env):
     e.authority[('agent-a','room-a','task-a')]=AuthoritySnapshot(e.fence,False)
     with pytest.raises(FoundationError,match='execution_denied'):e.service.upload(*args,fence=e.fence)
     assert not e.store.blobs
+
+
+def test_search_returns_bounded_prefix_instead_of_losing_prepared_hits(files_env):
+    e=files_env;refs=[]
+    for index in range(3):
+        ref=e.service.upload('human-owner','room-a',f'fixture{index}.txt',b'match: longer text','text/plain',{'agent-a'},f'upload{index}')
+        e.service.inspect_fixture(ref,FakeFileInspector());refs.append(ref)
+    e.service.attach_message('human-owner','room-a','message-a',refs)
+    e.messages['message-a']=replace(e.messages['message-a'],state='published')
+    hits=e.service.search(e.fence,'match',4)
+    assert len(hits)==2 and sum(len(hit.text) for hit in hits)==16
+    assert all(hit.truncated for hit in hits)
+    with pytest.raises(FoundationError,match='retrieval_budget_exhausted'):e.service.search(e.fence,'match')
 
 
 def test_synthetic_vertical_slice_never_treats_attachment_text_as_approval(files_env):
