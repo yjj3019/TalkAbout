@@ -1,0 +1,234 @@
+{
+  "reviewed_on": "2026-10-17",
+  "base": "dd7d546e1ce288af79b3851d9542fa68d2e6d28b",
+  "scope": "Synthetic test-fixture correction only; no production source change or real provider verification",
+  "previous_result": {
+    "passed": 459,
+    "failed": 1,
+    "skipped": 1,
+    "case": "test_no_descendants_survive_cli_parent_exit[timeout]"
+  },
+  "finding": "The old .7-second real deadline included child Python cold start, yet the assertion unconditionally required a PID file written by child code after grandchild creation. A missing PID file did not establish zero OS process creation or a containment failure.",
+  "additional_initial_failure": {
+    "case": "failure",
+    "result": "Second initial nine-case repetition failed with RuntimeTimeout at unchanged 5-second budget; exact stage unavailable. First repetition passed all nine.",
+    "follow_up": "Six instrumented runs observed natural exit 1, confirmed descendant cleanup and runtime_failed within 1.62-2.31 seconds; these do not establish the outlier cause. Existing failure case remains strict and is included in core/full checks."
+  },
+  "historical_limit": "The old failure did not retain Popen/resume stages; its exact process-creation state cannot be reconstructed. No historical PermissionError attribution is changed.",
+  "correction": {
+    "timeout_cold_start": "Retain real .7-second bounded_call. Observe Popen, suspended creation, resume, atomic readiness, completed cancellation and known PID exit. Missing readiness is permitted only after confirmed stop and runtime-thread completion, never treated as zero creation.",
+    "launch_failure": "Inject FileNotFoundError at Popen; require runtime_unavailable, no created/resumed process and no child marker.",
+    "timeout_before_launch": "Expire .7 logical deadline before Popen, then release the blocked launch on cancellation. Require zero Popen calls, finished runtime thread and no late child marker.",
+    "timeout_before_resume": "Create a real suspended Windows process, expire deadline before resume and require its recorded PID to be dead with no child-code readiness marker.",
+    "timeout_after_launch": "Observe atomic child/grandchild readiness before advancing the same .7 logical deadline. Require both PIDs dead after runtime_stopped, before outer containment teardown.",
+    "observation_field_note": "stopped means RuntimeTimeout.runtime_stopped. The launch_failure case independently asserts successful adapter.shutdown and no process creation.",
+    "controlled_clock_scope": "Only the fixture process talkabout.runtime clock reference is substituted for deterministic boundary cases. Process/adapter clocks, real cold-start timing and production code are unchanged.",
+    "retained_limits": "Original .7-second real cold-start budget, 5-second readiness/runtime guards, 15-second outer-parent limit, one-second CLI budget and 1.35-second assertion unchanged. No skips added or assertions removed.",
+    "strengthened_checks": "Atomic readiness avoids partial PID JSON. Known created PIDs are checked even without readiness; child and grandchild IDs must be distinct. Ordinary child failure must be runtime_failed, not any exception."
+  },
+  "remaining_full_failures": {
+    "test_deadline_is_rechecked_immediately_before_completion": {
+      "expected": "After forcing deadline expiry from the result_saved hook, journal status is result_saved:1.",
+      "observed": "RunBudgetExceeded was raised but journal status was claim_pending:1, so the intended result_saved phase was not reached.",
+      "retained_limit_seconds": 2,
+      "cause": "Exact costly operation unobserved; do not attribute to provider behavior or historical PermissionError.",
+      "scope": "Not modified; follow-up stage-controlled deadline diagnosis required."
+    },
+    "test_cli_run_includes_preflight_in_one_second_budget": {
+      "expected": "A one-second run including a 0.4-second capabilities delay returns in less than 1.35 seconds.",
+      "observed_elapsed_seconds": 2.1649867,
+      "retained_upper_bound_seconds": 1.35,
+      "cause": "Time-consuming stage was not retained; later assertions were not reached. No claim that the timing regression is resolved.",
+      "scope": "Not modified; requires separate synthetic latency diagnosis without raising the bound."
+    }
+  },
+  "full_gate": "NOT PASSED",
+  "validation": {
+    "focused": {
+      "repeat1": {
+        "passed": 5,
+        "failed": 0,
+        "skipped": 0
+      },
+      "repeat2": {
+        "passed": 5,
+        "failed": 0,
+        "skipped": 0
+      },
+      "repeat3": {
+        "passed": 5,
+        "failed": 0,
+        "skipped": 0
+      },
+      "core": {
+        "passed": 134,
+        "failed": 0,
+        "skipped": 1
+      }
+    },
+    "repeated_boundary_observations_without_pids": [
+      {
+        "boundary": "launch_failure",
+        "requested": true,
+        "created": false,
+        "resumed": false,
+        "ready": false,
+        "stopped": false,
+        "popen_calls": 1
+      },
+      {
+        "boundary": "timeout_before_launch",
+        "requested": true,
+        "created": false,
+        "resumed": false,
+        "ready": false,
+        "stopped": true,
+        "popen_calls": 0
+      },
+      {
+        "boundary": "timeout_before_resume",
+        "requested": true,
+        "created": true,
+        "resumed": false,
+        "ready": false,
+        "stopped": true,
+        "popen_calls": 1
+      },
+      {
+        "boundary": "timeout_after_launch",
+        "requested": true,
+        "created": true,
+        "resumed": true,
+        "ready": true,
+        "stopped": true,
+        "popen_calls": 1
+      },
+      {
+        "boundary": "timeout_cold_start",
+        "requested": true,
+        "created": true,
+        "resumed": true,
+        "ready": false,
+        "stopped": true,
+        "popen_calls": 1
+      },
+      {
+        "boundary": "launch_failure",
+        "requested": true,
+        "created": false,
+        "resumed": false,
+        "ready": false,
+        "stopped": false,
+        "popen_calls": 1
+      },
+      {
+        "boundary": "timeout_before_launch",
+        "requested": true,
+        "created": false,
+        "resumed": false,
+        "ready": false,
+        "stopped": true,
+        "popen_calls": 0
+      },
+      {
+        "boundary": "timeout_before_resume",
+        "requested": true,
+        "created": true,
+        "resumed": false,
+        "ready": false,
+        "stopped": true,
+        "popen_calls": 1
+      },
+      {
+        "boundary": "timeout_after_launch",
+        "requested": true,
+        "created": true,
+        "resumed": true,
+        "ready": true,
+        "stopped": true,
+        "popen_calls": 1
+      },
+      {
+        "boundary": "timeout_cold_start",
+        "requested": true,
+        "created": true,
+        "resumed": true,
+        "ready": false,
+        "stopped": true,
+        "popen_calls": 1
+      },
+      {
+        "boundary": "launch_failure",
+        "requested": true,
+        "created": false,
+        "resumed": false,
+        "ready": false,
+        "stopped": false,
+        "popen_calls": 1
+      },
+      {
+        "boundary": "timeout_before_launch",
+        "requested": true,
+        "created": false,
+        "resumed": false,
+        "ready": false,
+        "stopped": true,
+        "popen_calls": 0
+      },
+      {
+        "boundary": "timeout_before_resume",
+        "requested": true,
+        "created": true,
+        "resumed": false,
+        "ready": false,
+        "stopped": true,
+        "popen_calls": 1
+      },
+      {
+        "boundary": "timeout_after_launch",
+        "requested": true,
+        "created": true,
+        "resumed": true,
+        "ready": true,
+        "stopped": true,
+        "popen_calls": 1
+      },
+      {
+        "boundary": "timeout_cold_start",
+        "requested": true,
+        "created": true,
+        "resumed": true,
+        "ready": true,
+        "stopped": true,
+        "popen_calls": 1
+      }
+    ],
+    "python": {
+      "passed": 462,
+      "failed": 2,
+      "skipped": 1
+    },
+    "node": {
+      "passed": 136,
+      "failed": 0
+    },
+    "chrome": {
+      "passed": 5,
+      "failed": 0
+    },
+    "source_tested_tree": "a72df5a892ee5649fa855dc8e89c2b558e36c167",
+    "post_suite_changes": "This result document only; source/test hashes unchanged"
+  },
+  "security": {
+    "actual_provider_calls_added": 0,
+    "actual_trial_credentials_added": 0,
+    "security_or_permission_settings_changed": false,
+    "all_five_prior_record_hashes": "unchanged",
+    "conservative_codex_reservations": 3,
+    "third_native_start": "unknown",
+    "provider_usage": "unknown",
+    "provider_billing": "unknown",
+    "actual_runtime_gate": "unverified"
+  },
+  "delivery": "Existing Draft PR12 only; normal fast-forward; no main/base change, merge or deployment"
+}
