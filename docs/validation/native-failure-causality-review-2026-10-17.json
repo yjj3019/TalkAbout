@@ -1,0 +1,471 @@
+{
+  "status": "INVESTIGATION; actual runtime gate remains UNVERIFIED",
+  "checked_at": "2026-10-17",
+  "reviewed_source_commit": "d740c3a5ab0e7cb64498d2164c750b3432abcd5f",
+  "verdict_ko": "확인된 설정 결함과 진단 기록의 결함은 찾았다. 그러나 세 번의 실제 실패를 하나의 확정 원인으로 연결할 증거는 보존되지 않았다. 1·2차는 시작 경로 완료 후 출력 프로토콜 단계에서 실패했고, 3차는 controller의 PermissionError만 남아 정확한 실패 연산과 모델 실행 여부가 불명이다.",
+  "attempts": [
+    {
+      "attempt": 1,
+      "record_state": "failed",
+      "native_transport_starts": 1,
+      "prompt_sent_latch": true,
+      "error_code": "runtime_outcome_unknown",
+      "proven": "The counter increments only after _JSONLTransport construction returns; suspended process creation, Job assignment and resume therefore returned successfully. A successful model response was not obtained.",
+      "not_proven": "The user-reported EOF/no output has no retained byte/frame/exit diagnostics for this attempt. The underlying reason for missing protocol completion is unknown. The prompt latch is set BEFORE writing stdin and does not acknowledge provider processing.",
+      "configuration": "The invalid tools.view_image=false override was present. It is a confirmed command defect, but this attempt retained no stderr evidence tying its failure to that key."
+    },
+    {
+      "attempt": 2,
+      "record_state": "failed",
+      "native_transport_starts": 1,
+      "prompt_sent_latch": true,
+      "error_code": "runtime_outcome_unknown",
+      "retained_diagnostics": {
+        "stdout_bytes": 0,
+        "stdout_frames": 0,
+        "stdout_eof": true,
+        "stderr_bytes": 98,
+        "stderr_eof": true,
+        "stderr_hints": [
+          "configuration"
+        ],
+        "native_exit_code_before_cleanup": null,
+        "cleanup_confirmed": true
+      },
+      "proven": "Startup returned successfully; no stdout protocol frame was received before EOF. The retained stderr classifier found a configuration-related substring. tools.view_image=false was invalid for the pinned Codex 0.163.0 schema and strict CLI override loader.",
+      "assessment": "Configuration rejection is the best-supported explanation, and the invalid override is a concrete defect. The exact rejected key and whether it was the only blocker cannot be established from the retained coarse hint.",
+      "not_proven": "Raw 98-byte stderr, error kind/key and natural exit status were not retained. A null pre-cleanup exit is not exit 0; forced cleanup exit is not a natural exit. Two different synthetic errors reproduce these same coarse counters."
+    },
+    {
+      "attempt": 3,
+      "record_state": "reserved",
+      "native_transport_starts": "unknown",
+      "prompt_submission": "unknown",
+      "provider_completion": "unknown",
+      "controller_error": "PermissionError",
+      "proven": "The worker reached reservation, after controller setup and agent registration. The controller outer BaseException handler reduced its own exception to its class name. No original operation, traceback stage, errno or winerror was retained.",
+      "not_proven": "The provider subprocess might or might not have started. Missing counters cannot be defaulted to zero. The class name does not establish a Codex OS permission failure or an ACL problem.",
+      "actor_boundary": "A worker exception does not cross the subprocess boundary as a raw controller exception: the normal nonzero worker path becomes Abort(cli_nonzero). A failed worker finalization can leave reserved, but does not alone explain the controller PermissionError.",
+      "source_exclusions": [
+        "The private setup directory is created before the outer try; its creation failure cannot directly produce this observed caught report after reservation.",
+        "Agent configuration creation precedes the observed agent/token/reservation progress.",
+        "Journal stop handling and private directory removal run in finally with separate exception handling; they do not directly set the outer caught error_code.",
+        "Current transport start wraps OSError/ProcessCleanupError into AdapterError(runtime_unavailable); its exception class is not directly the controller PermissionError."
+      ]
+    }
+  ],
+  "source_timeline": [
+    {
+      "attempt": 1,
+      "source_commit": "7b82c7f249bb7c727bab97bf1988fc71256f1878",
+      "environment_case_normalization_already_present": true,
+      "prompt_latch_set_before_pipe_write": true,
+      "invalid_tools_view_image_override": true,
+      "correct_features_view_image_override": false
+    },
+    {
+      "attempt": 2,
+      "source_commit": "501fbe1db87984c95f2e3c854a595e6b5d9f6073",
+      "environment_case_normalization_already_present": true,
+      "prompt_latch_set_before_pipe_write": true,
+      "invalid_tools_view_image_override": true,
+      "correct_features_view_image_override": false
+    },
+    {
+      "attempt": 3,
+      "source_commit": "99d9bf5b66660e143725d0c7452af039cb2943a6",
+      "environment_case_normalization_already_present": true,
+      "prompt_latch_set_before_pipe_write": true,
+      "invalid_tools_view_image_override": false,
+      "correct_features_view_image_override": true
+    }
+  ],
+  "confirmed_defects_and_limits": [
+    {
+      "defect": "Invalid tools.view_image=false CLI override in attempts 1 and 2",
+      "state": "Already corrected before attempt 3 to features.view_image=false.",
+      "evidence": "codex-0163-config-review-2026-10-17.json; pinned official schema has additionalProperties=false for tools and a boolean features.view_image.",
+      "causal_limit": "Consistent with attempt 2 configuration hint; no exact historical error key recovered."
+    },
+    {
+      "defect": "Lossy historical controller and runtime diagnostics",
+      "state": "The historical records cannot be repaired retrospectively. Current runtime observers and safe classifiers provide more detail, but the old controller only retained an exception class.",
+      "causal_limit": "This is a proven reason the historical underlying causes cannot now be selected, not proof of the original OS failure."
+    },
+    {
+      "defect": "Frozen trial-record writer coordinates writers only; controller readers do not share the lock",
+      "state": "Controlled Windows reader/replace collision reproduced with the frozen file functions and dummy records.",
+      "causal_limit": "Worker replace denial is real and reproducible but its occurrence during attempt 3 is unproven. It does not by itself produce the controller exception."
+    },
+    {
+      "defect": "SQLite transient connection close omission",
+      "state": "Already corrected in reviewed source commit; see journal-connection-lifetime-review-2026-10-17.json.",
+      "causal_limit": "No evidence establishes it as the cause of the earlier protocol/configuration failures or the outer controller exception."
+    },
+    {
+      "excluded_explanation": "Old SystemRoot case-filtering bug",
+      "reason": "Both runtime and adapter environment case normalization were already present in all three historical source commits. Presence of the actual historical environment value was not recorded."
+    }
+  ],
+  "synthetic_reproduction": {
+    "scope": "Python-only child processes and fresh owned dummy files on Windows; authentication/preflight stubbed; provider executables and network blocked. No account or session files read.",
+    "result_type": "Controlled counterexamples and injected failure branches; not historical trial reruns or actual runtime acceptance tests.",
+    "cases": [
+      {
+        "case": "silent_configured_exit_zero",
+        "synthetic_transport_starts": 1,
+        "prompt_latch": true,
+        "prompt_submitted_stage": true,
+        "native_created_stage": true,
+        "stages": [
+          "workspace_preparing",
+          "workspace_ready",
+          "auth_check_started",
+          "auth_check_completed",
+          "native_start_requested",
+          "native_started",
+          "prompt_submission_requested",
+          "prompt_submitted",
+          "cleanup_completed"
+        ],
+        "error": "runtime_outcome_unknown",
+        "safe_diagnostics": {
+          "native_exit_code_before_cleanup": 0,
+          "cleanup_started": true,
+          "cleanup_confirmed": true,
+          "stdout_bytes": 0,
+          "stdout_frames": 0,
+          "stdout_event_counts": {},
+          "stdout_eof": true,
+          "stderr_bytes": 0,
+          "stderr_eof": true,
+          "stderr_hints": [],
+          "stderr_reported_details": []
+        },
+        "owned_cleanup": true,
+        "auth_and_preflight": "stubbed; not provider evidence"
+      },
+      {
+        "case": "synthetic_config_key_error_98",
+        "synthetic_transport_starts": 1,
+        "prompt_latch": true,
+        "prompt_submitted_stage": true,
+        "native_created_stage": true,
+        "stages": [
+          "workspace_preparing",
+          "workspace_ready",
+          "auth_check_started",
+          "auth_check_completed",
+          "native_start_requested",
+          "native_started",
+          "prompt_submission_requested",
+          "prompt_submitted",
+          "cleanup_completed"
+        ],
+        "error": "runtime_outcome_unknown",
+        "safe_diagnostics": {
+          "native_exit_code_before_cleanup": null,
+          "cleanup_started": true,
+          "cleanup_confirmed": true,
+          "stdout_bytes": 0,
+          "stdout_frames": 0,
+          "stdout_event_counts": {},
+          "stdout_eof": true,
+          "stderr_bytes": 98,
+          "stderr_eof": true,
+          "stderr_hints": [
+            "configuration"
+          ],
+          "stderr_reported_details": [
+            {
+              "kind": "unknown_field",
+              "key": "tools.view_image"
+            }
+          ]
+        },
+        "owned_cleanup": true,
+        "auth_and_preflight": "stubbed; not provider evidence"
+      },
+      {
+        "case": "synthetic_other_config_error_98",
+        "synthetic_transport_starts": 1,
+        "prompt_latch": true,
+        "prompt_submitted_stage": true,
+        "native_created_stage": true,
+        "stages": [
+          "workspace_preparing",
+          "workspace_ready",
+          "auth_check_started",
+          "auth_check_completed",
+          "native_start_requested",
+          "native_started",
+          "prompt_submission_requested",
+          "prompt_submitted",
+          "cleanup_completed"
+        ],
+        "error": "runtime_outcome_unknown",
+        "safe_diagnostics": {
+          "native_exit_code_before_cleanup": null,
+          "cleanup_started": true,
+          "cleanup_confirmed": true,
+          "stdout_bytes": 0,
+          "stdout_frames": 0,
+          "stdout_event_counts": {},
+          "stdout_eof": true,
+          "stderr_bytes": 98,
+          "stderr_eof": true,
+          "stderr_hints": [
+            "configuration"
+          ],
+          "stderr_reported_details": [
+            {
+              "kind": "invalid_type",
+              "key": "features.shell_tool",
+              "actual_type": "string",
+              "expected_type": "boolean"
+            }
+          ]
+        },
+        "owned_cleanup": true,
+        "auth_and_preflight": "stubbed; not provider evidence"
+      },
+      {
+        "case": "injected_createprocess_denial",
+        "synthetic_transport_starts": 0,
+        "prompt_latch": false,
+        "prompt_submitted_stage": false,
+        "native_created_stage": false,
+        "stages": [
+          "workspace_preparing",
+          "workspace_ready",
+          "auth_check_started",
+          "auth_check_completed",
+          "native_start_requested",
+          "cleanup_completed"
+        ],
+        "error": "runtime_unavailable",
+        "safe_diagnostics": null,
+        "owned_cleanup": true,
+        "auth_and_preflight": "stubbed; not provider evidence"
+      },
+      {
+        "case": "injected_job_assignment_failure",
+        "synthetic_transport_starts": 0,
+        "prompt_latch": false,
+        "prompt_submitted_stage": false,
+        "native_created_stage": false,
+        "stages": [
+          "workspace_preparing",
+          "workspace_ready",
+          "auth_check_started",
+          "auth_check_completed",
+          "native_start_requested",
+          "cleanup_completed"
+        ],
+        "error": "runtime_unavailable",
+        "safe_diagnostics": null,
+        "owned_cleanup": true,
+        "auth_and_preflight": "stubbed; not provider evidence"
+      },
+      {
+        "case": "injected_resume_failure",
+        "synthetic_transport_starts": 0,
+        "prompt_latch": false,
+        "prompt_submitted_stage": false,
+        "native_created_stage": false,
+        "stages": [
+          "workspace_preparing",
+          "workspace_ready",
+          "auth_check_started",
+          "auth_check_completed",
+          "native_start_requested",
+          "cleanup_completed"
+        ],
+        "error": "runtime_unavailable",
+        "safe_diagnostics": null,
+        "owned_cleanup": true,
+        "auth_and_preflight": "stubbed; not provider evidence"
+      },
+      {
+        "case": "injected_workspace_creation_denial",
+        "synthetic_transport_starts": 0,
+        "prompt_latch": false,
+        "prompt_submitted_stage": false,
+        "native_created_stage": false,
+        "stages": [
+          "workspace_preparing"
+        ],
+        "error": "PermissionError",
+        "safe_diagnostics": null,
+        "owned_cleanup": true,
+        "auth_and_preflight": "stubbed; not provider evidence"
+      },
+      {
+        "case": "frozen_writer_replace_while_reader_open",
+        "actor": "worker",
+        "safe_error": {
+          "operation": "replace",
+          "category": "permission_denied",
+          "errno": 13,
+          "winerror": 5
+        },
+        "controller_read_still_succeeds": true,
+        "pending_evidence_preserved": true,
+        "historical_causality": "not established; worker exception is not itself controller PermissionError"
+      },
+      {
+        "case": "frozen_controller_exclusive_read_before_native",
+        "synthetic_transport_starts": 0,
+        "note": "Fresh dummy ledger deliberately left reserved to model interrupted finalization; no provider process",
+        "controller_report": {
+          "status": "stopped",
+          "error_code": "PermissionError"
+        },
+        "safe_error": [
+          {
+            "operation": "read",
+            "category": "permission_denied",
+            "errno": 13,
+            "winerror": null
+          }
+        ],
+        "reserved_unchanged": true,
+        "historical_causality": "controlled sharing denial, not proof of the historical failing file or operation"
+      },
+      {
+        "case": "silent_configured_exit_zero",
+        "synthetic_transport_starts": 1,
+        "prompt_latch": true,
+        "prompt_submitted_stage": true,
+        "native_created_stage": true,
+        "stages": [
+          "workspace_preparing",
+          "workspace_ready",
+          "auth_check_started",
+          "auth_check_completed",
+          "native_start_requested",
+          "native_started",
+          "prompt_submission_requested",
+          "prompt_submitted",
+          "cleanup_completed"
+        ],
+        "error": "runtime_outcome_unknown",
+        "safe_diagnostics": {
+          "native_exit_code_before_cleanup": 0,
+          "cleanup_started": true,
+          "cleanup_confirmed": true,
+          "stdout_bytes": 0,
+          "stdout_frames": 0,
+          "stdout_event_counts": {},
+          "stdout_eof": true,
+          "stderr_bytes": 0,
+          "stderr_eof": true,
+          "stderr_hints": [],
+          "stderr_reported_details": []
+        },
+        "owned_cleanup": true,
+        "auth_and_preflight": "stubbed; not provider evidence"
+      },
+      {
+        "case": "frozen_controller_exclusive_read_after_native",
+        "synthetic_transport_starts": 1,
+        "note": "Fresh dummy ledger deliberately left reserved to model interrupted finalization; no provider process",
+        "controller_report": {
+          "status": "stopped",
+          "error_code": "PermissionError"
+        },
+        "safe_error": [
+          {
+            "operation": "read",
+            "category": "permission_denied",
+            "errno": 13,
+            "winerror": null
+          }
+        ],
+        "reserved_unchanged": true,
+        "historical_causality": "controlled sharing denial, not proof of the historical failing file or operation"
+      }
+    ],
+    "interpretation": [
+      "A silent process can exit 0 after a completed pipe write and still yield runtime_outcome_unknown: successful OS exit is not successful JSONL completion.",
+      "Two different synthetic configuration messages padded to 98 bytes yield the same coarse historical diagnostics; detailed classification distinguishes their keys. These messages were fabricated and are not recovered stderr.",
+      "Injected create, Job assignment and resume failures return runtime_unavailable with transport counter 0. A Job/resume failure may occur AFTER a suspended native process exists; zero transport count alone is not zero OS creations.",
+      "Injected temporary workspace creation denial produces PermissionError before transport; the actual third reservation alone cannot identify the stage, and the controller/worker actor boundary still applies.",
+      "An open dummy reader causes frozen worker os.replace to fail (errno 13 / winerror 5); the controller can still read the old reserved row.",
+      "A controlled exclusive dummy file handle causes the frozen controller safe/read handler to produce PermissionError + reserved both before and after a confirmed fresh synthetic transport run. The ledger was deliberately left reserved to model interrupted finalization; this is not a claim that the original trial had the same lock."
+    ],
+    "source_function_sha256": {
+      "worker": "c5060af51bccfe881a7f2437e84d63a503099ea1d5600673ddd7ed3dd5453b30",
+      "controller": "8e4b4344e67a63a49c5301b9070a86b29f768c3d943836a711113f87b8aab10d"
+    },
+    "all_synthetic_owned_cleanup_confirmed": true,
+    "harness_note": "The first harness attempts blocked their own synthetic executable due to the Windows audit event using executable=None plus a command line. Only the exact preconstructed base-Python command lines were subsequently allowed. Those blocked harness attempts are not provider attempts or evidence of the historical failures."
+  },
+  "missing_historical_evidence": [
+    "Attempt 1 stdout/stderr/EOF and natural exit observations.",
+    "Attempt 2 safe exact config error kind/key, parser stage, and natural exit observation before forced cleanup.",
+    "Attempt 3 original controller operation and source stage, errno/winerror, plus independent native create/Job/resume/write/finalization observations.",
+    "A safe ownership manifest identifying which temporary component failed, without publishing local paths or secrets."
+  ],
+  "required_non_model_diagnostics_before_any_future_authorized_trial": [
+    {
+      "step": 1,
+      "action": "Use the pinned official schema and strict override validation source offline to validate every used config key/type. Do not invent an exec invocation as a parse-only command; no guaranteed parse-only CLI entry point has been established."
+    },
+    {
+      "step": 2,
+      "action": "Consolidate trial-record read/update/finalize operations behind a shared cross-process locking contract. Reproduce simultaneous reader/writer replacement and denied read/write/finalize in fresh dummy Windows records. Preserve reservations and original evidence if publication fails; do not clear existing latches."
+    },
+    {
+      "step": 3,
+      "action": "Wrap the controller operation boundaries with fixed stage/operation labels and sanitized errno/winerror; retain bounded safe traceback frame identifiers without raw error text, paths, environment, tokens, auth/session data or stdout content."
+    },
+    {
+      "step": 4,
+      "action": "Exercise actual Python-only suspended creation, Job assignment, resume, prompt requested/submitted, EOF and cleanup observer boundaries. Include a failure between OS creation and transport counter increment. Persist observations independently of worker finalization so a reserved row is not interpreted as no execution."
+    },
+    {
+      "step": 5,
+      "action": "Record owned temporary-component labels and distinguish mkdir/write/replace/read/delete failures. Test normal cleanup and controlled sharing errors with dummy files. Make no ACL, security setting or external permission changes."
+    },
+    {
+      "step": 6,
+      "action": "Keep pre-cleanup natural exit observation separate from forced cleanup status and apply any EOF observation wait within the existing monotonic deadline. Assert blank stdout is not protocol success."
+    },
+    {
+      "step": 7,
+      "action": "Only after provider-free checks pass, review the concrete safe diagnostic result and separately obtain explicit human authorization for any new actual model trial and its budget. Existing three reservations, stop latches and credential cap remain unchanged."
+    }
+  ],
+  "verification": {
+    "json_syntax": "parsed",
+    "historical_source_versions": "AST and source ordering inspected",
+    "synthetic_cases": 11,
+    "provider_calls_this_investigation": 0,
+    "new_trial_tokens": 0,
+    "old_record_hashes": "all five unchanged",
+    "actual_gate": "UNVERIFIED; no retry, no S1/S2 success asserted",
+    "implementation_changes_in_this_review": false,
+    "full_application_suite": "Not rerun for this documentation-only review; previous validation remains a separate source-scoped result.",
+    "merge": "NOTRUN",
+    "deployment": "NOTRUN",
+    "secret_or_internal_path_publication": false
+  },
+  "related_documents": [
+    "codex-0163-config-review-2026-10-17.json",
+    "trial-permission-review-2026-10-17.json",
+    "timeout-boundary-review-2026-10-17.json",
+    "journal-connection-lifetime-review-2026-10-17.json"
+  ],
+  "official_sources": [
+    {
+      "url": "https://raw.githubusercontent.com/openai/codex/rust-v0.163.0/codex-rs/core/config.schema.json",
+      "sha256": "e9dd16b9d1710e57b020e42da4af6d6606e8f44cb028a2e94196dee38990d9170",
+      "inspection": "Previously pinned schema evidence, not a new provider CLI call."
+    },
+    {
+      "url": "https://github.com/openai/codex/blob/rust-v0.163.0/codex-rs/config/src/loader/mod.rs",
+      "inspection": "Previously inspected strict CLI override validation source; see related config review."
+    }
+  ]
+}
