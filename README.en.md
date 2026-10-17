@@ -1,5 +1,7 @@
 # TalkAbout
 
+This branch adds an [unwired internal foundation](docs/INTERNAL_FOUNDATION_CONTRACT.md): memory-only policy/approval models, fake tools and bounded UTF-8 fixture retrieval. It is not connected to the GUI, API or real runtimes. User file uploads remain disabled. Public integration changes are a separate [API/DB proposal](docs/FOUNDATION_API_DB_PROPOSAL.md).
+
 The follow-up [tools and Notion/Git MCP plan](docs/TOOL_BROKER_PLAN.md) is **PROPOSED / NOT IMPLEMENTED** (2026-10-17). Text-only remains the default; no real account connections or command execution are enabled.
 
 ## Current review branch · 2026-10-16

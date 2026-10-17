@@ -1,5 +1,7 @@
 # TalkAbout
 
+이번 브랜치는 [도구·첨부 내부 기반](docs/INTERNAL_FOUNDATION_CONTRACT.md)을 추가합니다. 메모리 정책·승인·fake adapter와 UTF-8 합성 파일 읽기만 구현하며 GUI/API·실제 runtime에는 연결하지 않습니다. 사용자 파일 업로드 기능은 계속 비활성입니다. 공개 연동에 필요한 변경은 [API/DB 제안](docs/FOUNDATION_API_DB_PROPOSAL.md)으로 분리했습니다.
+
 후속 [도구 실행·Notion/Git MCP 설계](docs/TOOL_BROKER_PLAN.md)는 **PROPOSED / NOT IMPLEMENTED**입니다(2026-10-17). 기본 text-only 프로필을 유지하며 실제 계정 연결과 명령 실행을 활성화하지 않습니다.
 
 ## 현재 검토 브랜치 · 2026-10-16
