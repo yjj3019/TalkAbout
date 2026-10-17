@@ -49,3 +49,49 @@ for(const leave of [false,true])test('upload completion respects route epoch whi
  assert.equal(h.calls.filter(c=>c.path.includes('/uploads')).length,3);
  assert.equal(h.run("(pendingTextFiles.get('room')||[]).length"),leave?0:1);
 });
+
+test('attachment view survives a same-room read refresh while its response is pending',async()=>{
+ const h=await harness();h.run("view.select('room');view.room={id:'room'};");let finish;
+ h.handlers.set('rooms/room/files/file/text',()=>new Promise(resolve=>finish=resolve));
+ const pending=h.run("viewTextFile('room','file')");
+ // openRoom selects again for every ordinary refresh, including SSE room_update.
+ h.run("view.select('room');view.room={id:'room'};");
+ finish({ok:true,json:async()=>({text:'Synthetic attachment',truncated:false})});await pending;
+ assert.equal(h.node('text-file-dialog').open,true);
+ assert.equal(h.node('text-file-output').textContent,'Synthetic attachment');
+});
+
+test('a refreshed file list invalidates an in-flight deleted attachment',async()=>{
+ const h=await harness();h.run("view.select('room');textAttachmentSettings={enabled:true};");let finish;
+ h.handlers.set('rooms/room/files/file/text',()=>new Promise(resolve=>finish=resolve));
+ const pending=h.run("viewTextFile('room','file')");h.respond('rooms/room/files',[]);
+ h.run("renderTextFiles({id:'room',state:'active',members:{},effective_permissions:['room:contribute']})");
+ await new Promise(setImmediate);
+ finish({ok:true,json:async()=>({text:'Deleted attachment must not appear',truncated:false})});await pending;
+ assert.equal(h.node('text-file-dialog').open,false);assert.equal(h.node('text-file-output').textContent,'');
+});
+
+for(const boundary of ['session','leave-and-return'])test('pending attachment cannot cross '+boundary,async()=>{
+ const h=await harness();h.run("view.select('room');");let finish;
+ h.handlers.set('rooms/room/files/file/text',()=>new Promise(resolve=>finish=resolve));
+ const pending=h.run("viewTextFile('room','file')");
+ if(boundary==='session')h.run("authEpoch++;user={id:'replacement',scopes:[]};");
+ else h.run("clearDetail();view.select('other');clearDetail();view.select('room');");
+ finish({ok:true,json:async()=>({text:'Old private response',truncated:false})});await pending;
+ assert.equal(h.node('text-file-dialog').open,false);assert.equal(h.node('text-file-output').textContent,'');
+});
+
+test('newer attachment selection wins over a late older response',async()=>{
+ const h=await harness();h.run("view.select('room');");let finish;
+ h.handlers.set('rooms/room/files/old/text',()=>new Promise(resolve=>finish=resolve));
+ const pending=h.run("viewTextFile('room','old')");h.respond('rooms/room/files/new/text',{text:'New attachment'});
+ await h.run("viewTextFile('room','new')");
+ finish({ok:true,json:async()=>({text:'Old attachment'})});await pending;
+ assert.equal(h.node('text-file-output').textContent,'New attachment');
+});
+
+test('stale attachment action does not fetch a different room',async()=>{
+ const h=await harness();h.run("view.select('current');");
+ await h.run("viewTextFile('old','file')");
+ assert.equal(h.calls.filter(call=>call.path==='rooms/old/files/file/text').length,0);
+});
