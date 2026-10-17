@@ -32,8 +32,17 @@ def public_room(room, actor, principals=None):
                 listed_member["connection"] = public_connection(principal) if connection and connection.get("room_id") in {None, room["id"]} else None
                 check = principal.get("runtime_check")
                 listed_member["runtime_check"] = public_runtime_check(principal) if check and check.get("_room_id") in {None, room["id"]} else None
-                posted = [m for m in room["messages"].values() if m["actor_id"] == pid and m["actor_kind"] == "agent"]
+                posted = [m for m in room["messages"].values() if m["actor_id"] == pid and m["actor_kind"] == "agent"
+                          and m['seq']>=max(listed_member['read_start_seq'],viewer_member['read_start_seq'])]
                 listed_member["published_contributions"] = len(posted)
+                current=[m for m in posted if m.get('generation')==room['generation']
+                         and m.get('membership_epoch')==listed_member['epoch']]
+                listed_member['response_evidence']={
+                    'worker_reported':sum(m.get('execution_evidence')=='worker_reported_runtime' and
+                        m.get('runtime_check_id')==(principal.get('runtime_check') or {}).get('id') for m in current),
+                    'synthetic':sum(m.get('execution_evidence')=='synthetic_test_only' for m in current),
+                    'unverified':sum(m.get('execution_evidence','unverified_agent')=='unverified_agent' for m in current),
+                    'last_response_at':max((m['created_at'] for m in current),default=None)}
     return {k: copy.deepcopy(room[k]) for k in ("id", "topic", "mode", "state", "generation", "room_revision", "limits", "last_seq")} | {"members": members,
         "messages": messages, "tasks": tasks,
         "artifacts": [{**a, "versions": [v for v in a["versions"] if v["seq"] >= viewer_member["read_start_seq"]]}
@@ -265,6 +274,13 @@ class Core:
                         if room["mode"] == "co_creation" and task["purpose"] == "creator":
                             authorize(actor, room, "room:contribute")
                         msg = message(room, actor, body, now, task, fingerprint)
+                        principal=principals[actor['id']];connection=principal.get('connection') or {}
+                        same_credential=connection.get('_credential_binding')==token_hash(token)
+                        verified=same_credential and connection.get('runtime')!='synthetic' and self._worker_ready(principal,room_id,now)
+                        synthetic=same_credential and connection.get('runtime')=='synthetic'
+                        msg.update(execution_evidence='worker_reported_runtime' if verified else 'synthetic_test_only' if synthetic else 'unverified_agent',
+                                   runtime_check_id=(principal.get('runtime_check') or {}).get('id') if verified else None,
+                                   generation=room['generation'],membership_epoch=member['epoch'])
                         proposal = None
                         if room["mode"] == "co_creation" and task["purpose"] == "creator":
                             aid = room.get("creation_artifact_id")

@@ -1,5 +1,6 @@
 """Explicit, bounded runtime test. Transport authentication is not provider proof."""
 import hashlib
+import json
 import threading
 import time
 import uuid
@@ -27,9 +28,24 @@ def verify_runtime(client, journal, runtime, kind, credential, deadline, retry_u
     binding = hashlib.sha256((actor['id'] + ':' + kind + ':' + credential).encode()).hexdigest()
     key = 'runtime_check:' + binding
     prior = journal.setting(key)
+    # Retain the original credential key so upgrading cannot bypass an uncertain
+    # old call. Only completed receipts gain profile-bound reuse eligibility.
+    profile=[getattr(runtime,'auth_mode','native'),getattr(runtime,'codex_transport',None),
+             getattr(runtime,'runtime_version',None),getattr(runtime,'_verified_executable',None)]
+    profile_digest=hashlib.sha256(json.dumps(profile,separators=(',',':')).encode()).hexdigest()
+    same_profile=bool(prior and prior.get('profile_digest')==profile_digest)
+    receipt=actor.get('runtime_check') or {}
+    if (not retry_uncertain and same_profile and prior.get('state')=='completed'
+            and receipt.get('id')==prior.get('id') and receipt.get('runtime')==kind
+            and receipt.get('status')=='passed' and receipt.get('verification')=='worker_reported_test'
+            and receipt.get('expires_at',0)>time.time()):
+        runtime.shutdown()
+        return receipt,0
     if prior and prior.get('state') in {'call_started', 'uncertain'} and not retry_uncertain:
         raise ConnectionCheckError('runtime_check_outcome_unknown_use_retry_check_explicitly')
-    if prior and prior.get('state') == 'response_saved' and not (retry_uncertain and prior['expires_at'] <= time.time()):
+    if prior and prior.get('state')=='response_saved' and not same_profile and not retry_uncertain:
+        raise ConnectionCheckError('runtime_check_profile_changed_use_retry_check_explicitly')
+    if prior and prior.get('state') == 'response_saved' and not (retry_uncertain and (prior['expires_at'] <= time.time() or not same_profile)):
         if prior['expires_at'] <= time.time():
             raise ConnectionCheckError('runtime_check_expired_use_retry_check_explicitly')
         check_deadline(deadline)
@@ -38,12 +54,12 @@ def verify_runtime(client, journal, runtime, kind, credential, deadline, retry_u
         if receipt.get('status') != 'passed':
             raise ConnectionCheckError('runtime_check_not_passed')
         with journal.db:
-            journal.set_setting(key, {'state': 'completed', 'id': prior['id']})
+            journal.set_setting(key, {'state': 'completed', 'id': prior['id'],'profile_digest':profile_digest})
         return receipt, 0
-    # A completed previous receipt may be stale; an explicit connect/run performs a fresh test.
+    # Only an exact current receipt can be reused; expired/replaced records need a fresh test.
     nonce = str(uuid.uuid4())
     check = client.request('POST', 'agents/me/runtime-checks', {'runtime': kind}, 'runtime-check:' + nonce)
-    pending = {'state': 'call_started', 'id': check['id'], 'expires_at': check['expires_at'],
+    pending = {'state': 'call_started', 'id': check['id'], 'expires_at': check['expires_at'],'profile_digest':profile_digest,
                'complete_key': 'runtime-check-complete:' + nonce}
     with journal.db:
         journal.set_setting(key, pending)
@@ -82,7 +98,7 @@ def verify_runtime(client, journal, runtime, kind, credential, deadline, retry_u
         if receipt.get('status') != 'passed':
             raise ConnectionCheckError('runtime_check_not_passed')
         with journal.db:
-            journal.set_setting(key, {'state': 'completed', 'id': check['id']})
+            journal.set_setting(key, {'state': 'completed', 'id': check['id'],'profile_digest':profile_digest})
         return receipt, 1
     except Exception:
         # A saved response is safe to resubmit under the same key. Never automatically recall AI.

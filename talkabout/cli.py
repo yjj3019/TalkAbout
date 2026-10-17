@@ -208,7 +208,9 @@ def main():
                         final_state = 'failed'
                         raise SystemExit('worker_failed: result retained as uncertain; inspect status, do not blindly rerun') from None
                     print(result)
-                    if result in {'uncertain', 'stale', 'unavailable', 'heartbeat_failed', 'runtime_timeout'}:
+                    safe_drain=callable(getattr(worker,'safe_to_continue_after',None)) and worker.safe_to_continue_after(result)
+                    if safe_drain:report('idle')
+                    if result in {'uncertain', 'stale', 'unavailable', 'heartbeat_failed', 'runtime_timeout'} and not safe_drain:
                         final_state = 'failed'
                         break
                     if result in {"stopped", "stop_unconfirmed", "backpressure"}:
