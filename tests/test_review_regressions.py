@@ -1,6 +1,7 @@
 import json
 import threading
 import time
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
@@ -71,8 +72,9 @@ def test_pre_call_crash_lease_expiry_reclaims_with_new_key(fixture,tmp_path):
     tid,_,payload = journal.next()
     task = client.request('GET',f'rooms/{rid}/tasks/{tid}')
     claim = {k:task[k] for k in ('generation','membership_revision')}
-    claimed = client.request('POST',f'rooms/{rid}/tasks/{tid}/claim',claim,f'claim:{tid}:1')
-    payload.update(task=claimed,runtime_started=False)
+    claim_key=f'claim:{tid}:{uuid.uuid4().hex}'
+    claimed = client.request('POST',f'rooms/{rid}/tasks/{tid}/claim',claim,claim_key)
+    payload.update(task=claimed,runtime_started=False,claim_key=claim_key)
     journal.save(tid,'claimed',payload)
     journal.close()
     expire(store,rid,tid)
@@ -154,8 +156,12 @@ def test_pre_call_restart_before_scheduler_tick_waits_then_retries(fixture,tmp_p
     store,core,rid=fixture
     path=tmp_path/'late-tick.sqlite'; journal=Journal(path)
     client=LocalClient(store); Worker(client,journal,SyntheticRuntime()).poll()
-    tid,_,payload=journal.next(); claimed=leased(core,rid)
-    payload.update(task=claimed,runtime_started=False)
+    tid,_,payload=journal.next()
+    task=client.request('GET',f'rooms/{rid}/tasks/{tid}')
+    claim_key=f'claim:{tid}:{uuid.uuid4().hex}'
+    claimed=client.request('POST',f'rooms/{rid}/tasks/{tid}/claim',
+                           {k:task[k] for k in ('generation','membership_revision')},claim_key)
+    payload.update(task=claimed,runtime_started=False,claim_key=claim_key)
     journal.save(tid,'claimed',payload); journal.close()
     with store.transaction(rid,'fixture-human') as (_,room):
         room['tasks'][tid]['lease_expires_at']=time.time()-1

@@ -166,6 +166,7 @@ def main():
                     runtime = SyntheticRuntime()
                     check_calls = 0
                 runtime_kind = args.runtime or 'synthetic'
+                final_state = 'failed'
                 def report(state, error_code=None):
                     client.request('PUT', 'agents/me/connection', {'runtime': runtime_kind, 'state': state, 'error_code': error_code}, str(uuid.uuid4()))
                 source_runtime = runtime
@@ -196,13 +197,12 @@ def main():
                         if args.request_turn: worker.request_turns()
                         report('idle')
                         result = worker.step()
-                        report('idle' if result in {'waiting', 'retry_wait', 'completed'} else 'stopped' if result == 'stopped' else 'failed')
+                        if result in {'waiting', 'retry_wait', 'completed'}: report('idle')
                     except RunBudgetExceeded:
                         print('run_budget_exhausted')
                         break
                     except Exception:
-                        try: report('failed', 'runtime_failed')
-                        except Exception: pass
+                        final_state = 'failed'
                         raise SystemExit('worker_failed: result retained as uncertain; inspect status, do not blindly rerun') from None
                     print(result)
                     if result in {'uncertain', 'stale', 'unavailable', 'heartbeat_failed', 'runtime_timeout'}:
@@ -214,14 +214,22 @@ def main():
                         until = min(deadline, time.monotonic() + 0.25)
                         while time.monotonic() < until and not journal.stop_requested():
                             time.sleep(min(0.02, max(0, until - time.monotonic())))
-                try: report(final_state, 'runtime_failed' if final_state == 'failed' else None)
-                except Exception: print('stop_report_unconfirmed')
         except RunBudgetExceeded:
             print('run_budget_exhausted')
         finally:
             source = locals().get('source_runtime')
-            if callable(getattr(source, 'shutdown', None)): source.shutdown()
-            client.close()
+            try:
+                if callable(getattr(source, 'shutdown', None)):
+                    if source.shutdown() is not True: final_state = 'failed'
+            except Exception:
+                final_state = 'failed'
+                raise
+            finally:
+                try:
+                    if source is not None:
+                        client.report_terminal(runtime_kind, final_state, 'runtime_failed' if final_state == 'failed' else None)
+                except Exception: print('stop_report_unconfirmed')
+                client.close()
     finally:
         if connector_lease is not None: connector_lease.close()
         journal.close()
