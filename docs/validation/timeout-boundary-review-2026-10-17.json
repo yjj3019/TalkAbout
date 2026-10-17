@@ -230,5 +230,192 @@
     "provider_billing": "unknown",
     "actual_runtime_gate": "unverified"
   },
-  "delivery": "Existing Draft PR12 only; normal fast-forward; no main/base change, merge or deployment"
+  "delivery": "Existing Draft PR12 only; normal fast-forward; no main/base change, merge or deployment",
+  "isolated_deadline_phase_follow_up": {
+    "reviewed_on": "2026-10-17",
+    "measured_source_commit": "3d4b5f623d7254af6c4408d01565fc9f941fcbdd",
+    "verdict_ko": "이전 전체 검사 실패는 미해소, 개별 6회만 통과",
+    "verdict": "Earlier full-suite failures remain unresolved. Only the two isolated cases repeated three times passed. No source fix is justified by these non-reproducing measurements.",
+    "scope": "Existing synthetic runtime only. Temporary instrumentation outside the repository; no whole-suite run in this follow-up.",
+    "privacy": "Only fixed operation labels, times, journal state names and counts. No payloads, raw SQL, credentials, paths, process identifiers or provider logs.",
+    "phase_definitions": {
+      "preparation": "cli.main entry to actual synthetic runtime.run entry, including the existing injected 400ms capabilities delay",
+      "actual_synthetic_work": "Actual synthetic runtime.run entry to return",
+      "termination": "Synthetic runtime return to cli.main return including cleanup"
+    },
+    "runs": [
+      {
+        "run": 1,
+        "completion": {
+          "passed": true,
+          "origin": "Milliseconds from test-call entry, not deadline creation",
+          "journal_stages": [
+            {
+              "stage": "journal.save.claim_pending",
+              "begin_ms": 265.7179,
+              "duration_ms": 0.3506
+            },
+            {
+              "stage": "journal.save.claimed",
+              "begin_ms": 281.77,
+              "duration_ms": 0.347
+            },
+            {
+              "stage": "journal.save.call_started",
+              "begin_ms": 302.0717,
+              "duration_ms": 0.3038
+            },
+            {
+              "stage": "journal.save.result_saved",
+              "begin_ms": 303.1369,
+              "duration_ms": 0.3329
+            }
+          ],
+          "expiry": "Explicitly expired after result_saved",
+          "complete_requests": 0
+        },
+        "cli": {
+          "passed": true,
+          "phase_ms": {
+            "preparation": 529.844,
+            "actual_synthetic_work": 499.743,
+            "termination": 13.172,
+            "cli_total": 1042.7586
+          },
+          "journal_preparation_ms": 5.9725,
+          "journal_close_ms": 0.1736
+        }
+      },
+      {
+        "run": 2,
+        "completion": {
+          "passed": true,
+          "origin": "Milliseconds from test-call entry, not deadline creation",
+          "journal_stages": [
+            {
+              "stage": "journal.save.claim_pending",
+              "begin_ms": 321.9747,
+              "duration_ms": 0.7326
+            },
+            {
+              "stage": "journal.save.claimed",
+              "begin_ms": 341.2923,
+              "duration_ms": 0.3932
+            },
+            {
+              "stage": "journal.save.call_started",
+              "begin_ms": 363.9026,
+              "duration_ms": 0.3475
+            },
+            {
+              "stage": "journal.save.result_saved",
+              "begin_ms": 365.1267,
+              "duration_ms": 0.4195
+            }
+          ],
+          "expiry": "Explicitly expired after result_saved",
+          "complete_requests": 0
+        },
+        "cli": {
+          "passed": true,
+          "phase_ms": {
+            "preparation": 517.347,
+            "actual_synthetic_work": 506.978,
+            "termination": 1.236,
+            "cli_total": 1025.5614
+          },
+          "journal_preparation_ms": 6.148,
+          "journal_close_ms": 0.1716
+        }
+      },
+      {
+        "run": 3,
+        "completion": {
+          "passed": true,
+          "origin": "Milliseconds from test-call entry, not deadline creation",
+          "journal_stages": [
+            {
+              "stage": "journal.save.claim_pending",
+              "begin_ms": 263.6198,
+              "duration_ms": 0.395
+            },
+            {
+              "stage": "journal.save.claimed",
+              "begin_ms": 280.5942,
+              "duration_ms": 0.3707
+            },
+            {
+              "stage": "journal.save.call_started",
+              "begin_ms": 298.3138,
+              "duration_ms": 0.3113
+            },
+            {
+              "stage": "journal.save.result_saved",
+              "begin_ms": 299.4754,
+              "duration_ms": 0.2848
+            }
+          ],
+          "expiry": "Explicitly expired after result_saved",
+          "complete_requests": 0
+        },
+        "cli": {
+          "passed": true,
+          "phase_ms": {
+            "preparation": 587.082,
+            "actual_synthetic_work": 441.77,
+            "termination": 12.028,
+            "cli_total": 1040.8798
+          },
+          "journal_preparation_ms": 4.7007,
+          "journal_close_ms": 0.1355
+        }
+      }
+    ],
+    "observation_defects_addressed": [
+      "Missing native-start evidence stays unknown rather than zero.",
+      "Opt-in TrialRecord shares reader/writer locks and preserves pending evidence.",
+      "Optional start-boundary events and safe operation/errno/winerror distinguish requested/created processes.",
+      "PID readiness is distinguished from creation/resume, with stage-specific cancellation and exit assertions."
+    ],
+    "scope_limit": "These are observation/harness fixes, not proof of the historical PermissionError cause or actual provider success. The opt-in observer/record path has not been used by a fresh actual trial.",
+    "unconfirmed": [
+      "The operation consuming the earlier two-second deadline while claim_pending remained; this did not recur.",
+      "Allocation of the earlier 2.1649867-second CLI duration; no spans were retained then.",
+      "Earlier five-second negative-exit fixture outlier cause.",
+      "Historical PermissionError operation, third native start/completion and individual historical native temporary-directory cleanup.",
+      "Actual runtime connection, room response, reconnect, provider usage and billing."
+    ],
+    "before_next_demonstration": [
+      "Keep the previous failed full-suite result; isolated passes do not clear the full gate.",
+      "If further synthetic execution is authorized, retain safe phase spans under comparable workload and separately exercise claim_pending and result_saved expiry without changing bounds.",
+      "No automatic whole-suite or provider rerun after this report.",
+      "Before an actual trial require explicit renewed authorization, available credential capacity (currently zero), preserved stop latches/reservations, shared record lock/start observer and an owned temporary-path manifest."
+    ],
+    "measurement_limits": [
+      "Wrappers add overhead; in-memory spans are written after each case.",
+      "Isolated runs do not recreate the earlier full-suite workload.",
+      "Past extra latency cannot be allocated retrospectively."
+    ],
+    "unchanged": {
+      "deadline_bounds": true,
+      "security_settings": true,
+      "actual_record_hashes": "all five unchanged",
+      "conservative_codex_reservations": 3,
+      "third_native_start": "unknown",
+      "provider_usage": "unknown",
+      "provider_billing": "unknown"
+    },
+    "executions_in_this_documentation_update": {
+      "tests": 0,
+      "whole_suite": 0,
+      "actual_models": 0,
+      "new_actual_trial_credentials": 0
+    },
+    "static_validation": [
+      "JSON parse",
+      "git diff --check",
+      "sensitive added-content scan",
+      "Python AST not applicable to JSON-only diff"
+    ]
+  }
 }
