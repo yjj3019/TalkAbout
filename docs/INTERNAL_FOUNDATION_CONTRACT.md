@@ -22,6 +22,10 @@
 
 삭제·공유 철회·멤버십/lease/정책 변경은 검색·context·구간 읽기·다운로드·미리보기에 다시 적용합니다. 이미 반환된 bytes를 회수했다고 주장하지 않습니다. provider용 입력은 별도의 전송 대상·동의 검사를 거쳐 prepared로 기록하며, 실제 전송이나 provider 소비를 확인한 기록이 아닙니다.
 
+현재 메모리 구현의 기본 상한은 파일 1 MiB, 공유 actor 16개, 메시지 참조 4개, task 참조 8개, 구간 8,000자와 task 누적 24,000자입니다. 형식은 text/plain UTF-8인 .txt/.md/.py/.js로 제한합니다. 업로드마다 불변 version 하나를 만들며 파일 version 체인과 산출물 DB 연결은 후속 범위입니다.
+
+메서드의 actor_id와 fence는 인증된 host adapter가 구성해야 합니다. 모델 JSON의 actor ID를 그대로 연결하면 안 됩니다. 현재 합성 resolver 자체는 로그인·tenant 인증을 제공하지 않습니다.
+
 ## 공개 연동 전에 검토할 변경
 
 | 경계 | 후속 변경 계획 |
