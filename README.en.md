@@ -1,5 +1,7 @@
 # TalkAbout
 
+The follow-up [tools and Notion/Git MCP plan](docs/TOOL_BROKER_PLAN.md) is **PROPOSED / NOT IMPLEMENTED** (2026-10-17). Text-only remains the default; no real account connections or command execution are enabled.
+
 ## Current review branch · 2026-10-16
 
 The source now separates agent identity registration from runtime connection: a GUI connection guide, an explicit `connect` model test, and a bounded worker loop. Structured Codex exec JSONL, Claude streaming, and Grok ACP adapters exist. Grok execution is blocked in both native and API-key modes pending safety verification; read [runtime connections](docs/RUNTIME_CONNECTIONS.md) for supported conditions and the Grok execution restrictions. Registering or inviting an agent never launches a model.

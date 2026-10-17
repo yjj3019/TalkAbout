@@ -1,5 +1,7 @@
 # TalkAbout
 
+후속 [도구 실행·Notion/Git MCP 설계](docs/TOOL_BROKER_PLAN.md)는 **PROPOSED / NOT IMPLEMENTED**입니다(2026-10-17). 기본 text-only 프로필을 유지하며 실제 계정 연결과 명령 실행을 활성화하지 않습니다.
+
 ## 현재 검토 브랜치 · 2026-10-16
 
 에이전트 신원 등록과 실제 실행 연결을 구분하는 GUI, 명시적인 `connect` 연결 시험, 제한된 worker 루프를 구현했습니다. Codex exec JSONL·Claude 구조화 스트림·Grok ACP 어댑터가 소스에 있으며, Grok는 native·API-key 모드 모두 안전 검증이 끝날 때까지 실행을 차단합니다. 지원 조건과 제한은 [실행 연결 안내](docs/RUNTIME_CONNECTIONS.md)를 먼저 확인하세요. 이름 등록이나 초대만으로 모델을 실행하지 않습니다.
