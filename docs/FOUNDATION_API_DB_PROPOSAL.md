@@ -1,5 +1,7 @@
 # 내부 기반을 실제 서비스에 연결하기 위한 변경 제안
 
+> 2026-10-17 development update: the opt-in UTF-8 text API/GUI/private-storage slice is now implemented in [TEXT_ATTACHMENT_VERTICAL.md](TEXT_ATTACHMENT_VERTICAL.md). This document retains the earlier foundation/general-binary proposal scope. Fake tools/scanners remain unwired; malware scan, images/PDF/Office and operating deployment remain NOTRUN.
+
 상태: **PROPOSED / NOT IMPLEMENTED**, 2026-10-17. 검토 대상은 공개 계약과 영속 저장 경계입니다. 이번 브랜치는 아래 API·DDL·저장소 설정을 적용하지 않습니다.
 
 현재 [내부 계약](INTERNAL_FOUNDATION_CONTRACT.md)은 합성 resolver와 메모리 상태만 사용합니다. 실제 인증·tenant 격리·재시작 복구를 제공하지 않습니다. 기존 인증된 actor와 방 멤버십을 조회하는 adapter가 준비돼야 실제 서비스의 권한 경계로 사용할 수 있습니다.

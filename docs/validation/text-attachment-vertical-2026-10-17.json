@@ -1,0 +1,71 @@
+{
+  "reviewed_on": "2026-10-17",
+  "status": "IMPLEMENTED_IN_DEVELOPMENT_NOT_DEPLOYED",
+  "branch": "feat/text-attachment-vertical",
+  "base_commit": "cdb5b66cefd5ebd2efb60bae578b65ee84df2dcc",
+  "scope": "Opt-in real UTF-8 text attachment vertical; synthetic external runtime only",
+  "full_python_regression": {
+    "passed": 406,
+    "skipped": 1,
+    "failed": 0,
+    "skip_reason": "POSIX-specific fail-closed test on Windows",
+    "postgres": "PASS: newly initialized temporary loopback cluster; no existing database reused",
+    "actual_chrome": "PASS: existing community flow and KO desktop / EN mobile text attachment flows"
+  },
+  "latest_attachment_regression": {
+    "passed": 28,
+    "skipped": 1,
+    "failed": 0,
+    "skip_reason": "This targeted rerun omitted PostgreSQL config; PostgreSQL test passed in full regression",
+    "actual_chrome_cases": 2
+  },
+  "node_regression": {
+    "passed": 112,
+    "failed": 0,
+    "new_cases": 5,
+    "new_coverage": [
+      "KO/EN attachment labels",
+      "late previous-session 401 cannot sign out a replacement session",
+      "unsupported format never starts HTTP upload",
+      "same-room SSE refresh preserves completed upload selection",
+      "route change rejects late upload selection"
+    ]
+  },
+  "static_checks": {
+    "python_ast": "PASS",
+    "json_syntax": "PASS",
+    "readme_and_vertical_document_links": "PASS",
+    "git_diff_check": "PASS"
+  },
+  "independent_code_review": {
+    "status": "Completed read-only review and follow-up; no remaining blocker reported",
+    "formal_codex_security_scan": "NOTRUN: managed scan tools unavailable",
+    "findings_fixed": [
+      "Bind reader consent to the accepted membership epoch; rejoin requires fresh consent",
+      "Recheck current file consent and room/task/lease/stop after reads and before runtime launch"
+    ],
+    "additional_fixes": [
+      "Sanitize unexpected raw upload failures and move credential auth to threadpool",
+      "Filter public task attachment references by current visibility",
+      "Audit file operation, revision and reader consent changes"
+    ]
+  },
+  "not_run": [
+    "real provider CLI or API calls",
+    "actual user or provider account files",
+    "operating database migration",
+    "operating storage or container configuration",
+    "deployment",
+    "malware scan",
+    "image, PDF or Office parsing",
+    "current branch push or pull request"
+  ],
+  "remaining_limits": [
+    "Attachments disabled by default; existing private storage directory requires explicit opt-in",
+    "Only nonempty UTF-8 txt/md up to 64 KiB; malware status always not_run",
+    "Tombstones block access; physical purge, retention expiry, restore and orphan cleanup deferred",
+    "Trusted host directory ACL and parent directories remain an operator responsibility",
+    "Remote revocation cannot recall already delivered bytes or eliminate the final distributed race",
+    "General binary normalized-table proposal and multi-host object storage remain future work"
+  ]
+}

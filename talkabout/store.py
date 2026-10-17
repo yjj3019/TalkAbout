@@ -120,6 +120,13 @@ class MemoryStore(SetupStore):
             self.rooms[room_id] = room
         self.signal.set()
 
+    @contextmanager
+    def read_transaction(self, room_id, token):
+        with self.lock:
+            actor=self.auth(token)
+            require(room_id in self.rooms,'not_found',404)
+            yield actor,copy.deepcopy(self.rooms[room_id])
+
     def create(self, token, room):
         with self.lock:
             actor = self.auth(token)
@@ -171,6 +178,13 @@ class MemoryStore(SetupStore):
 
 
 class PostgresStore(SetupStore):
+    @contextmanager
+    def read_transaction(self, room_id, token):
+        with self.connect() as conn:
+            row=conn.execute('SELECT * FROM rooms WHERE id=%s FOR SHARE',(room_id,)).fetchone()
+            require(row,'not_found',404)
+            yield self._auth(conn,token),self._room(conn,row)
+
     def credential_active(self, binding, principal_id, room_id=None, required_scopes=()):
         with self.connect() as conn:
             credential = conn.execute("SELECT principal_id,expires_at,revoked,room_id,scopes FROM credentials WHERE token_hash=%s", (binding,)).fetchone()

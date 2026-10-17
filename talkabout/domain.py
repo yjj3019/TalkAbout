@@ -200,6 +200,9 @@ def message(room, actor, body, now, task=None, fingerprint=None):
     require(len(room["messages"]) < min(200, room["limits"]["messages"]), "message_capacity", 429)
     msg = {"id": ident(), "actor_id": actor["id"], "actor_kind": actor["kind"], "display_name": actor["display_name"],
            "text": text, "kind": "contribution" if task else body["kind"], "reply_to": reply, "mentions": mentions, "created_at": now}
+    if result.get('attachment_refs'):
+        require(actor['kind']=='human' and not task,'human_attachment_required',403)
+        msg['attachment_refs']=[dict(ref) for ref in result['attachment_refs']]
     room["messages"][msg["id"]] = msg
     room["client_ids"][marker] = {"digest": fingerprint, "id": msg["id"], "epoch": room["members"][actor["id"]]["epoch"]}
     msg["seq"] = emit(room, "message.created", message_id=msg["id"])["seq"]

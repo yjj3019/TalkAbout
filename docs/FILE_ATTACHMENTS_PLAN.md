@@ -1,5 +1,7 @@
 # Room files that agents can read
 
+> 2026-10-17 development update: the opt-in UTF-8 text API/GUI/private-storage slice is now implemented in [TEXT_ATTACHMENT_VERTICAL.md](TEXT_ATTACHMENT_VERTICAL.md). This document retains the earlier foundation/general-binary proposal scope. Fake tools/scanners remain unwired; malware scan, images/PDF/Office and operating deployment remain NOTRUN.
+
 Status: **PROPOSED / NOT IMPLEMENTED**. Reviewed: **2026-10-17**.
 
 실제 채팅 첨부 기능은 아직 연결하지 않았습니다. 이번 브랜치의 [내부 기반 계약](INTERNAL_FOUNDATION_CONTRACT.md)은 메모리 저장소·합성 검사·UTF-8 구간 읽기만 다룹니다. 아래 API/DB·이미지/PDF·실제 검사와 저장소는 후속 제안입니다.

@@ -17,7 +17,8 @@ def main():
     parser = argparse.ArgumentParser(description="TalkAbout private text-only prototype; no external model calls by default")
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("init-db")
-    sub.add_parser("serve")
+    serve=sub.add_parser("serve")
+    serve.add_argument('--text-attachment-root',type=Path,help='Opt in to inert UTF-8 attachments using an existing private server directory; no directory or database migration is created at startup')
     sub.add_parser("preflight", help="Validate loopback configuration and existing schema; never initialize accounts or data")
     sub.add_parser('setup-code', help='Explicit private-terminal-only initial GUI setup; no default password')
     bootstrap = sub.add_parser("bootstrap-human", help="Explicit operator action; never performed automatically")
@@ -72,7 +73,9 @@ def main():
             print(json.dumps(bootstrap_human(store, args.workspace, args.name, args.handle, password)))
         else:
             import uvicorn
-            uvicorn.run(create_app(store), host="127.0.0.1", port=8080, access_log=False, limit_concurrency=16, timeout_graceful_shutdown=10)
+            from .text_files import PrivateTextStorage
+            storage=PrivateTextStorage(args.text_attachment_root) if args.text_attachment_root is not None else None
+            uvicorn.run(create_app(store,text_storage=storage), host="127.0.0.1", port=8080, access_log=False, limit_concurrency=16, timeout_graceful_shutdown=10)
         return
     config = json.loads(args.config.read_text(encoding="utf-8"))
     if args.command == "mcp":
