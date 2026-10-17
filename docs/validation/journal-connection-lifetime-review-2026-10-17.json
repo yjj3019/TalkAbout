@@ -1,0 +1,570 @@
+{
+  "reviewed_on": "2026-10-17",
+  "base": "9ef621ae46026a4f896e183ad2f485d8ea6525a7",
+  "scope": "Journal transient-connection lifetime correction; historical deadline causality not established",
+  "confirmed_defect": {
+    "methods": [
+      "Journal.stop_requested",
+      "Journal.stop_state"
+    ],
+    "before_control": "Two retained transient connections both accepted SELECT after helpers returned.",
+    "before_target_observations": [
+      {
+        "case": "test_deadline_is_rechecked_immediately_before_completion",
+        "created": 5,
+        "explicit_closes": 1,
+        "live_unclosed": 4
+      },
+      {
+        "case": "test_cli_run_includes_preflight_in_one_second_budget",
+        "created": 21,
+        "explicit_closes": 1,
+        "live_unclosed": 20
+      }
+    ]
+  },
+  "minimal_fix": "Wrap each temporary connection in contextlib.closing outside its existing transaction context. Commit/rollback, one-second SQLite timeout, WAL/FULL policy, API fences and all runtime bounds remain unchanged.",
+  "regressions": "Six cases verify actual closed-database errors after normal return and query exceptions, plus 100 calls of each helper while retaining strong references. Peak live transient connections is one and live count is zero after every call; state writes remain committed.",
+  "recovery_evidence": {
+    "earlier_full": "No result/XML/completed target records remained after exec-server transport loss. It is not a completed pass.",
+    "identity_checks": "Successful read-only CIM queries found no old wrapper/pytest, stored PG PID or Chrome process bearing the owned fixture marker. Stale PID file was retained; other user processes were not changed.",
+    "sandbox_observer_check": "90-second timeout with empty log; not evidence about deadline behavior.",
+    "native_observer_check": "Two existing cases passed in 4.846 seconds with owned Job stop confirmed.",
+    "interpretation": "Recovery/observer checks are distinct from application validation and do not resolve historical failures."
+  },
+  "validation": {
+    "focused": {
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0
+    },
+    "python": {
+      "passed": 470,
+      "failed": 0,
+      "skipped": 1
+    },
+    "node": {
+      "passed": 136,
+      "failed": 0
+    },
+    "chrome": {
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    "full_gate": "PASSED",
+    "full_invocations": 1,
+    "duration_seconds": 243.161,
+    "pytest_job_stopped": true,
+    "pg_job_stopped": true,
+    "database": "new owned loopback fixture only",
+    "source_tested_tree": "0602c8b699a50aa3d23df5329045229718dbe775",
+    "post_suite_changes": "This result document only; tested application/test bytes unchanged."
+  },
+  "focused_phase_observations": [
+    {
+      "case": "test_deadline_is_rechecked_immediately_before_completion",
+      "failed": false,
+      "connections_created": 5,
+      "explicit_connection_closes": 5,
+      "live_unclosed_connections": 0,
+      "initial_threads": 1,
+      "final_threads": 1,
+      "stages": [
+        {
+          "stage": "journal.__init__",
+          "begin_ms": 177.5236,
+          "thread": "main",
+          "wall_ms": 18.3281,
+          "cpu_ms": 0.0
+        },
+        {
+          "stage": "worker.__init__",
+          "begin_ms": 195.9249,
+          "thread": "main",
+          "wall_ms": 36.5105,
+          "cpu_ms": 0.0
+        },
+        {
+          "stage": "worker.deadline_set",
+          "begin_ms": 195.9369,
+          "remaining_ms": 1999.9718
+        },
+        {
+          "stage": "worker.step",
+          "begin_ms": 232.4572,
+          "thread": "main",
+          "error_class": "RunBudgetExceeded",
+          "wall_ms": 92.2891,
+          "cpu_ms": 31.25
+        },
+        {
+          "stage": "journal.save.claim_pending",
+          "begin_ms": 268.8254,
+          "thread": "main",
+          "wall_ms": 0.5979,
+          "cpu_ms": 0.0
+        },
+        {
+          "stage": "journal.save.claimed",
+          "begin_ms": 287.6982,
+          "thread": "main",
+          "wall_ms": 0.5978,
+          "cpu_ms": 0.0
+        },
+        {
+          "stage": "journal.save.call_started",
+          "begin_ms": 311.6499,
+          "thread": "main",
+          "wall_ms": 0.4847,
+          "cpu_ms": 0.0
+        },
+        {
+          "stage": "runtime.bounded_wait",
+          "begin_ms": 312.7539,
+          "thread": "main",
+          "wall_ms": 0.2966,
+          "cpu_ms": 0.0
+        },
+        {
+          "stage": "journal.save.result_saved",
+          "begin_ms": 313.2121,
+          "thread": "main",
+          "wall_ms": 0.442,
+          "cpu_ms": 15.625
+        },
+        {
+          "stage": "worker.deadline_set",
+          "begin_ms": 313.6648,
+          "remaining_ms": -1000.0084
+        },
+        {
+          "stage": "journal.close",
+          "begin_ms": 324.9344,
+          "thread": "main",
+          "wall_ms": 1.2237,
+          "cpu_ms": 0.0
+        }
+      ],
+      "gc_events": [
+        {
+          "generation": 1,
+          "begin_seconds": 2.436487,
+          "wall_ms": 0.0026,
+          "cpu_ms": 0.0,
+          "case": "test_deadline_is_rechecked_immediately_before_completion",
+          "collected": 0,
+          "uncollectable": 0
+        },
+        {
+          "generation": 1,
+          "begin_seconds": 2.447108,
+          "wall_ms": 0.0029,
+          "cpu_ms": 0.0,
+          "case": "test_deadline_is_rechecked_immediately_before_completion",
+          "collected": 0,
+          "uncollectable": 0
+        },
+        {
+          "generation": 1,
+          "begin_seconds": 2.453098,
+          "wall_ms": 0.0027,
+          "cpu_ms": 0.0,
+          "case": "test_deadline_is_rechecked_immediately_before_completion",
+          "collected": 0,
+          "uncollectable": 0
+        },
+        {
+          "generation": 1,
+          "begin_seconds": 2.461993,
+          "wall_ms": 0.0032,
+          "cpu_ms": 0.0,
+          "case": "test_deadline_is_rechecked_immediately_before_completion",
+          "collected": 0,
+          "uncollectable": 0
+        },
+        {
+          "generation": 1,
+          "begin_seconds": 2.492853,
+          "wall_ms": 0.0047,
+          "cpu_ms": 0.0,
+          "case": "test_deadline_is_rechecked_immediately_before_completion",
+          "collected": 0,
+          "uncollectable": 0
+        },
+        {
+          "generation": 1,
+          "begin_seconds": 2.508571,
+          "wall_ms": 0.0028,
+          "cpu_ms": 0.0,
+          "case": "test_deadline_is_rechecked_immediately_before_completion",
+          "collected": 0,
+          "uncollectable": 0
+        }
+      ]
+    },
+    {
+      "case": "test_cli_run_includes_preflight_in_one_second_budget",
+      "failed": false,
+      "connections_created": 21,
+      "explicit_connection_closes": 21,
+      "live_unclosed_connections": 0,
+      "initial_threads": 1,
+      "final_threads": 1,
+      "stages": [
+        {
+          "stage": "cli.main",
+          "begin_ms": 150.0843,
+          "thread": "main",
+          "wall_ms": 1041.1145,
+          "cpu_ms": 15.625
+        },
+        {
+          "stage": "journal.__init__",
+          "begin_ms": 162.746,
+          "thread": "main",
+          "wall_ms": 7.2896,
+          "cpu_ms": 0.0
+        },
+        {
+          "stage": "connector.acquire",
+          "begin_ms": 170.9494,
+          "thread": "main",
+          "wall_ms": 1.0317,
+          "cpu_ms": 0.0
+        },
+        {
+          "stage": "cli.deadline_started",
+          "begin_ms": 172.0134,
+          "remaining_ms": 999.9958
+        },
+        {
+          "stage": "worker.__init__",
+          "begin_ms": 580.8447,
+          "thread": "main",
+          "wall_ms": 3.9376,
+          "cpu_ms": 0.0
+        },
+        {
+          "stage": "worker.deadline_set",
+          "begin_ms": 580.8488,
+          "remaining_ms": 591.1622
+        },
+        {
+          "stage": "worker.step",
+          "begin_ms": 589.2553,
+          "thread": "main",
+          "wall_ms": 600.0008,
+          "cpu_ms": 0.0
+        },
+        {
+          "stage": "journal.save.claim_pending",
+          "begin_ms": 620.902,
+          "thread": "main",
+          "wall_ms": 0.3969,
+          "cpu_ms": 0.0
+        },
+        {
+          "stage": "journal.save.claimed",
+          "begin_ms": 634.4934,
+          "thread": "main",
+          "wall_ms": 0.3647,
+          "cpu_ms": 0.0
+        },
+        {
+          "stage": "journal.save.call_started",
+          "begin_ms": 650.5955,
+          "thread": "main",
+          "wall_ms": 0.2766,
+          "cpu_ms": 0.0
+        },
+        {
+          "stage": "runtime.bounded_wait",
+          "begin_ms": 651.1943,
+          "thread": "main",
+          "error_class": "RuntimeTimeout",
+          "wall_ms": 536.9064,
+          "cpu_ms": 0.0
+        },
+        {
+          "stage": "runtime.actual",
+          "begin_ms": 655.1404,
+          "thread": "background",
+          "wall_ms": 533.0671,
+          "cpu_ms": 0.0
+        },
+        {
+          "stage": "journal.save.uncertain",
+          "begin_ms": 1188.1289,
+          "thread": "main",
+          "wall_ms": 0.7945,
+          "cpu_ms": 0.0
+        },
+        {
+          "stage": "client.close",
+          "begin_ms": 1189.3012,
+          "thread": "main",
+          "wall_ms": 0.0109,
+          "cpu_ms": 0.0
+        },
+        {
+          "stage": "journal.close",
+          "begin_ms": 1189.4151,
+          "thread": "main",
+          "wall_ms": 1.771,
+          "cpu_ms": 0.0
+        }
+      ],
+      "gc_events": [
+        {
+          "generation": 1,
+          "begin_seconds": 3.195553,
+          "wall_ms": 0.0023,
+          "cpu_ms": 0.0,
+          "case": "test_cli_run_includes_preflight_in_one_second_budget",
+          "collected": 0,
+          "uncollectable": 0
+        }
+      ]
+    }
+  ],
+  "full_phase_observations": [
+    {
+      "case": "test_deadline_is_rechecked_immediately_before_completion",
+      "failed": false,
+      "connections_created": 5,
+      "explicit_connection_closes": 5,
+      "live_unclosed_connections": 0,
+      "initial_threads": 1,
+      "final_threads": 1,
+      "stages": [
+        {
+          "stage": "journal.__init__",
+          "begin_ms": 147.0406,
+          "thread": "main",
+          "wall_ms": 6.3391,
+          "cpu_ms": 0.0
+        },
+        {
+          "stage": "worker.__init__",
+          "begin_ms": 153.4167,
+          "thread": "main",
+          "wall_ms": 5.4744,
+          "cpu_ms": 15.625
+        },
+        {
+          "stage": "worker.deadline_set",
+          "begin_ms": 153.4226,
+          "remaining_ms": 1999.9857
+        },
+        {
+          "stage": "worker.step",
+          "begin_ms": 158.9109,
+          "thread": "main",
+          "error_class": "RunBudgetExceeded",
+          "wall_ms": 75.7735,
+          "cpu_ms": 15.625
+        },
+        {
+          "stage": "journal.save.claim_pending",
+          "begin_ms": 188.1812,
+          "thread": "main",
+          "wall_ms": 0.4853,
+          "cpu_ms": 0.0
+        },
+        {
+          "stage": "journal.save.claimed",
+          "begin_ms": 204.564,
+          "thread": "main",
+          "wall_ms": 0.3469,
+          "cpu_ms": 0.0
+        },
+        {
+          "stage": "journal.save.call_started",
+          "begin_ms": 223.4356,
+          "thread": "main",
+          "wall_ms": 0.3139,
+          "cpu_ms": 0.0
+        },
+        {
+          "stage": "runtime.bounded_wait",
+          "begin_ms": 224.1177,
+          "thread": "main",
+          "wall_ms": 0.1406,
+          "cpu_ms": 0.0
+        },
+        {
+          "stage": "journal.save.result_saved",
+          "begin_ms": 224.3987,
+          "thread": "main",
+          "wall_ms": 0.2278,
+          "cpu_ms": 0.0
+        },
+        {
+          "stage": "worker.deadline_set",
+          "begin_ms": 224.6317,
+          "remaining_ms": -1000.0035
+        },
+        {
+          "stage": "journal.close",
+          "begin_ms": 234.7701,
+          "thread": "main",
+          "wall_ms": 1.2339,
+          "cpu_ms": 0.0
+        }
+      ],
+      "gc_events": []
+    },
+    {
+      "case": "test_cli_run_includes_preflight_in_one_second_budget",
+      "failed": false,
+      "connections_created": 20,
+      "explicit_connection_closes": 20,
+      "live_unclosed_connections": 0,
+      "initial_threads": 1,
+      "final_threads": 1,
+      "stages": [
+        {
+          "stage": "cli.main",
+          "begin_ms": 143.3017,
+          "thread": "main",
+          "wall_ms": 1029.5613,
+          "cpu_ms": 15.625
+        },
+        {
+          "stage": "journal.__init__",
+          "begin_ms": 160.139,
+          "thread": "main",
+          "wall_ms": 5.4319,
+          "cpu_ms": 0.0
+        },
+        {
+          "stage": "connector.acquire",
+          "begin_ms": 165.9467,
+          "thread": "main",
+          "wall_ms": 1.1579,
+          "cpu_ms": 0.0
+        },
+        {
+          "stage": "cli.deadline_started",
+          "begin_ms": 167.1266,
+          "remaining_ms": 999.9965
+        },
+        {
+          "stage": "worker.__init__",
+          "begin_ms": 579.3306,
+          "thread": "main",
+          "wall_ms": 3.8498,
+          "cpu_ms": 15.625
+        },
+        {
+          "stage": "worker.deadline_set",
+          "begin_ms": 579.3397,
+          "remaining_ms": 587.7847
+        },
+        {
+          "stage": "worker.step",
+          "begin_ms": 586.6129,
+          "thread": "main",
+          "wall_ms": 584.5337,
+          "cpu_ms": 0.0
+        },
+        {
+          "stage": "journal.save.claim_pending",
+          "begin_ms": 620.5784,
+          "thread": "main",
+          "wall_ms": 0.4864,
+          "cpu_ms": 0.0
+        },
+        {
+          "stage": "journal.save.claimed",
+          "begin_ms": 641.1879,
+          "thread": "main",
+          "wall_ms": 0.3932,
+          "cpu_ms": 0.0
+        },
+        {
+          "stage": "journal.save.call_started",
+          "begin_ms": 663.2633,
+          "thread": "main",
+          "wall_ms": 0.3154,
+          "cpu_ms": 0.0
+        },
+        {
+          "stage": "runtime.bounded_wait",
+          "begin_ms": 663.9653,
+          "thread": "main",
+          "error_class": "RuntimeTimeout",
+          "wall_ms": 506.3403,
+          "cpu_ms": 0.0
+        },
+        {
+          "stage": "runtime.actual",
+          "begin_ms": 668.575,
+          "thread": "background",
+          "wall_ms": 501.817,
+          "cpu_ms": 0.0
+        },
+        {
+          "stage": "journal.save.uncertain",
+          "begin_ms": 1170.3249,
+          "thread": "main",
+          "wall_ms": 0.5669,
+          "cpu_ms": 0.0
+        },
+        {
+          "stage": "client.close",
+          "begin_ms": 1171.1908,
+          "thread": "main",
+          "wall_ms": 0.0104,
+          "cpu_ms": 0.0
+        },
+        {
+          "stage": "journal.close",
+          "begin_ms": 1171.3215,
+          "thread": "main",
+          "wall_ms": 1.5292,
+          "cpu_ms": 0.0
+        }
+      ],
+      "gc_events": [
+        {
+          "generation": 1,
+          "begin_seconds": 204.299743,
+          "wall_ms": 0.0022,
+          "cpu_ms": 0.0,
+          "case": "test_cli_run_includes_preflight_in_one_second_budget",
+          "collected": 0,
+          "uncollectable": 0
+        }
+      ]
+    }
+  ],
+  "remaining_full_failures": {},
+  "measurement_limits": [
+    "Fixed operation labels and relative times only; no payloads, raw SQL, credentials, paths or process identifiers.",
+    "Thread CPU clock resolution is coarse on Windows; a zero CPU reading is not proof of no CPU work.",
+    "Observer overhead and current results do not retrospectively allocate the old 2.1649867-second invocation."
+  ],
+  "causal_limit": "The connection lifetime defect and its correction are verified. They are not proof that unclosed connections caused either historical deadline failure.",
+  "unchanged_actual_trial_state": {
+    "all_five_record_hashes": "unchanged",
+    "stop_latches": "preserved",
+    "conservative_codex_reservations": 3,
+    "claude_reservations": 0,
+    "third_native_start": "unknown",
+    "provider_usage": "unknown",
+    "provider_billing": "unknown",
+    "actual_runtime_gate": "unverified",
+    "additional_credential_capacity": 0
+  },
+  "execution_limits": {
+    "actual_provider_calls_added": 0,
+    "actual_trial_credentials_added": 0,
+    "security_settings_changed": false,
+    "operating_service_or_data_changed": false,
+    "whole_suite_retries": 0,
+    "merge": "NOT RUN",
+    "deployment": "NOT RUN"
+  }
+}

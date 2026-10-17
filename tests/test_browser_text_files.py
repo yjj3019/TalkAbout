@@ -63,7 +63,20 @@ def test_browser_upload_read_reply_view_download_revoke_delete(tmp_path,language
                 file=page.request.get(base+'/api/v1/rooms/'+rid+'/files').json()[0]
                 assert file['malware_scan']=='not_run' and file['malware_safety']=='not_asserted'
                 card=page.locator('#text-file-list li').first
+                # Hold the preview until an ordinary room refresh has rendered.
+                # This reproduces the SSE/read-epoch race without timing sleeps.
+                preview_url=base+'/api/v1/rooms/'+rid+'/files/'+file['file_id']+'/text'
+                held=[]
+                page.route(preview_url,lambda route:held.append(route))
                 card.get_by_role('button',name='View attachment' if language=='en' else '첨부 조회',exact=True).click()
+                with page.expect_request(base+'/api/v1/rooms/'+rid+'/files'):
+                    page.locator('#refresh').click()
+                assert len(held)==1
+                with page.expect_response(preview_url) as preview_response:
+                    held.pop().continue_()
+                assert preview_response.value.status==200
+                assert '<script>' in preview_response.value.json()['text']
+                page.unroute(preview_url)
                 pw.expect(page.locator('#text-file-output')).to_contain_text('<script>')
                 assert page.evaluate('window.fileExecuted') is None
                 page.locator('#text-file-view-close').click()

@@ -1,0 +1,421 @@
+{
+  "reviewed_on": "2026-10-17",
+  "base": "dd7d546e1ce288af79b3851d9542fa68d2e6d28b",
+  "scope": "Synthetic test-fixture correction only; no production source change or real provider verification",
+  "previous_result": {
+    "passed": 459,
+    "failed": 1,
+    "skipped": 1,
+    "case": "test_no_descendants_survive_cli_parent_exit[timeout]"
+  },
+  "finding": "The old .7-second real deadline included child Python cold start, yet the assertion unconditionally required a PID file written by child code after grandchild creation. A missing PID file did not establish zero OS process creation or a containment failure.",
+  "additional_initial_failure": {
+    "case": "failure",
+    "result": "Second initial nine-case repetition failed with RuntimeTimeout at unchanged 5-second budget; exact stage unavailable. First repetition passed all nine.",
+    "follow_up": "Six instrumented runs observed natural exit 1, confirmed descendant cleanup and runtime_failed within 1.62-2.31 seconds; these do not establish the outlier cause. Existing failure case remains strict and is included in core/full checks."
+  },
+  "historical_limit": "The old failure did not retain Popen/resume stages; its exact process-creation state cannot be reconstructed. No historical PermissionError attribution is changed.",
+  "correction": {
+    "timeout_cold_start": "Retain real .7-second bounded_call. Observe Popen, suspended creation, resume, atomic readiness, completed cancellation and known PID exit. Missing readiness is permitted only after confirmed stop and runtime-thread completion, never treated as zero creation.",
+    "launch_failure": "Inject FileNotFoundError at Popen; require runtime_unavailable, no created/resumed process and no child marker.",
+    "timeout_before_launch": "Expire .7 logical deadline before Popen, then release the blocked launch on cancellation. Require zero Popen calls, finished runtime thread and no late child marker.",
+    "timeout_before_resume": "Create a real suspended Windows process, expire deadline before resume and require its recorded PID to be dead with no child-code readiness marker.",
+    "timeout_after_launch": "Observe atomic child/grandchild readiness before advancing the same .7 logical deadline. Require both PIDs dead after runtime_stopped, before outer containment teardown.",
+    "observation_field_note": "stopped means RuntimeTimeout.runtime_stopped. The launch_failure case independently asserts successful adapter.shutdown and no process creation.",
+    "controlled_clock_scope": "Only the fixture process talkabout.runtime clock reference is substituted for deterministic boundary cases. Process/adapter clocks, real cold-start timing and production code are unchanged.",
+    "retained_limits": "Original .7-second real cold-start budget, 5-second readiness/runtime guards, 15-second outer-parent limit, one-second CLI budget and 1.35-second assertion unchanged. No skips added or assertions removed.",
+    "strengthened_checks": "Atomic readiness avoids partial PID JSON. Known created PIDs are checked even without readiness; child and grandchild IDs must be distinct. Ordinary child failure must be runtime_failed, not any exception."
+  },
+  "remaining_full_failures": {
+    "test_deadline_is_rechecked_immediately_before_completion": {
+      "expected": "After forcing deadline expiry from the result_saved hook, journal status is result_saved:1.",
+      "observed": "RunBudgetExceeded was raised but journal status was claim_pending:1, so the intended result_saved phase was not reached.",
+      "retained_limit_seconds": 2,
+      "cause": "Exact costly operation unobserved; do not attribute to provider behavior or historical PermissionError.",
+      "scope": "Not modified; follow-up stage-controlled deadline diagnosis required."
+    },
+    "test_cli_run_includes_preflight_in_one_second_budget": {
+      "expected": "A one-second run including a 0.4-second capabilities delay returns in less than 1.35 seconds.",
+      "observed_elapsed_seconds": 2.1649867,
+      "retained_upper_bound_seconds": 1.35,
+      "cause": "Time-consuming stage was not retained; later assertions were not reached. No claim that the timing regression is resolved.",
+      "scope": "Not modified; requires separate synthetic latency diagnosis without raising the bound."
+    }
+  },
+  "full_gate": "NOT PASSED",
+  "validation": {
+    "focused": {
+      "repeat1": {
+        "passed": 5,
+        "failed": 0,
+        "skipped": 0
+      },
+      "repeat2": {
+        "passed": 5,
+        "failed": 0,
+        "skipped": 0
+      },
+      "repeat3": {
+        "passed": 5,
+        "failed": 0,
+        "skipped": 0
+      },
+      "core": {
+        "passed": 134,
+        "failed": 0,
+        "skipped": 1
+      }
+    },
+    "repeated_boundary_observations_without_pids": [
+      {
+        "boundary": "launch_failure",
+        "requested": true,
+        "created": false,
+        "resumed": false,
+        "ready": false,
+        "stopped": false,
+        "popen_calls": 1
+      },
+      {
+        "boundary": "timeout_before_launch",
+        "requested": true,
+        "created": false,
+        "resumed": false,
+        "ready": false,
+        "stopped": true,
+        "popen_calls": 0
+      },
+      {
+        "boundary": "timeout_before_resume",
+        "requested": true,
+        "created": true,
+        "resumed": false,
+        "ready": false,
+        "stopped": true,
+        "popen_calls": 1
+      },
+      {
+        "boundary": "timeout_after_launch",
+        "requested": true,
+        "created": true,
+        "resumed": true,
+        "ready": true,
+        "stopped": true,
+        "popen_calls": 1
+      },
+      {
+        "boundary": "timeout_cold_start",
+        "requested": true,
+        "created": true,
+        "resumed": true,
+        "ready": false,
+        "stopped": true,
+        "popen_calls": 1
+      },
+      {
+        "boundary": "launch_failure",
+        "requested": true,
+        "created": false,
+        "resumed": false,
+        "ready": false,
+        "stopped": false,
+        "popen_calls": 1
+      },
+      {
+        "boundary": "timeout_before_launch",
+        "requested": true,
+        "created": false,
+        "resumed": false,
+        "ready": false,
+        "stopped": true,
+        "popen_calls": 0
+      },
+      {
+        "boundary": "timeout_before_resume",
+        "requested": true,
+        "created": true,
+        "resumed": false,
+        "ready": false,
+        "stopped": true,
+        "popen_calls": 1
+      },
+      {
+        "boundary": "timeout_after_launch",
+        "requested": true,
+        "created": true,
+        "resumed": true,
+        "ready": true,
+        "stopped": true,
+        "popen_calls": 1
+      },
+      {
+        "boundary": "timeout_cold_start",
+        "requested": true,
+        "created": true,
+        "resumed": true,
+        "ready": false,
+        "stopped": true,
+        "popen_calls": 1
+      },
+      {
+        "boundary": "launch_failure",
+        "requested": true,
+        "created": false,
+        "resumed": false,
+        "ready": false,
+        "stopped": false,
+        "popen_calls": 1
+      },
+      {
+        "boundary": "timeout_before_launch",
+        "requested": true,
+        "created": false,
+        "resumed": false,
+        "ready": false,
+        "stopped": true,
+        "popen_calls": 0
+      },
+      {
+        "boundary": "timeout_before_resume",
+        "requested": true,
+        "created": true,
+        "resumed": false,
+        "ready": false,
+        "stopped": true,
+        "popen_calls": 1
+      },
+      {
+        "boundary": "timeout_after_launch",
+        "requested": true,
+        "created": true,
+        "resumed": true,
+        "ready": true,
+        "stopped": true,
+        "popen_calls": 1
+      },
+      {
+        "boundary": "timeout_cold_start",
+        "requested": true,
+        "created": true,
+        "resumed": true,
+        "ready": true,
+        "stopped": true,
+        "popen_calls": 1
+      }
+    ],
+    "python": {
+      "passed": 462,
+      "failed": 2,
+      "skipped": 1
+    },
+    "node": {
+      "passed": 136,
+      "failed": 0
+    },
+    "chrome": {
+      "passed": 5,
+      "failed": 0
+    },
+    "source_tested_tree": "a72df5a892ee5649fa855dc8e89c2b558e36c167",
+    "post_suite_changes": "This result document only; source/test hashes unchanged"
+  },
+  "security": {
+    "actual_provider_calls_added": 0,
+    "actual_trial_credentials_added": 0,
+    "security_or_permission_settings_changed": false,
+    "all_five_prior_record_hashes": "unchanged",
+    "conservative_codex_reservations": 3,
+    "third_native_start": "unknown",
+    "provider_usage": "unknown",
+    "provider_billing": "unknown",
+    "actual_runtime_gate": "unverified"
+  },
+  "delivery": "Existing Draft PR12 only; normal fast-forward; no main/base change, merge or deployment",
+  "isolated_deadline_phase_follow_up": {
+    "reviewed_on": "2026-10-17",
+    "measured_source_commit": "3d4b5f623d7254af6c4408d01565fc9f941fcbdd",
+    "verdict_ko": "이전 전체 검사 실패는 미해소, 개별 6회만 통과",
+    "verdict": "Earlier full-suite failures remain unresolved. Only the two isolated cases repeated three times passed. No source fix is justified by these non-reproducing measurements.",
+    "scope": "Existing synthetic runtime only. Temporary instrumentation outside the repository; no whole-suite run in this follow-up.",
+    "privacy": "Only fixed operation labels, times, journal state names and counts. No payloads, raw SQL, credentials, paths, process identifiers or provider logs.",
+    "phase_definitions": {
+      "preparation": "cli.main entry to actual synthetic runtime.run entry, including the existing injected 400ms capabilities delay",
+      "actual_synthetic_work": "Actual synthetic runtime.run entry to return",
+      "termination": "Synthetic runtime return to cli.main return including cleanup"
+    },
+    "runs": [
+      {
+        "run": 1,
+        "completion": {
+          "passed": true,
+          "origin": "Milliseconds from test-call entry, not deadline creation",
+          "journal_stages": [
+            {
+              "stage": "journal.save.claim_pending",
+              "begin_ms": 265.7179,
+              "duration_ms": 0.3506
+            },
+            {
+              "stage": "journal.save.claimed",
+              "begin_ms": 281.77,
+              "duration_ms": 0.347
+            },
+            {
+              "stage": "journal.save.call_started",
+              "begin_ms": 302.0717,
+              "duration_ms": 0.3038
+            },
+            {
+              "stage": "journal.save.result_saved",
+              "begin_ms": 303.1369,
+              "duration_ms": 0.3329
+            }
+          ],
+          "expiry": "Explicitly expired after result_saved",
+          "complete_requests": 0
+        },
+        "cli": {
+          "passed": true,
+          "phase_ms": {
+            "preparation": 529.844,
+            "actual_synthetic_work": 499.743,
+            "termination": 13.172,
+            "cli_total": 1042.7586
+          },
+          "journal_preparation_ms": 5.9725,
+          "journal_close_ms": 0.1736
+        }
+      },
+      {
+        "run": 2,
+        "completion": {
+          "passed": true,
+          "origin": "Milliseconds from test-call entry, not deadline creation",
+          "journal_stages": [
+            {
+              "stage": "journal.save.claim_pending",
+              "begin_ms": 321.9747,
+              "duration_ms": 0.7326
+            },
+            {
+              "stage": "journal.save.claimed",
+              "begin_ms": 341.2923,
+              "duration_ms": 0.3932
+            },
+            {
+              "stage": "journal.save.call_started",
+              "begin_ms": 363.9026,
+              "duration_ms": 0.3475
+            },
+            {
+              "stage": "journal.save.result_saved",
+              "begin_ms": 365.1267,
+              "duration_ms": 0.4195
+            }
+          ],
+          "expiry": "Explicitly expired after result_saved",
+          "complete_requests": 0
+        },
+        "cli": {
+          "passed": true,
+          "phase_ms": {
+            "preparation": 517.347,
+            "actual_synthetic_work": 506.978,
+            "termination": 1.236,
+            "cli_total": 1025.5614
+          },
+          "journal_preparation_ms": 6.148,
+          "journal_close_ms": 0.1716
+        }
+      },
+      {
+        "run": 3,
+        "completion": {
+          "passed": true,
+          "origin": "Milliseconds from test-call entry, not deadline creation",
+          "journal_stages": [
+            {
+              "stage": "journal.save.claim_pending",
+              "begin_ms": 263.6198,
+              "duration_ms": 0.395
+            },
+            {
+              "stage": "journal.save.claimed",
+              "begin_ms": 280.5942,
+              "duration_ms": 0.3707
+            },
+            {
+              "stage": "journal.save.call_started",
+              "begin_ms": 298.3138,
+              "duration_ms": 0.3113
+            },
+            {
+              "stage": "journal.save.result_saved",
+              "begin_ms": 299.4754,
+              "duration_ms": 0.2848
+            }
+          ],
+          "expiry": "Explicitly expired after result_saved",
+          "complete_requests": 0
+        },
+        "cli": {
+          "passed": true,
+          "phase_ms": {
+            "preparation": 587.082,
+            "actual_synthetic_work": 441.77,
+            "termination": 12.028,
+            "cli_total": 1040.8798
+          },
+          "journal_preparation_ms": 4.7007,
+          "journal_close_ms": 0.1355
+        }
+      }
+    ],
+    "observation_defects_addressed": [
+      "Missing native-start evidence stays unknown rather than zero.",
+      "Opt-in TrialRecord shares reader/writer locks and preserves pending evidence.",
+      "Optional start-boundary events and safe operation/errno/winerror distinguish requested/created processes.",
+      "PID readiness is distinguished from creation/resume, with stage-specific cancellation and exit assertions."
+    ],
+    "scope_limit": "These are observation/harness fixes, not proof of the historical PermissionError cause or actual provider success. The opt-in observer/record path has not been used by a fresh actual trial.",
+    "unconfirmed": [
+      "The operation consuming the earlier two-second deadline while claim_pending remained; this did not recur.",
+      "Allocation of the earlier 2.1649867-second CLI duration; no spans were retained then.",
+      "Earlier five-second negative-exit fixture outlier cause.",
+      "Historical PermissionError operation, third native start/completion and individual historical native temporary-directory cleanup.",
+      "Actual runtime connection, room response, reconnect, provider usage and billing."
+    ],
+    "before_next_demonstration": [
+      "Keep the previous failed full-suite result; isolated passes do not clear the full gate.",
+      "If further synthetic execution is authorized, retain safe phase spans under comparable workload and separately exercise claim_pending and result_saved expiry without changing bounds.",
+      "No automatic whole-suite or provider rerun after this report.",
+      "Before an actual trial require explicit renewed authorization, available credential capacity (currently zero), preserved stop latches/reservations, shared record lock/start observer and an owned temporary-path manifest."
+    ],
+    "measurement_limits": [
+      "Wrappers add overhead; in-memory spans are written after each case.",
+      "Isolated runs do not recreate the earlier full-suite workload.",
+      "Past extra latency cannot be allocated retrospectively."
+    ],
+    "unchanged": {
+      "deadline_bounds": true,
+      "security_settings": true,
+      "actual_record_hashes": "all five unchanged",
+      "conservative_codex_reservations": 3,
+      "third_native_start": "unknown",
+      "provider_usage": "unknown",
+      "provider_billing": "unknown"
+    },
+    "executions_in_this_documentation_update": {
+      "tests": 0,
+      "whole_suite": 0,
+      "actual_models": 0,
+      "new_actual_trial_credentials": 0
+    },
+    "static_validation": [
+      "JSON parse",
+      "git diff --check",
+      "sensitive added-content scan",
+      "Python AST not applicable to JSON-only diff"
+    ]
+  }
+}

@@ -42,8 +42,11 @@ def test_slow_preflight_cannot_launch_runtime_after_deadline(fixture, tmp_path):
     client.request = delayed
     journal = Journal(tmp_path/'preflight.sqlite')
     try:
-        worker = Worker(client, journal, runtime, run_deadline=time.monotonic()+.15)
-        with pytest.raises(RunBudgetExceeded): worker.step()
+        # Identity/capability setup is part of preflight too; budget expiry there
+        # is valid and must still prove that no runtime or completion was sent.
+        with pytest.raises(RunBudgetExceeded):
+            worker = Worker(client, journal, runtime, run_deadline=time.monotonic()+.15)
+            worker.step()
         assert runtime.calls == 0
         assert not any(path.endswith('/complete') for _, path in client.calls)
     finally: journal.close()

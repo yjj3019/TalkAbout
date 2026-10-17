@@ -29,7 +29,9 @@ def alive(pid):
 
 
 @pytest.mark.skipif(os.name != 'nt', reason='External CLI containment is supported only on Windows; POSIX fails closed')
-@pytest.mark.parametrize('mode', ['success', 'failure', 'timeout', 'stop', 'heartbeat'])
+@pytest.mark.parametrize('mode', ['success', 'failure', 'launch_failure',
+                                  'timeout_before_launch', 'timeout_before_resume',
+                                  'timeout_after_launch', 'timeout_cold_start', 'stop', 'heartbeat'])
 def test_no_descendants_survive_cli_parent_exit(mode, tmp_path):
     pidfile = tmp_path/'owned-pids.json'
     # The test parent also has containment, so a failed assertion cannot leak fixtures.
@@ -38,8 +40,37 @@ def test_no_descendants_survive_cli_parent_exit(mode, tmp_path):
     try:
         stdout, stderr = parent.process.communicate(timeout=15)
         assert parent.process.returncode == 0, stderr.decode(errors='replace')
-        assert pidfile.exists(), 'synthetic runtime never launched'
-        assert all(not alive(pid) for pid in json.loads(pidfile.read_text()))
+        if mode in {'launch_failure', 'timeout_before_launch', 'timeout_before_resume',
+                    'timeout_after_launch', 'timeout_cold_start'}:
+            observed = json.loads(stdout)
+            print(json.dumps(observed, sort_keys=True))
+            assert observed['boundary'] == mode
+            assert all(not alive(pid) for pid in observed['native_pids'])
+            if mode == 'timeout_cold_start':
+                assert observed['stopped']
+                assert observed['popen_calls'] in {0, 1}
+                assert observed['created'] == bool(observed['native_pids'])
+                if not observed['ready']:
+                    assert not pidfile.exists()
+                    return
+            elif mode == 'timeout_before_resume':
+                assert observed['requested'] and observed['created'] and observed['stopped']
+                assert observed['popen_calls'] == 1 and not observed['resumed']
+                assert not observed['ready'] and not pidfile.exists()
+                return
+            elif mode in {'launch_failure', 'timeout_before_launch'}:
+                assert observed['requested']
+                assert observed['popen_calls'] == (0 if mode == 'timeout_before_launch' else 1)
+                assert not observed['created'] and not observed['resumed']
+                assert not pidfile.exists(), 'cancelled/failed launch executed synthetic child code'
+                assert observed['stopped'] == (mode == 'timeout_before_launch')
+                return
+            assert observed['created'] and observed['resumed'] and observed['ready'] and observed['stopped']
+            assert observed['popen_calls'] == 1
+        assert pidfile.exists(), 'synthetic runtime never reached readiness'
+        pids = json.loads(pidfile.read_text())
+        assert len(pids) == 2 and len(set(pids)) == 2
+        assert all(not alive(pid) for pid in pids)
     finally: parent.stop()
 
 
