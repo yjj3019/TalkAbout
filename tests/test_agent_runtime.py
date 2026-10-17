@@ -328,6 +328,86 @@ class PipeSupervisor:
         return True
 
 
+@pytest.mark.parametrize('exit_code', [0, 2, None], ids=['zero', 'nonzero', 'still-running'])
+def test_eof_diagnostics_preserve_unknown_and_pre_cleanup_exit_only(exit_code):
+    supervisor = PipeSupervisor(b'')
+    supervisor.process.returncode = exit_code
+    supervisor.process.poll = lambda: supervisor.process.returncode
+    original_stop = supervisor.stop
+    def stop():
+        supervisor.process.returncode = 1  # Simulate our forced job termination.
+        return original_stop()
+    supervisor.stop = stop
+    transport = _JSONLTransport(supervisor, ['synthetic'], '.', {}, threading.Event(), time.monotonic() + 1)
+    with pytest.raises(AdapterError, match='runtime_outcome_unknown'):
+        transport.receive(threading.Event(), time.monotonic() + 1)
+    transport.close()
+    evidence = transport.diagnostics()
+    assert evidence['native_exit_code_before_cleanup'] == exit_code
+    assert evidence['stdout_frames'] == 0 and evidence['stdout_eof']
+    assert evidence['stderr_hints'] == [] and evidence['cleanup_confirmed']
+
+
+def test_diagnostics_count_frames_and_only_retain_fixed_stderr_hints():
+    secret = 'SYNTHETIC_PRIVATE_TOKEN_AND_PATH'
+    frames = [
+        {'type': 'thread.started', 'thread_id': secret},
+        {'type': 'item.completed', 'item': {'text': secret}},
+        {'type': secret, 'message': secret},
+    ]
+    raw = b''.join((json.dumps(frame) + '\n').encode() for frame in frames)
+    # Hint deliberately straddles the 4096-byte stderr read boundary.
+    stderr = b'x' * 4090 + b'unknown field ' + secret.encode()
+    supervisor = PipeSupervisor(raw, stderr)
+    transport = _JSONLTransport(supervisor, ['synthetic'], '.', {}, threading.Event(), time.monotonic() + 1)
+    for frame in frames:
+        assert transport.receive(threading.Event(), time.monotonic() + 1) == frame
+    transport.close()
+    evidence = transport.diagnostics()
+    assert evidence['stdout_bytes'] == len(raw) and evidence['stdout_frames'] == 3
+    assert evidence['stdout_event_counts'] == {'thread.started': 1, 'item.completed': 1, 'other': 1}
+    assert evidence['stderr_bytes'] == len(stderr) and evidence['stderr_hints'] == ['configuration']
+    assert secret not in json.dumps(evidence)
+    # Returned snapshots cannot mutate subsequent evidence.
+    evidence['stdout_event_counts']['forged'] = 999
+    assert 'forged' not in transport.diagnostics()['stdout_event_counts']
+
+
+def test_diagnostics_do_not_echo_unclassified_stderr():
+    supervisor = PipeSupervisor(b'', b'SYNTHETIC_PRIVATE_CREDENTIAL_WITH_NO_KNOWN_HINT')
+    transport = _JSONLTransport(supervisor, ['synthetic'], '.', {}, threading.Event(), time.monotonic() + 1)
+    transport.close()
+    evidence = transport.diagnostics()
+    assert evidence['stderr_hints'] == ['unclassified']
+    assert 'SYNTHETIC' not in json.dumps(evidence)
+
+
+@pytest.mark.skipif(os.name != 'nt', reason='Windows contained synthetic child')
+def test_real_synthetic_child_stdin_eof_nonzero_exit_has_safe_diagnostics(tmp_path):
+    from talkabout.processes import ProcessSupervisor
+    # This is Python, never a provider binary. It cannot emit anything until stdin
+    # EOF; a nonzero exit with no JSONL terminal proof must remain uncertain.
+    child = tmp_path / 'synthetic_eof.py'
+    child.write_text('import sys\nassert sys.stdin.buffer.read() == b"synthetic prompt"\n'
+                     'sys.stderr.write("unexpected argument SYNTHETIC_PRIVATE_TOKEN\\n")\n'
+                     'sys.stderr.flush()\nsys.exit(2)\n')
+    deadline = time.monotonic() + 10
+    transport = _JSONLTransport(ProcessSupervisor(), [sys.executable, '-B', str(child)],
+                                str(tmp_path), {}, threading.Event(), deadline)
+    try:
+        transport.send_text('synthetic prompt', threading.Event(), deadline)
+        with pytest.raises(AdapterError, match='runtime_outcome_unknown'):
+            transport.receive(threading.Event(), deadline)
+        transport.process.wait(timeout=2)
+    finally:
+        transport.close()
+    evidence = transport.diagnostics()
+    assert evidence['native_exit_code_before_cleanup'] == 2
+    assert evidence['stdout_eof'] and evidence['stdout_frames'] == 0
+    assert evidence['stderr_hints'] == ['arguments'] and evidence['cleanup_confirmed']
+    assert 'SYNTHETIC_PRIVATE_TOKEN' not in json.dumps(evidence)
+
+
 @pytest.mark.parametrize('raw,code', [(b'{broken}\n', 'runtime_invalid_output'),
                                     (b'{"x":1}', 'runtime_truncated_output'),
                                     (b'[]\n', 'runtime_invalid_output'),
@@ -714,6 +794,24 @@ def test_codex_exec_no_success_on_partial_tool_failure_or_bad_exit(monkeypatch, 
     with pytest.raises(AdapterError, match='runtime_outcome_unknown'):
         adapter.run({'room_id': 'room-one'}, threading.Event())
     assert len(peer.transports) == 1
+    adapter.shutdown()
+
+
+def test_runtime_preserves_safe_diagnostics_after_failed_transport_cleanup(monkeypatch):
+    adapter, peer = exec_runtime(monkeypatch, 'truncated')
+    original = __import__('talkabout.agent_runtime', fromlist=['_JSONLTransport'])._JSONLTransport
+    def factory(*args):
+        transport = original(*args)
+        transport.diagnostics = lambda: {'cleanup_confirmed': transport.closed, 'stdout_frames': 3}
+        return transport
+    monkeypatch.setattr('talkabout.agent_runtime._JSONLTransport', factory)
+    with pytest.raises(AdapterError, match='runtime_outcome_unknown'):
+        adapter.run({'room_id': 'room-one'}, threading.Event())
+    assert adapter.last_diagnostics == {'cleanup_confirmed': True, 'stdout_frames': 3}
+    assert adapter.calls == 1 and adapter.last_outcome == 'unknown'
+    with pytest.raises(AdapterError, match='runtime_outcome_unknown'):
+        adapter.run({'room_id': 'room-one'}, threading.Event())
+    assert len(peer.transports) == 1  # Diagnostic capture cannot permit a replay.
     adapter.shutdown()
 
 

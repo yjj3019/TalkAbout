@@ -31,6 +31,19 @@ MAX_LINE = 256 * 1024
 MAX_TEXT = 16000
 MAX_INPUT = 200000
 
+# Hints from untrusted stderr, never proof of a provider failure's cause. Only
+# these fixed labels survive the reader; no message, path, URL or identifier does.
+_STDERR_HINTS = {
+    'arguments': (b'unexpected argument', b'unrecognized option', b'invalid argument'),
+    'configuration': (b'error loading config', b'unknown field', b'failed to parse config'),
+    'authentication': (b'unauthorized', b'not logged in', b'authentication failed'),
+    'network': (b'connection refused', b'connection reset', b'failed to connect'),
+}
+_DIAGNOSTIC_EVENTS = frozenset({
+    'thread.started', 'turn.started', 'turn.completed', 'turn.failed',
+    'item.started', 'item.updated', 'item.completed', 'error',
+})
+
 
 def _containment_supported():
     return os.name == 'nt'
@@ -86,6 +99,12 @@ class _JSONLTransport:
         self.events = queue.Queue(maxsize=1024)
         self.failure = None
         self.total = 0
+        self.stdout_bytes = self.stderr_bytes = self.stdout_frames = 0
+        self.stdout_eof = self.stderr_eof = False
+        self.event_counts = {}
+        self.stderr_hints = set()
+        self.exit_code_before_cleanup = None
+        self.cleanup_started = self.cleanup_confirmed = False
         self.lock = threading.Lock()
         self.readers = []
         try:
@@ -103,18 +122,34 @@ class _JSONLTransport:
             reader.start()
 
     def _read(self, stream, output):
+        tail = b''  # At most 64 transient bytes to recognize split hints.
         try:
             while True:
                 raw = stream.readline(MAX_LINE + 1) if output else stream.read(4096)
                 if not raw:
+                    with self.lock:
+                        if output:
+                            self.stdout_eof = True
+                        else:
+                            self.stderr_eof = True
                     if output:
                         self._put(None)
                     return
                 with self.lock:
                     self.total += len(raw)
+                    if output:
+                        self.stdout_bytes += len(raw)
+                    else:
+                        self.stderr_bytes += len(raw)
                     if self.total > MAX_WIRE:
                         self.failure = 'runtime_output_limit'
                         return
+                if not output:
+                    window = (tail + raw).lower()
+                    with self.lock:
+                        self.stderr_hints.update(label for label, hints in _STDERR_HINTS.items()
+                                                 if any(hint in window for hint in hints))
+                    tail = window[-64:]
                 if output:
                     if len(raw) > MAX_LINE:
                         self.failure = 'runtime_output_limit'
@@ -129,6 +164,11 @@ class _JSONLTransport:
                     except (UnicodeError, ValueError, RecursionError):
                         self.failure = 'runtime_invalid_output'
                         return
+                    kind = value.get('type')
+                    label = kind if isinstance(kind, str) and kind in _DIAGNOSTIC_EVENTS else 'other'
+                    with self.lock:
+                        self.stdout_frames += 1
+                        self.event_counts[label] = self.event_counts.get(label, 0) + 1
                     self._put(value)
         except (OSError, ValueError):
             self.failure = 'runtime_transport_closed'
@@ -209,12 +249,39 @@ class _JSONLTransport:
 
     def close(self):
         # Do not close pipe handles under a blocked read/write before killing the job.
+        # Poll BEFORE stop: a code caused by our forced cleanup is not a native exit.
+        poll = getattr(self.process, 'poll', None)
+        self.exit_code_before_cleanup = poll() if poll else None
+        self.cleanup_started = True
         result = self.supervisor.stop()
+        self.cleanup_confirmed = result is True
         for stream in (self.process.stdin, self.process.stdout, self.process.stderr):
             stream.close()
         for reader in self.readers:
             reader.join(timeout=.2)
         return result
+
+    def diagnostics(self):
+        """Local opt-in inspection only; never publishes raw provider output.
+
+        A null exit code means the child had not observably exited before our
+        cleanup. Reader counters may be incomplete when a pipe did not drain.
+        Stderr hints are lossy, untrusted categories, not a root-cause verdict.
+        """
+        with self.lock:
+            return {
+                'native_exit_code_before_cleanup': self.exit_code_before_cleanup,
+                'cleanup_started': self.cleanup_started,
+                'cleanup_confirmed': self.cleanup_confirmed,
+                'stdout_bytes': self.stdout_bytes,
+                'stdout_frames': self.stdout_frames,
+                'stdout_event_counts': dict(self.event_counts),
+                'stdout_eof': self.stdout_eof,
+                'stderr_bytes': self.stderr_bytes,
+                'stderr_eof': self.stderr_eof,
+                'stderr_hints': sorted(self.stderr_hints) or
+                                (['unclassified'] if self.stderr_bytes else []),
+            }
 
 
 class StructuredRuntime:
@@ -249,6 +316,7 @@ class StructuredRuntime:
         self.thread_id = None
         self.runtime_version = None
         self.last_outcome = 'not_started'
+        self.last_diagnostics = None
         self.timeout = 120
         self.blocked_names = {credential_env, 'TALKABOUT_TOKEN', 'TALKABOUT_DATABASE_URL'}
         self.blocked_values = {platform_credential} if platform_credential else set()
@@ -910,6 +978,7 @@ class StructuredRuntime:
             self._pending = []
             self._turn_id = None
             self._prompt_sent = False
+            self.last_diagnostics = None
             supervisor = ProcessSupervisor()
             self._supervisor = supervisor
         transport = None
@@ -955,6 +1024,8 @@ class StructuredRuntime:
                 self.last_outcome = 'unknown'
                 raise AdapterError('runtime_cleanup_unconfirmed') from None
             finally:
+                if transport and hasattr(transport, 'diagnostics'):
+                    self.last_diagnostics = transport.diagnostics()
                 with self._state_lock:
                     self._transport = None
                     self._supervisor = None
