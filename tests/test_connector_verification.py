@@ -31,6 +31,66 @@ def test_runtime_test_receipt_and_no_credentials_in_journal(fixture, tmp_path):
     finally: with_journal.close()
 
 
+@pytest.mark.parametrize('changed',[None,'expired','replaced','explicit-retry','new-token'])
+def test_reconnect_reuses_only_exact_live_server_receipt(fixture,tmp_path,changed):
+    from talkabout.domain import token_hash
+    store,_,_=fixture;client=LocalClient(store);journal=Journal(tmp_path/'reconnect.sqlite')
+    try:
+        first,_=verify_runtime(client,journal,EchoRuntime(),'codex','fixture-a',time.monotonic()+5)
+        credential='fixture-a'
+        if changed=='expired':store.principals['a']['runtime_check']['expires_at']=time.time()-1
+        elif changed=='replaced':store.principals['a']['runtime_check']['id']='different-check'
+        elif changed=='new-token':
+            credential='fixture-a-second'
+            store.credentials[token_hash(credential)]={**store.credentials[token_hash('fixture-a')]}
+            client=LocalClient(store,credential)
+        fresh=EchoRuntime();client.calls.clear()
+        receipt,calls=verify_runtime(client,journal,fresh,'codex',credential,time.monotonic()+5,changed=='explicit-retry')
+        assert calls==(0 if changed is None else 1)
+        assert fresh.calls==calls and fresh.closed
+        if changed is None:
+            assert receipt['id']==first['id']
+            assert client.calls==[('GET','agents/me')]
+    finally:journal.close()
+
+
+@pytest.mark.parametrize('profile_change',['auth-mode','version','transport','executable'])
+def test_reconnect_profile_change_requires_new_challenge(fixture,tmp_path,profile_change):
+    store,_,_=fixture;client=LocalClient(store);journal=Journal(tmp_path/'profile.sqlite')
+    try:
+        verify_runtime(client,journal,EchoRuntime(),'codex','fixture-a',time.monotonic()+5)
+        fresh=EchoRuntime()
+        if profile_change=='auth-mode':fresh.auth_mode='api_key'
+        elif profile_change=='version':fresh.runtime_version='fixture-2'
+        elif profile_change=='transport':fresh.codex_transport='different-fixture-transport'
+        else:fresh._verified_executable=('synthetic-executable',123,456,789)
+        assert verify_runtime(client,journal,fresh,'codex','fixture-a',time.monotonic()+5)[1]==1
+        assert fresh.calls==1
+    finally:journal.close()
+
+
+@pytest.mark.parametrize('prior_state',['response_saved','uncertain'])
+def test_changed_profile_does_not_bypass_uncertain_or_saved_call(fixture,tmp_path,prior_state):
+    store,_,_=fixture;client=LocalClient(store);journal=Journal(tmp_path/'saved-profile.sqlite')
+    original=client.request
+    def lost(method,path,*args,**kwargs):
+        if path.endswith('/complete'):raise OSError('synthetic lost completion')
+        return original(method,path,*args,**kwargs)
+    try:
+        client.request=lost
+        with pytest.raises(OSError):verify_runtime(client,journal,EchoRuntime(),'codex','fixture-a',time.monotonic()+5)
+        if prior_state=='uncertain':
+            key=journal.db.execute("SELECT k FROM settings WHERE k LIKE 'runtime_check:%'").fetchone()[0]
+            prior=journal.setting(key);prior['state']='uncertain';prior.pop('profile_digest',None)
+            with journal.db:journal.set_setting(key,prior)
+        client.request=original;fresh=EchoRuntime();fresh.auth_mode='api_key'
+        with pytest.raises(ConnectionCheckError,match='profile_changed' if prior_state=='response_saved' else 'outcome_unknown'):
+            verify_runtime(client,journal,fresh,'codex','fixture-a',time.monotonic()+5)
+        assert fresh.calls==0
+        assert verify_runtime(client,journal,fresh,'codex','fixture-a',time.monotonic()+5,True)[1]==1
+    finally:journal.close()
+
+
 def test_unknown_model_call_is_not_repeated_without_explicit_flag(fixture, tmp_path):
     store, _, _ = fixture
     client = LocalClient(store)

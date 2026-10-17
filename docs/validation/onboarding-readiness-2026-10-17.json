@@ -1,0 +1,87 @@
+{
+  "reviewed_on": "2026-10-17",
+  "status": "DEVELOPMENT_FIXES_VERIFIED_ACTUAL_RUNTIME_GATE_BLOCKED",
+  "branch": "feat/onboarding-readiness",
+  "base_commit": "d09dcc248f7dccfacdc62f6a7df7a3e45566bd44",
+  "scope": "S1/S2 reconnect, pre-call cancellation recovery, response evidence and explanatory onboarding; S3/S4 preserved",
+  "python_evidence": {
+    "unique_cases_verified_after_targeted_rerun": {
+      "passed": 425,
+      "skipped": 1,
+      "failed": 0
+    },
+    "initial_full_run": {
+      "passed": 418,
+      "failed": 1,
+      "skipped": 1,
+      "postgres": "new temporary loopback cluster; per-test schema isolation; stopped after validation"
+    },
+    "resolved_test_failure": "English UI correctly displayed Invited; new test expected pending. Test assertion corrected, both actual Chrome cases rerun and passed.",
+    "targeted_chrome_rerun": {
+      "passed": 2,
+      "failed": 0,
+      "languages": [
+        "KO desktop",
+        "EN 390px mobile"
+      ]
+    },
+    "skip": "POSIX-specific fail-closed test on Windows",
+    "method": "The unique-case total overlays the two successful corrected Chrome cases and the final 44 focused S1/S2 cases on the full regression. Six profile/legacy-recovery cases were added after the full run. It is not a claim of a second all-green full-suite invocation."
+  },
+  "node": {
+    "passed": 130,
+    "failed": 0,
+    "new_journey_cases": 18
+  },
+  "s1_s2_targeted_synthetic": {
+    "passed": 44,
+    "failed": 0,
+    "actual_provider_evidence": false,
+    "reconnect_reuse": "exact receipt plus auth-mode/transport/executable-version profile digest; legacy uncertainty is not bypassed"
+  },
+  "environment_discovery": {
+    "platform": "Windows nt",
+    "codex_found": true,
+    "claude_found": true,
+    "grok_found": true,
+    "shell_wrappers": false,
+    "version_login_safety_flags_inference": "NOTRUN"
+  },
+  "checks": {
+    "python_ast": "PASS",
+    "json_syntax": "PASS",
+    "changed_document_links": "PASS",
+    "git_diff_check": "PASS"
+  },
+  "not_run": [
+    "actual provider CLI/API/model calls",
+    "provider account file access",
+    "operating database or deployment mutations",
+    "operating feature activation",
+    "Grok or POSIX execution",
+    "in-flight real-provider cancellation",
+    "S3 actual provider attachment processing",
+    "S4 commands or external MCP",
+    "push or PR for this branch"
+  ],
+  "actual_trial_approval_proposal": {
+    "s1_max_model_invocations": 3,
+    "s2_max_model_invocations": 6,
+    "combined_ceiling": 9,
+    "provider_internal_retries_tokens_money": "unknown; not bounded by this counter",
+    "data": "random echo challenge and neutral synthetic topic/messages only",
+    "isolation": "new loopback fixture and separate private per-agent journals; user-owned Windows native runtime; no operating data"
+  },
+  "remaining_gates": [
+    "Explicit actual-trial approval and native account authorization",
+    "Supported installed CLI safety profile and native login unverified",
+    "Real S1 response/reconnect and Codex/Claude S2 dialogue/recovery acceptance",
+    "Separate approval for merge/deployment; no operating activation implied"
+  ],
+  "limits": [
+    "Receipt is authenticated worker report, not vendor attestation",
+    "Native provider session continuity across process restart is not claimed",
+    "Unknown/post-call outcomes remain blocked; no automatic model retry",
+    "Existing attachment/MCP deferred limitations remain unchanged"
+  ]
+}

@@ -1,5 +1,7 @@
 # TalkAbout
 
+현재 검토 브랜치는 [S1~S4 요구사항·검증 gap 추적표](docs/RELEASE_GAP_MATRIX.md)를 기준으로 재접속과 pause/recovery 결함 및 그 동작을 설명하는 온보딩만 보강합니다. **실제 runtime S1/S2 릴리스 관문은 미통과**이며 [최소 실제 시험](docs/REAL_RUNTIME_TRIAL_PLAN.md)은 승인 대기입니다. UI·합성 테스트 통과를 실제 provider 검증으로 표시하지 않습니다.
+
 이번 브랜치는 [UTF-8 텍스트 첨부 수직 경로](docs/TEXT_ATTACHMENT_VERTICAL.md)를 개발 코드에 연결합니다(2026-10-17, **개발 구현 / 미배포**). 명시적으로 켠 경우에만 `.txt`/`.md` 실제 업로드·비공개 저장·메시지 참조·작업/동의에 묶인 에이전트 읽기를 제공합니다. 기본값은 비활성이며 악성검사는 **NOTRUN**입니다. 이미지·PDF·Office와 실제 provider 검증은 미완료입니다. [도구 내부 기반](docs/INTERNAL_FOUNDATION_CONTRACT.md)은 계속 미연결이며 일반 바이너리용 [API/DB 제안](docs/FOUNDATION_API_DB_PROPOSAL.md)은 후속 범위입니다.
 
 후속 [도구 실행·Notion/Git MCP 설계](docs/TOOL_BROKER_PLAN.md)는 **PROPOSED / NOT IMPLEMENTED**입니다(2026-10-17). 기본 text-only 프로필을 유지하며 실제 계정 연결과 명령 실행을 활성화하지 않습니다.

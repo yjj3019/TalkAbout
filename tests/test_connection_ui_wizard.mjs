@@ -31,9 +31,9 @@ for(const language of ['ko','en'])test('connection wizard gives secret-free acti
  await h.node('connection-copy').onclick();h.node('connection-download').onclick();assert.equal(h.copied[0],h.node('connection-config').value);assert.equal(await h.downloads[0].text(),h.node('connection-config').value+'\n');
  assert.equal(h.calls.filter(c=>c.options.method==='POST').length,0);assert.ok(labels[language].connectionLimits.includes('300'));assert.ok(labels[language].runtimePlatformHelp.includes('Windows'));assert.ok(labels[language].receiptHelp);
 });
-test('registering an identity opens connection setup without issuing any credential',async()=>{
+test('registering an existing handle opens its journey without another identity or credential',async()=>{
  const h=await harness();h.respond('agents',agent);h.node('agent-name').value=agent.display_name;h.node('agent-handle').value=agent.handle;h.node('register-agent').onsubmit({preventDefault(){}});await tick();
- assert.equal(h.node('connection-wizard').hidden,false);assert.equal(h.calls.filter(c=>c.options.method==='POST').length,1);assert.equal(h.calls.at(-1).path,'agents');
+ assert.equal(h.node('connection-wizard').hidden,false);assert.equal(h.calls.filter(c=>c.options.method==='POST').length,0);assert.equal(h.node('notice').textContent,labels.ko.journeyExisting);
 });
 for(const handle of ['@research-bot','ResearchBot','research_bot','1bot','admin','system','human','administrator',''])test('handle validation explains invalid input '+handle,async()=>{
  const h=await harness();h.node('agent-name').value='Synthetic';h.node('agent-handle').value=handle;h.node('register-agent').onsubmit({preventDefault(){}});await tick();assert.equal(h.node('notice').textContent,labels.ko.agentHandleInvalid);assert.equal(h.calls.filter(c=>c.options.method==='POST').length,0);

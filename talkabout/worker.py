@@ -232,6 +232,7 @@ class Worker:
         self.journal.ingest(response, self.actor_id)
 
     def step(self):
+        self.last_step_started_runtime=False
         check_deadline(self.run_deadline)
         if self.journal.stop_requested():
             status = self.journal.status()
@@ -250,6 +251,7 @@ class Worker:
         if not entry:
             return "waiting"
         tid, state, payload = entry
+        self.last_step_started_runtime=bool(payload.get('runtime_started',False))
         stop_seen = threading.Event()
         rid = payload["event"]["room_id"]
         prefix = f"rooms/{rid}/tasks/{tid}"
@@ -363,6 +365,7 @@ class Worker:
                 # Credentials, cursors, lease state, and retry keys are never model inputs.
                 check_deadline(self.run_deadline)
                 payload["runtime_started"] = True
+                self.last_step_started_runtime=True
                 self.journal.save(tid, "call_started", payload)
                 cancel, finished = threading.Event(), threading.Event()
                 heartbeat_failed = threading.Event()
@@ -432,7 +435,18 @@ class Worker:
             self.journal.stop_state("stopped")
             return "stopped"
         except httpx.HTTPStatusError as exc:
+            if exc.response.status_code==409 and state=='claim_pending' and not payload.get('runtime_started'):
+                # A pause, generation change or competing claim can win after our GET.
+                # Never retry that claim as a model call; retire only this pre-call entry.
+                current=self.client.request('GET',prefix)
+                if current['state']!='queued' or any(current[k]!=payload['claim'][k] for k in ('generation','membership_revision')):
+                    self.journal.save(tid,'failed',payload)
+                    return 'stale'
             if exc.response.status_code in {401, 403, 404, 409, 410, 422}:
                 self.journal.save(tid, "failed", payload)
             raise
         # Transport failures preserve claim_pending/result_saved for same-key recovery.
+
+    def safe_to_continue_after(self,result):
+        """Known pre-call stale work can drain; uncertain/post-call work never auto-repeats."""
+        return result in {'stale','unavailable'} and not getattr(self,'last_step_started_runtime',True)
