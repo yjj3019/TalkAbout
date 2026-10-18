@@ -1,0 +1,142 @@
+{
+  "checked_at": "2026-10-18",
+  "status": "TESTS_PASSED_WITH_HARNESS_NOTES",
+  "source_parent": "f8367ce9a53365c13c1fad3dd242dcdd8b5199bc",
+  "tested_source_tree": "93be82544b63d32292754bf26ab8db3407e0f24f",
+  "scope": "Selected operator controller adoption and one new full validation of current code. Previous d740 full result is historical and not reused.",
+  "adoption": {
+    "before": "Only helper/tests had adopted the safe sequence. The old selected external entry still contained direct JSON reads and class-only exception reporting.",
+    "after": "Selected legacy entry run_fixed_connection_once.py now imports talkabout.trial_controller.main. Versioned tools/run_trial_diagnostic.py imports the same main, which executes run_diagnostic. The controller, not its caller, installs TrialRecord.observe, closes the runtime, finalizes the attempt, publishes the independent safe report and re-reads it.",
+    "common_function": "talkabout.trial_controller.run_diagnostic",
+    "entry_check": {
+      "legacy_entry": "run_fixed_connection_once.py",
+      "current_module": "talkabout.trial_controller",
+      "archived_source_sha256": "4972bfed58311645db348dd41bc56d8087931c42828bd1e929cfad2ec6ceead0",
+      "archive_bytes_preserved": true,
+      "entry_sha256": "7382e7c981780dfb9f148a35c9c06c369975ce799ea7fab2f4c3060fe917caa5",
+      "actual_mode": "not exposed by CLI; synthetic flag required"
+    },
+    "scope_boundary": "CLI requires --synthetic and has no actual provider mode. The shared lifecycle can accept a supplied runtime instance under a separately authorized operator workflow; no implicit authentication, token issuance, API room provisioning or budget expansion is implemented. Original actual trial records and stop latches remain untouched.",
+    "original_controller": "Archived byte-for-byte before replacing the selected entry. No historical source or record is reclassified."
+  },
+  "selected_entry_end_to_end": {
+    "selected_entry": "run_fixed_connection_once.py",
+    "project_controller": "talkabout.trial_controller.run_diagnostic",
+    "exit": 0,
+    "report": {
+      "status": "completed",
+      "attempt": {
+        "native_process_starts": 1,
+        "completion_recorded": true,
+        "outcome": "completed",
+        "conservative_reservations": 1
+      },
+      "stage": "cleanup_completed",
+      "response_characters": 26,
+      "provider_attestation": false,
+      "evidence": "synthetic",
+      "verification": "SYNTHETIC_ONLY_NOT_PROVIDER_CONNECTION"
+    },
+    "independent_report_reread": true,
+    "actual_provider_calls": 0,
+    "new_tokens": 0,
+    "historical_records": "5 hashes unchanged"
+  },
+  "controller_behavior": [
+    "A new exclusive result directory prevents reopening/resetting an earlier reservation. Every JSON read/update after initialization uses existing TrialRecord locks.",
+    "Controller installs the fixed-stage observer itself; callers no longer need to assemble the helper sequence. It keeps the first observer exception and its stage even if cleanup observes later events.",
+    "Runtime shutdown occurs before completed reporting. Final status requires a completed summarized outcome and a successfully re-read independent report. Failure is never converted to success.",
+    "On failure, the controller emits safe relative-source/operation/numeric error/stage/native-state metadata before independent persistence. Failure of the second sink emits a secondary safe error and leaves the primary available.",
+    "Post-start persistence failures keep started=1; absent evidence remains unknown. Explicit pre-launch live not_requested can establish zero. No missing counter is defaulted to zero.",
+    "All current CLI native children are exact Python-only synthetic JSONL processes, with auth/preflight stubbed and a minimal environment. Synthetic evidence is labeled in saved reports and CLI output."
+  ],
+  "validation": {
+    "application_test_gate": "PASSED",
+    "full_python": {
+      "passed": 496,
+      "failed": 0,
+      "skipped": 1
+    },
+    "node_ui": {
+      "passed": 136,
+      "failed": 0
+    },
+    "chrome_subset_of_python": {
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    },
+    "full_invocations": 1,
+    "node_invocations": 1,
+    "chrome_execution": "Five browser cases included once in the single Python full run; not an additional browser rerun.",
+    "duration_seconds": 310.577,
+    "duration_source": "ownership manifest pytest_started to cleanup_completed wall time",
+    "fresh_loopback_postgres": true,
+    "pytest_job_stopped": true,
+    "pg_job_stopped": true,
+    "failed_cases": [],
+    "runner_process_exit": 1,
+    "collector_failure_and_recovery": {
+      "class": "NameError",
+      "symbol": "ET",
+      "stage": "post-cleanup XML aggregation",
+      "recovery": "re-read completed JUnit XML and existing exit/Job manifest; no test or fixture restarted"
+    },
+    "warnings": {
+      "count": 2,
+      "items": [
+        "Existing FastAPI/Starlette deprecation warning",
+        "GC profiler callback StopIteration while the synthetic lock-denial test briefly replaced shared time.monotonic; external observer warning, no failing testcase"
+      ]
+    },
+    "skip": "Existing POSIX-specific fail-closed case on Windows; Chrome has no skip.",
+    "post_full_changes": "Validation JSON only; application, entry and test source hashes remain the tested values."
+  },
+  "focused_history": {
+    "first": "6 passed / 1 failed: CLI dictionary merge overwrote the long synthetic verification marker with evidence=synthetic. Lifecycle execution completed; the output-label assertion caught the mismatch.",
+    "correction": "Keep evidence=synthetic and a separate verification=SYNTHETIC_ONLY_NOT_PROVIDER_CONNECTION field.",
+    "current": "7 lifecycle tests passed, including complete flow, observer failures before/after start, independent sink failure, refusing an existing directory, native Python JSONL execution and CLI refusing implicit actual mode.",
+    "whole_suite_retries": 0
+  },
+  "previous_results_not_reused": {
+    "commit": "d740c3a5ab0e7cb64498d2164c750b3432abcd5f",
+    "python": {
+      "passed": 470,
+      "failed": 0,
+      "skipped": 1
+    },
+    "node": {
+      "passed": 136,
+      "failed": 0
+    },
+    "chrome": {
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0
+    }
+  },
+  "tested_code_sha256": {
+    "talkabout/trial_controller.py": "080305d87e7541acda64f9b03ae2ed2a86e4683b23605eaee8aa6d04478c6076",
+    "tools/run_trial_diagnostic.py": "e91fca2a36dfffc097060c9911b51d21b7a5af2f3bdced660bbe24d686f8593e",
+    "tests/test_trial_controller_lifecycle.py": "3472e6ba02b6fb624af7d9746a20e88a28a8864e354e35ce41b69584c3cb1b83"
+  },
+  "preservation": {
+    "actual_provider_calls_added": 0,
+    "actual_trial_credentials_added": 0,
+    "historical_record_hashes": "all five unchanged",
+    "stop_latches": "preserved",
+    "conservative_codex_reservations": 3,
+    "claude_reservations": 0,
+    "third_historical_native_start": "unknown",
+    "provider_usage_and_billing": "unknown",
+    "actual_connection_response_reconnect_gate": "UNVERIFIED",
+    "merge": "NOTRUN",
+    "deployment": "NOTRUN",
+    "operating_data": "not accessed",
+    "security_or_permission_settings_changed": false
+  },
+  "related_documents": [
+    "controller-diagnostics-review-2026-10-17.json",
+    "native-failure-causality-review-2026-10-17.json"
+  ]
+}

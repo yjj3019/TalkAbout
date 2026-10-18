@@ -1,0 +1,451 @@
+{
+  "status": "PROVIDER_FREE_DIAGNOSTICS_VALIDATED; actual connection gate remains UNVERIFIED",
+  "checked_at": "2026-10-17",
+  "source_parent": "8ed569613716384582f99b4af8069a64e7017b79",
+  "goal_ko": "재실행·기록 경합·권한 오류 뒤에도 최초 실패 위치와 실행 불확실성을 잃지 않는지 확인했다. 과거 원인 확정이나 실제 모델 연결 성공 검증은 아니다.",
+  "reuse": "Existing TrialRecord reader/writer OS lock, safe_io_failure, summarize_attempt, StructuredRuntime observer and first last_observation_error latch are reused. No second lock protocol, controller framework, model adapter or provider integration was added.",
+  "minimal_changes": [
+    {
+      "file": "talkabout/trial_observation.py",
+      "change": "TrialRecordError now retains the deepest existing project Python source file/line from the original exception. safe_controller_failure combines the safe operation/category/numeric OS codes with a fixed observation stage and summarized attempt. Absolute paths, error messages, filenames carried by exceptions, traceback text, locals, input and environment are not serialized.",
+      "location_semantics": "The last eligible project frame identifies the Python boundary; it is not claimed to be an underlying OS syscall location. Missing location or errno/winerror remains null."
+    },
+    {
+      "file": "talkabout/trial_observation.py",
+      "change": "A record read failure followed by unlock failure retains the original read error and attaches a separate sanitized unlock failure, rather than replacing the primary error."
+    },
+    {
+      "file": "talkabout/trial_observation.py",
+      "change": "Incomplete or contradictory outcome=completed is summarized as unknown unless state=completed and one native start is observed. not_started without positive zero-start evidence also stays unknown."
+    },
+    {
+      "file": "talkabout/agent_runtime.py",
+      "change": "Move observation reset after the poisoned-instance/room checks. Rejected replay previously reset the saved first failure and native launch state before raising runtime_outcome_unknown; it now preserves them. Deadlines, auth, launch flags, ACL and call limits are unchanged."
+    }
+  ],
+  "confirmed_synthetic_behaviors": [
+    {
+      "case": "shared lock across independent processes",
+      "result": "Two separately spawned Python processes each perform 12 read/update cycles using the existing shared lock. Final revision is exactly 24, record remains reserved and no .pending remains. Readers open JSON only while holding the same lock; no overlapping uncoordinated replacement or lost update is accepted."
+    },
+    {
+      "case": "uncoordinated Windows reader",
+      "result": "An owned read handle causes replace denial. The original JSON and failed .pending evidence remain. A subsequent update stops at write because .pending exists; it does not delete evidence, retry a model, mark completion or turn a missing count into zero."
+    },
+    {
+      "case": "controlled exclusive file handle",
+      "result": "Reading a dummy owned record fails with permission_denied. The independent safe controller report identifies operation=read and a project-relative code line; the unreadable attempt stays unknown."
+    },
+    {
+      "case": "read/write/replace permission injections",
+      "result": "Each reports its distinct operation, errno=13 and injected winerror=32, source file/line and unknown attempt. Secret sentinel message/path strings do not appear in serialized reports."
+    },
+    {
+      "case": "lock denial",
+      "result": "Injected Windows byte-lock denial is labeled lock with injected numeric winerror=33; record I/O is not entered and original bytes are preserved."
+    },
+    {
+      "case": "read plus unlock denial",
+      "result": "The primary read location survives; cleanup_failure separately records unlock and its relative source line."
+    },
+    {
+      "case": "independent report sink also fails",
+      "result": "The synthetic controller emits the safe primary report to its captured stderr before persisting it separately. A failed independent report replacement retains its own pending file; the already emitted primary read location and unknown outcome remain. Neither failure is swallowed or called success."
+    },
+    {
+      "case": "native boundary before and after start",
+      "result": "With auth/preflight stubbed and only an exact base-Python sleep command permitted, actual OS child counts are respectively 0 and 1. The post-start observer fails before the older calls counter increments (calls=0), yet the live started state produces count=1 in the independently persisted report. All owned children have exited; no prompt is submitted."
+    },
+    {
+      "case": "rejected replay",
+      "result": "A second runtime.run raises runtime_outcome_unknown without any additional native start. The original native state and first safe observation error remain byte-for-byte equal to their pre-replay values."
+    },
+    {
+      "case": "metadata redaction",
+      "result": "Injected private error messages, exception filenames, external/dynamic traceback filenames and arbitrary error attributes are excluded. Only existing project Python file/line, allowlisted stages, safe categories and numeric codes are retained."
+    }
+  ],
+  "safe_controller_integration_contract": {
+    "historical_launchers": "Frozen old launchers and all five historical records remain unchanged. No actual provider trial has adopted or run the new helper.",
+    "reader_and_writer": "Controller read and worker update must both use TrialRecord for the same explicitly selected record and lock. Do not reopen the JSON directly.",
+    "first_error": "Use runtime.last_observation_error[event] when available, rather than a cleanup stage that ran later. Keep the original caught TrialRecordError; its safe operation/location survive wrapping.",
+    "attempt_snapshot": "If persistence failed after runtime start, pass the last in-memory native_launch_state in the attempt snapshot. A missing/unreadable snapshot is unknown. The old calls counter alone cannot prove no native creation.",
+    "failure_sequence": [
+      "Construct safe_controller_failure(error, operation, stage=fixed_stage, attempt=last_safe_snapshot).",
+      "Emit json.dumps(report) to the owned controller stderr with flush=True before trying another file write. Do not print str(error), traceback text, locals or raw paths.",
+      "Persist the safe report through a distinct TrialRecord, not the record whose read/write/replace just failed. Re-read it to confirm durable publication.",
+      "If the independent sink fails, retain the already emitted primary report and its pending evidence, report the secondary safe error, and stop. Do not clear reservations or retry the runtime."
+    ],
+    "scope_limit": "The report formatter does not itself persist or emit; the synthetic controller tests exercise this explicit caller sequence. A future actual controller must adopt it before a separately authorized trial. No guarantee is made if all output channels are unavailable or the process is killed before emitting any event.",
+    "launch_gap": "Failure between OS process creation and supervisor.start return still has requested/unknown state unless separately observed. It must never be inferred as zero from calls=0. Existing runtime stages were retained rather than inventing unsupported precision."
+  },
+  "validation": {
+    "passed": 147,
+    "failed": 0,
+    "errors": 0,
+    "skipped": 1,
+    "skip_reason": "Existing POSIX-specific fail-closed test on Windows",
+    "full_application_suite": "NOTRUN; scoped trial/runtime/process suite only"
+  },
+  "new_regression_cases": [
+    "test_controller_persists_permission_operation_and_relative_source[read]",
+    "test_controller_persists_permission_operation_and_relative_source[write]",
+    "test_controller_persists_permission_operation_and_relative_source[replace]",
+    "test_external_traceback_text_and_error_attributes_are_not_serialized",
+    "test_independent_report_write_failure_keeps_original_safe_stderr",
+    "test_inconsistent_or_missing_completion_never_becomes_success[row0]",
+    "test_inconsistent_or_missing_completion_never_becomes_success[row1]",
+    "test_inconsistent_or_missing_completion_never_becomes_success[row2]",
+    "test_inconsistent_or_missing_completion_never_becomes_success[row3]",
+    "test_inconsistent_or_missing_completion_never_becomes_success[row4]",
+    "test_failed_observer_keeps_live_boundary_when_record_publication_failed[native_start_requested-not_requested-0]",
+    "test_failed_observer_keeps_live_boundary_when_record_publication_failed[native_started-started-1]",
+    "test_independent_processes_share_reader_writer_lock_without_lost_updates",
+    "test_real_python_child_boundary_and_record_denial_keep_controller_context[native_start_requested-not_requested-0]",
+    "test_real_python_child_boundary_and_record_denial_keep_controller_context[native_started-started-1]",
+    "test_lock_denial_is_reported_without_entering_record_io",
+    "test_uncoordinated_reader_denial_preserves_evidence_and_identifies_replace",
+    "test_exclusive_read_denial_has_relative_operation_and_unknown_summary",
+    "test_secondary_unlock_denial_does_not_erase_primary_read_failure"
+  ],
+  "sanitized_persisted_controller_reports": [
+    {
+      "synthetic_case": "test_controller_persists_permi0",
+      "report": {
+        "status": "stopped",
+        "failure": {
+          "operation": "read",
+          "category": "permission_denied",
+          "errno": 13,
+          "winerror": 32,
+          "location": {
+            "file": "tests/test_trial_controller_diagnostics.py",
+            "line": 52
+          }
+        },
+        "stage": null,
+        "native_launch_state": "unknown",
+        "attempt": {
+          "native_process_starts": null,
+          "completion_recorded": false,
+          "outcome": "unknown",
+          "conservative_reservations": 1
+        }
+      }
+    },
+    {
+      "synthetic_case": "test_controller_persists_permi1",
+      "report": {
+        "status": "stopped",
+        "failure": {
+          "operation": "write",
+          "category": "permission_denied",
+          "errno": 13,
+          "winerror": 32,
+          "location": {
+            "file": "tests/test_trial_controller_diagnostics.py",
+            "line": 52
+          }
+        },
+        "stage": null,
+        "native_launch_state": "unknown",
+        "attempt": {
+          "native_process_starts": null,
+          "completion_recorded": false,
+          "outcome": "unknown",
+          "conservative_reservations": 1
+        }
+      }
+    },
+    {
+      "synthetic_case": "test_controller_persists_permi2",
+      "report": {
+        "status": "stopped",
+        "failure": {
+          "operation": "replace",
+          "category": "permission_denied",
+          "errno": 13,
+          "winerror": 32,
+          "location": {
+            "file": "tests/test_trial_controller_diagnostics.py",
+            "line": 52
+          }
+        },
+        "stage": null,
+        "native_launch_state": "unknown",
+        "attempt": {
+          "native_process_starts": null,
+          "completion_recorded": false,
+          "outcome": "unknown",
+          "conservative_reservations": 1
+        }
+      }
+    },
+    {
+      "synthetic_case": "test_exclusive_read_denial_has0",
+      "report": {
+        "status": "stopped",
+        "failure": {
+          "operation": "read",
+          "category": "permission_denied",
+          "errno": 13,
+          "winerror": null,
+          "location": {
+            "file": "talkabout/trial_observation.py",
+            "line": 160
+          }
+        },
+        "stage": null,
+        "native_launch_state": "unknown",
+        "attempt": {
+          "native_process_starts": null,
+          "completion_recorded": false,
+          "outcome": "unknown",
+          "conservative_reservations": 1
+        }
+      }
+    },
+    {
+      "synthetic_case": "test_external_traceback_text_a0",
+      "report": {
+        "status": "stopped",
+        "failure": {
+          "operation": "read",
+          "category": "permission_denied",
+          "errno": 13,
+          "winerror": null,
+          "location": {
+            "file": "tests/test_trial_controller_diagnostics.py",
+            "line": 73
+          }
+        },
+        "stage": null,
+        "native_launch_state": "unknown",
+        "attempt": {
+          "native_process_starts": null,
+          "completion_recorded": false,
+          "outcome": "unknown",
+          "conservative_reservations": 1
+        }
+      }
+    },
+    {
+      "synthetic_case": "test_failed_observer_keeps_liv0",
+      "report": {
+        "status": "stopped",
+        "failure": {
+          "operation": "replace",
+          "category": "permission_denied",
+          "errno": 13,
+          "winerror": null,
+          "location": {
+            "file": "tests/test_trial_controller_diagnostics.py",
+            "line": 123
+          }
+        },
+        "stage": "native_start_requested",
+        "native_launch_state": "not_requested",
+        "attempt": {
+          "native_process_starts": 0,
+          "completion_recorded": true,
+          "outcome": "unknown",
+          "conservative_reservations": 1
+        }
+      }
+    },
+    {
+      "synthetic_case": "test_failed_observer_keeps_liv1",
+      "report": {
+        "status": "stopped",
+        "failure": {
+          "operation": "replace",
+          "category": "permission_denied",
+          "errno": 13,
+          "winerror": null,
+          "location": {
+            "file": "tests/test_trial_controller_diagnostics.py",
+            "line": 123
+          }
+        },
+        "stage": "native_started",
+        "native_launch_state": "started",
+        "attempt": {
+          "native_process_starts": 1,
+          "completion_recorded": true,
+          "outcome": "unknown",
+          "conservative_reservations": 1
+        }
+      }
+    },
+    {
+      "synthetic_case": "test_lock_denial_is_reported_w0",
+      "report": {
+        "status": "stopped",
+        "failure": {
+          "operation": "lock",
+          "category": "permission_denied",
+          "errno": 13,
+          "winerror": 33,
+          "location": {
+            "file": "tests/test_trial_controller_diagnostics.py",
+            "line": 238
+          }
+        },
+        "stage": null,
+        "native_launch_state": "unknown",
+        "attempt": {
+          "native_process_starts": null,
+          "completion_recorded": false,
+          "outcome": "unknown",
+          "conservative_reservations": 1
+        }
+      }
+    },
+    {
+      "synthetic_case": "test_real_python_child_boundar0",
+      "report": {
+        "status": "stopped",
+        "failure": {
+          "operation": "replace",
+          "category": "permission_denied",
+          "errno": 13,
+          "winerror": null,
+          "location": {
+            "file": "tests/test_trial_controller_diagnostics.py",
+            "line": 189
+          }
+        },
+        "stage": "native_start_requested",
+        "native_launch_state": "not_requested",
+        "attempt": {
+          "native_process_starts": 0,
+          "completion_recorded": true,
+          "outcome": "unknown",
+          "conservative_reservations": 1
+        }
+      }
+    },
+    {
+      "synthetic_case": "test_real_python_child_boundar1",
+      "report": {
+        "status": "stopped",
+        "failure": {
+          "operation": "replace",
+          "category": "permission_denied",
+          "errno": 13,
+          "winerror": null,
+          "location": {
+            "file": "tests/test_trial_controller_diagnostics.py",
+            "line": 189
+          }
+        },
+        "stage": "native_started",
+        "native_launch_state": "started",
+        "attempt": {
+          "native_process_starts": 1,
+          "completion_recorded": true,
+          "outcome": "unknown",
+          "conservative_reservations": 1
+        }
+      }
+    },
+    {
+      "synthetic_case": "test_secondary_unlock_denial_d0",
+      "report": {
+        "status": "stopped",
+        "failure": {
+          "operation": "read",
+          "category": "permission_denied",
+          "errno": 13,
+          "winerror": null,
+          "location": {
+            "file": "tests/test_trial_controller_diagnostics.py",
+            "line": 294
+          }
+        },
+        "stage": null,
+        "native_launch_state": "unknown",
+        "attempt": {
+          "native_process_starts": null,
+          "completion_recorded": false,
+          "outcome": "unknown",
+          "conservative_reservations": 1
+        },
+        "cleanup_failure": {
+          "operation": "unlock",
+          "category": "permission_denied",
+          "errno": 13,
+          "winerror": null,
+          "location": {
+            "file": "tests/test_trial_controller_diagnostics.py",
+            "line": 291
+          }
+        }
+      }
+    },
+    {
+      "synthetic_case": "test_uncoordinated_reader_deni0",
+      "report": {
+        "status": "stopped",
+        "failure": {
+          "operation": "replace",
+          "category": "permission_denied",
+          "errno": 13,
+          "winerror": 5,
+          "location": {
+            "file": "talkabout/trial_observation.py",
+            "line": 197
+          }
+        },
+        "stage": "native_start_requested",
+        "native_launch_state": "unknown",
+        "attempt": {
+          "native_process_starts": null,
+          "completion_recorded": false,
+          "outcome": "unknown",
+          "conservative_reservations": 1
+        }
+      }
+    }
+  ],
+  "tested_code_sha256": {
+    "talkabout/trial_observation.py": "8a036390f9227cf11886643e9a9520af839a0cb260c8bb702f30e3c2c21a977d",
+    "talkabout/agent_runtime.py": "271c6f5c33b1a3f7680b07c873365463f84b20ca60d32bccb36a9fc7e0e6a9f9",
+    "tests/test_trial_controller_diagnostics.py": "faeb693b4f5dd4b80ad6f28f43e1048f32dcf4d5b464197f750261ae30b2f1e6"
+  },
+  "harness_history": {
+    "initial_run": "1 failed / 143 passed / 1 skipped in the outer suite. A missing __main__ guard in the external test driver caused Windows spawn children to invoke pytest recursively and attempt to remove the parent-owned open temporary file. Nested setup failures are not separate application regressions.",
+    "correction": "Add the standard __main__ guard to the external driver; preserve the first run log and metadata. Add actual Python native-boundary and independent-sink fallback cases, then run the same focused scope once.",
+    "current_run": {
+      "passed": 147,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 1,
+      "skip_reason": "Existing POSIX-specific fail-closed test on Windows",
+      "full_application_suite": "NOTRUN; scoped trial/runtime/process suite only"
+    },
+    "first_run_not_reclassified_as_pass": true
+  },
+  "preserved_boundaries": {
+    "historical_record_hashes": "all five unchanged",
+    "old_stop_latches": "preserved",
+    "actual_provider_calls": 0,
+    "new_tokens": 0,
+    "provider_usage_and_billing": "unknown; not queried",
+    "conservative_reservations": {
+      "codex": 3,
+      "claude": 0
+    },
+    "third_historical_native_start": "unknown",
+    "credential_cap_remaining": 0,
+    "permission_or_security_setting_changes": false,
+    "full_application_suite": "NOTRUN for this scoped change",
+    "actual_runtime_gate": "UNVERIFIED",
+    "merge": "NOTRUN",
+    "deployment": "NOTRUN"
+  },
+  "related": [
+    "native-failure-causality-review-2026-10-17.json",
+    "trial-permission-review-2026-10-17.json"
+  ]
+}

@@ -25,11 +25,78 @@ import uuid
 
 from .adapters import AdapterError, execute_bounded
 from .processes import ProcessSupervisor, ProcessCleanupError
+from .trial_observation import OBSERVATION_STAGES, TrialRecordError, safe_io_failure
 
 MAX_WIRE = 2 * 1024 * 1024
 MAX_LINE = 256 * 1024
 MAX_TEXT = 16000
 MAX_INPUT = 200000
+
+# Hints from untrusted stderr, never proof of a provider failure's cause. Only
+# these fixed labels survive the reader; no message, path, URL or identifier does.
+_STDERR_HINTS = {
+    'arguments': (b'unexpected argument', b'unrecognized option', b'invalid argument'),
+    'configuration': (b'error loading config', b'unknown field', b'unknown configuration field', b'failed to parse config'),
+    'authentication': (b'unauthorized', b'not logged in', b'authentication failed'),
+    'network': (b'connection refused', b'connection reset', b'failed to connect'),
+}
+_DIAGNOSTIC_EVENTS = frozenset({
+    'thread.started', 'turn.started', 'turn.completed', 'turn.failed',
+    'item.started', 'item.updated', 'item.completed', 'error',
+})
+_CONFIG_KEYS = frozenset({
+    'approval_policy', 'web_search', 'skills.include_instructions', 'tools.view_image',
+    'features.view_image', 'features.shell_tool', 'features.unified_exec',
+    'features.apply_patch_freeform', 'features.multi_agent', 'features.hooks',
+    'features.remote_plugin', 'features.skill_mcp_dependency_install', 'features.plugins',
+    'features.plugin_hooks', 'features.apps', 'features.tool_search',
+    'features.skip_host_skill_discovery',
+})
+_CONFIG_OPTIONS = frozenset({
+    '--ignore-user-config', '--strict-config', '--ignore-rules', '--skip-git-repo-check',
+    '--sandbox', '--config', '--json', '--enable', '--disable',
+})
+_CONFIG_TYPES = frozenset({'boolean', 'integer', 'float', 'string', 'sequence', 'map'})
+
+
+def _safe_stderr_details(raw):
+    """Extract only fixed keys/options/types from a bounded, transient window.
+
+    These are untrusted reported errors, never a verdict about provider state.
+    Arbitrary field names, enum values, paths and message text cannot be returned.
+    """
+    text = raw.decode('utf-8', errors='replace').lower()
+    details = set()
+    errors = list(re.finditer(r'unknown (?:configuration )?field|invalid type:|unknown variant|unexpected argument|unrecognized option', text))
+    for index, match in enumerate(errors):
+        end = errors[index + 1].start() if index + 1 < len(errors) else len(text)
+        fragment = text[match.start():min(end, match.start() + 1024)]
+        contexts = set(re.findall(r"\b(?:in|at)\s+[`']([a-z_.]+)[`']", fragment))
+        keys = contexts & _CONFIG_KEYS
+        if match.group() in {'unknown field', 'unknown configuration field'}:
+            field = re.match(r"unknown (?:configuration )?field\s+[`']([a-z_.]+)[`']", fragment)
+            if field:
+                name = field.group(1)
+                if name in _CONFIG_KEYS:
+                    keys.add(name)
+                keys.update(context + '.' + name for context in contexts
+                            if context + '.' + name in _CONFIG_KEYS)
+            kind = 'unknown_field'
+        elif match.group() == 'invalid type:':
+            kind = 'invalid_type'
+        elif match.group() == 'unknown variant':
+            kind = 'invalid_enum'
+        else:
+            options = set(re.findall(r"[`'](--[a-z-]+)[`']", fragment)) & _CONFIG_OPTIONS
+            details.add(('invalid_option', next(iter(options)) if len(options) == 1 else '', '', ''))
+            continue
+        key = next(iter(keys)) if len(keys) == 1 else ''
+        actual = re.match(r'invalid type:\s+([a-z]+)\b', fragment)
+        expected = re.search(r'\bexpected\s+(?:(?:a|an)\s+)?([a-z]+)\b', fragment)
+        actual = actual.group(1) if actual and actual.group(1) in _CONFIG_TYPES else ''
+        expected = expected.group(1) if expected and expected.group(1) in _CONFIG_TYPES else ''
+        details.add((kind, key, actual, expected))
+    return details
 
 
 def _containment_supported():
@@ -81,17 +148,26 @@ def _text(value):
 
 class _JSONLTransport:
     """Bounded pipes. Readers never execute provider requests or retain stderr."""
-    def __init__(self, supervisor, command, cwd, env, cancel, deadline):
+    def __init__(self, supervisor, command, cwd, env, cancel, deadline, observer=None):
         self.supervisor = supervisor
         self.events = queue.Queue(maxsize=1024)
         self.failure = None
         self.total = 0
+        self.stdout_bytes = self.stderr_bytes = self.stdout_frames = 0
+        self.stdout_eof = self.stderr_eof = False
+        self.event_counts = {}
+        self.stderr_hints = set()
+        self.stderr_details = set()
+        self.exit_code_before_cleanup = None
+        self.cleanup_started = self.cleanup_confirmed = False
         self.lock = threading.Lock()
         self.readers = []
         try:
+            if observer: observer('native_start_requested')
             self.process = supervisor.start(command, cancel, deadline=deadline,
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                 cwd=cwd, env=env, shell=False, bufsize=0)
+            if observer: observer('native_started')
         except ProcessCleanupError as error:
             code = 'runtime_containment_unsupported' if str(error) == 'runtime_containment_unsupported' else 'runtime_unavailable'
             raise AdapterError(code) from None
@@ -103,18 +179,35 @@ class _JSONLTransport:
             reader.start()
 
     def _read(self, stream, output):
+        tail = b''  # At most 8192 transient bytes; no raw text survives the reader.
         try:
             while True:
                 raw = stream.readline(MAX_LINE + 1) if output else stream.read(4096)
                 if not raw:
+                    with self.lock:
+                        if output:
+                            self.stdout_eof = True
+                        else:
+                            self.stderr_eof = True
                     if output:
                         self._put(None)
                     return
                 with self.lock:
                     self.total += len(raw)
+                    if output:
+                        self.stdout_bytes += len(raw)
+                    else:
+                        self.stderr_bytes += len(raw)
                     if self.total > MAX_WIRE:
                         self.failure = 'runtime_output_limit'
                         return
+                if not output:
+                    window = (tail + raw).lower()
+                    with self.lock:
+                        self.stderr_hints.update(label for label, hints in _STDERR_HINTS.items()
+                                                 if any(hint in window for hint in hints))
+                        self.stderr_details = set(sorted(self.stderr_details | _safe_stderr_details(window))[:32])
+                    tail = window[-8192:]  # Transient only; never included in a snapshot.
                 if output:
                     if len(raw) > MAX_LINE:
                         self.failure = 'runtime_output_limit'
@@ -129,6 +222,11 @@ class _JSONLTransport:
                     except (UnicodeError, ValueError, RecursionError):
                         self.failure = 'runtime_invalid_output'
                         return
+                    kind = value.get('type')
+                    label = kind if isinstance(kind, str) and kind in _DIAGNOSTIC_EVENTS else 'other'
+                    with self.lock:
+                        self.stdout_frames += 1
+                        self.event_counts[label] = self.event_counts.get(label, 0) + 1
                     self._put(value)
         except (OSError, ValueError):
             self.failure = 'runtime_transport_closed'
@@ -191,6 +289,13 @@ class _JSONLTransport:
             except queue.Empty:
                 continue
             if value is None:
+                # Pipe EOF can precede kernel process exit. Observe at most 100ms
+                # within the existing deadline; never turn EOF into success.
+                poll = getattr(self.process, 'poll', None)
+                until = min(deadline, time.monotonic() + .1)
+                while poll and poll() is None and time.monotonic() < until:
+                    self.check(cancel, deadline)
+                    time.sleep(min(.005, max(0, until - time.monotonic())))
                 raise AdapterError('runtime_outcome_unknown')
             return value
 
@@ -209,12 +314,43 @@ class _JSONLTransport:
 
     def close(self):
         # Do not close pipe handles under a blocked read/write before killing the job.
+        # Poll BEFORE stop: a code caused by our forced cleanup is not a native exit.
+        poll = getattr(self.process, 'poll', None)
+        self.exit_code_before_cleanup = poll() if poll else None
+        self.cleanup_started = True
         result = self.supervisor.stop()
+        self.cleanup_confirmed = result is True
         for stream in (self.process.stdin, self.process.stdout, self.process.stderr):
             stream.close()
         for reader in self.readers:
             reader.join(timeout=.2)
         return result
+
+    def diagnostics(self):
+        """Local opt-in inspection only; never publishes raw provider output.
+
+        A null exit code means the child had not observably exited before our
+        cleanup. Reader counters may be incomplete when a pipe did not drain.
+        Stderr hints are lossy, untrusted categories, not a root-cause verdict.
+        """
+        with self.lock:
+            return {
+                'native_exit_code_before_cleanup': self.exit_code_before_cleanup,
+                'cleanup_started': self.cleanup_started,
+                'cleanup_confirmed': self.cleanup_confirmed,
+                'stdout_bytes': self.stdout_bytes,
+                'stdout_frames': self.stdout_frames,
+                'stdout_event_counts': dict(self.event_counts),
+                'stdout_eof': self.stdout_eof,
+                'stderr_bytes': self.stderr_bytes,
+                'stderr_eof': self.stderr_eof,
+                'stderr_hints': sorted(self.stderr_hints) or
+                                (['unclassified'] if self.stderr_bytes else []),
+                'stderr_reported_details': [
+                    {'kind': kind, **({'option' if kind == 'invalid_option' else 'key': key} if key else {}),
+                     **({'actual_type': actual} if actual else {}), **({'expected_type': expected} if expected else {})}
+                    for kind, key, actual, expected in sorted(self.stderr_details)],
+            }
 
 
 class StructuredRuntime:
@@ -230,7 +366,13 @@ class StructuredRuntime:
     No adapter reads/copies OAuth tokens or falls back to API-key billing.
     """
     def __init__(self, kind, executable=None, platform_credential=None,
-                 credential_env='TALKABOUT_TOKEN', run_deadline=None, auth_mode='native', codex_transport='exec-json'):
+                 credential_env='TALKABOUT_TOKEN', run_deadline=None, auth_mode='native', codex_transport='exec-json', observer=None):
+        if observer is not None and not callable(observer):
+            raise AdapterError('invalid_runtime_observer')
+        self.observer = observer
+        self.last_observation = None
+        self.last_observation_error = None
+        self.native_launch_state = 'not_requested'
         if kind == 'grok-build':
             kind = 'grok'
         if kind not in {'codex', 'claude', 'grok'}:
@@ -249,6 +391,7 @@ class StructuredRuntime:
         self.thread_id = None
         self.runtime_version = None
         self.last_outcome = 'not_started'
+        self.last_diagnostics = None
         self.timeout = 120
         self.blocked_names = {credential_env, 'TALKABOUT_TOKEN', 'TALKABOUT_DATABASE_URL'}
         self.blocked_values = {platform_credential} if platform_credential else set()
@@ -403,7 +546,7 @@ class StructuredRuntime:
             for option in ('features.shell_tool=false', 'features.unified_exec=false',
                            'features.apply_patch_freeform=false', 'features.multi_agent=false',
                            'features.hooks=false', 'features.remote_plugin=false',
-                           'features.skill_mcp_dependency_install=false', 'tools.view_image=false',
+                           'features.skill_mcp_dependency_install=false', 'features.view_image=false',
                            'features.plugins=false', 'features.plugin_hooks=false', 'features.apps=false',
                            'features.tool_search=false', 'features.skip_host_skill_discovery=true',
                            'skills.include_instructions=false', 'web_search="disabled"'):
@@ -590,8 +733,10 @@ class StructuredRuntime:
                     raise AdapterError('runtime_cleanup_unconfirmed')
 
     def _codex_exec(self, prompt):
+        self._observe('prompt_submission_requested')
         self._prompt_sent = True
         self._transport.send_text(prompt, self._cancel, self._deadline)
+        self._observe('prompt_submitted')
         started = False
         session_seen = False
         completed = {}
@@ -874,6 +1019,26 @@ class StructuredRuntime:
         finally:
             self._run_lock.release()
 
+    def _observe(self, stage):
+        if stage not in OBSERVATION_STAGES:
+            raise AdapterError('invalid_runtime_observation')
+        self.last_observation = stage
+        if stage == 'native_start_requested': self.native_launch_state = 'requested'
+        elif stage == 'native_started': self.native_launch_state = 'started'
+        if self.observer is not None:
+            try:
+                self.observer(stage)
+            except Exception as error:
+                # A failed pre-launch audit prevents launch. A failed post-launch
+                # audit never erases the fact that the native child already exists.
+                if stage == 'native_start_requested': self.native_launch_state = 'not_requested'
+                safe = dict(error.safe) if isinstance(error, TrialRecordError) else safe_io_failure(error, 'observer')
+                safe['event'] = stage
+                self.last_observation_error = self.last_observation_error or safe
+                self._failed = True
+                self.last_outcome = 'unknown' if self._prompt_sent else 'not_started'
+                raise AdapterError('runtime_observation_failed') from None
+
     def _run(self, context, cancel):
         if not isinstance(context, dict):
             raise AdapterError('invalid_runtime_context')
@@ -897,6 +1062,8 @@ class StructuredRuntime:
                 raise AdapterError('runtime_outcome_unknown')
             if self._room_id is not None and self._room_id != room_id:
                 raise AdapterError('runtime_room_mismatch')
+            self.last_observation = self.last_observation_error = None
+            self.native_launch_state = 'not_requested'
             self._deadline = min(time.monotonic() + self.timeout, self.run_deadline if self.run_deadline is not None else float('inf'))
             if time.monotonic() >= self._deadline:
                 raise AdapterError('runtime_timeout')
@@ -905,27 +1072,35 @@ class StructuredRuntime:
                 raise AdapterError(probe['reason'])
             self._room_id = room_id
             if self._workspace is None:
+                self._observe('workspace_preparing')
                 self._workspace = tempfile.TemporaryDirectory(prefix='talkabout-agent-')
+                self._observe('workspace_ready')
             self._cancel = cancel
             self._pending = []
             self._turn_id = None
             self._prompt_sent = False
+            self.last_diagnostics = None
             supervisor = ProcessSupervisor()
             self._supervisor = supervisor
         transport = None
         try:
             env = self._environment()
             if self.kind == 'claude' or (self.kind == 'codex' and self.codex_transport == 'exec-json' and self.auth_mode == 'native'):
+                self._observe('auth_check_started')
                 if self.kind == 'claude':
                     self._check_claude_auth(cancel, supervisor)
                 else:
                     self._check_codex_exec_auth(cancel, supervisor)
+                self._observe('auth_check_completed')
                 with self._state_lock:
                     if self._shutdown or cancel.is_set():
                         raise AdapterError('runtime_cancelled')
                     supervisor = ProcessSupervisor()
                     self._supervisor = supervisor
-            transport = _JSONLTransport(supervisor, self.command(), self._workspace.name, env, cancel, self._deadline)
+            if self.observer is None: self._observe('native_start_requested')
+            transport = _JSONLTransport(supervisor, self.command(), self._workspace.name, env, cancel, self._deadline,
+                                        **({'observer': self._observe} if self.observer is not None else {}))
+            if self.observer is None: self._observe('native_started')
             with self._state_lock:
                 self._transport = transport
             self.calls += 1
@@ -935,6 +1110,7 @@ class StructuredRuntime:
             transport.check(cancel, self._deadline)
             if not text:
                 raise AdapterError('runtime_invalid_output')
+            self._observe('native_result_observed')
             # No output is returned until containment cleanup also succeeds.
             self.last_outcome = 'completed'
             return text
@@ -950,11 +1126,14 @@ class StructuredRuntime:
                 stopped = transport.close() if transport else supervisor.stop()
                 if stopped is not True:
                     raise ProcessCleanupError('cleanup_unconfirmed')
+                self._observe('cleanup_completed')
             except (ProcessCleanupError, OSError, ValueError):
                 self._failed = True
                 self.last_outcome = 'unknown'
                 raise AdapterError('runtime_cleanup_unconfirmed') from None
             finally:
+                if transport and hasattr(transport, 'diagnostics'):
+                    self.last_diagnostics = transport.diagnostics()
                 with self._state_lock:
                     self._transport = None
                     self._supervisor = None

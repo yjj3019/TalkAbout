@@ -25,6 +25,16 @@ def test_platform_secrets_are_removed_from_child_environment(monkeypatch):
     assert 'OPENAI_API_KEY' not in child_environment(blocked_values={'synthetic-misconfigured-platform-credential'})
 
 
+def test_windows_systemroot_is_preserved_and_blocks_are_case_insensitive(monkeypatch):
+    from types import SimpleNamespace
+    from talkabout import adapters
+    monkeypatch.setattr(adapters,'os',SimpleNamespace(environ={
+        'SYSTEMROOT':'synthetic-windows-root','Path':'synthetic-path',
+        'OPENAI_API_KEY':'synthetic-provider-key','TalkAbout_Token':'synthetic-platform-token'}))
+    result=child_environment({'openai_api_key','talkabout_token'})
+    assert result=={'SYSTEMROOT':'synthetic-windows-root','Path':'synthetic-path'}
+
+
 @pytest.mark.skipif(os.name != 'nt', reason='POSIX external CLI fails closed until containment is verified')
 def test_actual_synthetic_child_reads_stdin_and_failure_is_sanitized():
     # Check normal I/O and error sanitization without using cold interpreter
