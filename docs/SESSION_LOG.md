@@ -49,3 +49,11 @@
 ### English handoff
 
 Stopped at the user's request before implementation. Only a branch/worktree and a reviewed plan exist. Resume with the budget split and account-binding decision, then implement scoped persistence and the explicitly selected app-server path behind a feature gate. Use synthetic targeted tests first. Existing exec behavior, public API contracts, historical uncertainty records, provider authentication and paid-call defaults must remain protected.
+
+## 2026-10-19 — scoped Codex continuity implementation increment
+
+Resumed the small implementation unit after the preserved planning checkpoint. Added opt-in local Codex checkpoints with owned writes, scoped identity/profile/credential fencing, explicit unavailable-identity refusal, unknown-outcome no-replay protection, safe status and an explicit experimental app-server selection gate. Added a room-purpose call ceiling inside the unchanged total default of one. Existing Worker saved results resend the same completion key without model recall. No public server API/schema or dependency change.
+
+Final targeted regression: **174 passed / 1 existing POSIX skip**, seven selected files. Earlier added recovery-test fixture failed because its wrapper omitted params; corrected, then 24 new-file cases and the final selected regression passed. Existing Starlette deprecation warning remains. Full suite was not repeated; earlier c462 results above remain historical. See [validation record](validation/scoped-session-continuity-2026-10-19.json) and [behavior/limitations](CODEX_SESSION_CONTINUITY.md).
+
+Actual provider calls and new actual trial credentials: **zero**. Real account continuity/reconnect and multi-runtime PoC remain unverified. The native adapter supplies no verified stable account subject, so automatic resume stays blocked rather than inferring identity from email/auth mode/home. Earlier denied real trials were not retried; all five preserved trial-record hashes match. No merge, deployment, authentication or billing change. The prior PR12 worktree remains at c4621cb32d0fc90f3280ec546197861247470aa2.

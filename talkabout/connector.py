@@ -26,6 +26,7 @@ def verify_runtime(client, journal, runtime, kind, credential, deadline, retry_u
         raise ConnectionCheckError('agent_credential_required')
     # A different token/agent must not reuse another connection's local test result.
     binding = hashlib.sha256((actor['id'] + ':' + kind + ':' + credential).encode()).hexdigest()
+    runtime._connection_binding = binding
     key = 'runtime_check:' + binding
     prior = journal.setting(key)
     # Retain the original credential key so upgrading cannot bypass an uncertain
@@ -120,13 +121,15 @@ def verify_runtime(client, journal, runtime, kind, credential, deadline, retry_u
 
 class RoomRuntimePool:
     """Bounded per-room/generation/membership sessions; never share native context across rooms."""
-    def __init__(self, factory, limit=8):
+    def __init__(self, factory, limit=8, session_journal=None):
         self.factory, self.limit = factory, limit
         self.runtimes = {}
         self.calls = 0
         self.deadline = None
         self.closed = False
         self.lock = threading.RLock()
+        self.session_journal = session_journal
+        self.active = set()
 
     def run(self, context, cancel):
         with self.lock:
@@ -135,18 +138,51 @@ class RoomRuntimePool:
             key = (context.get('room_id'), context.get('generation'), context.get('membership_revision'))
             if not key[0]:
                 raise ConnectionCheckError('connector_room_required')
+            if self.session_journal is not None and key in self.active:
+                raise ConnectionCheckError('connector_session_busy')
             for old in list(self.runtimes):
                 if old[0] == key[0] and old != key:
                     self.runtimes.pop(old).shutdown()
-            if key not in self.runtimes:
+            created = key not in self.runtimes
+            if created:
                 if len(self.runtimes) >= self.limit:
                     raise ConnectionCheckError('connector_session_limit')
                 self.runtimes[key] = self.factory()
                 if self.deadline is not None:
                     self.runtimes[key].set_deadline(self.deadline)
             runtime = self.runtimes[key]
+            if self.session_journal is not None:
+                try:
+                    runtime.preflight()
+                    checkpoint = self.session_journal.begin(context,runtime)
+                    if checkpoint:
+                        runtime.session_id=checkpoint['session_id']
+                        runtime.thread_id=checkpoint['thread_id']
+                    self.active.add(key)
+                except Exception as error:
+                    try:self.session_journal.blocked(error)
+                    except Exception:pass
+                    if created:runtime.shutdown()
+                    raise
             self.calls += 1
-        return runtime.run(context, cancel)
+        if self.session_journal is None:
+            return runtime.run(context, cancel)
+        try:
+            if self.closed or cancel.is_set():
+                raise ConnectionCheckError('connector_stopped')
+            result=runtime.run(context,cancel)
+            if self.closed or cancel.is_set():
+                raise ConnectionCheckError('connector_stopped')
+            self.session_journal.complete(context,runtime)
+            return result
+        except BaseException:
+            try:stopped=runtime.shutdown() is True
+            except Exception:stopped=False
+            try:self.session_journal.uncertain(context,runtime,stop_requested=cancel.is_set(),local_shutdown=stopped)
+            except Exception:pass  # call_started remains a durable no-replay fence.
+            raise
+        finally:
+            with self.lock:self.active.discard(key)
 
     def set_deadline(self, deadline):
         self.deadline = deadline

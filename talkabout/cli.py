@@ -44,6 +44,10 @@ def main():
             command.add_argument("--approve-external", action="store_true", help="Explicitly authorize provider calls in your own environment")
             command.add_argument("--request-turn", action="store_true", help="Request a bounded free-discussion turn while idle")
             command.add_argument("--max-model-calls", type=int, default=1, help="External CLI invocation ceiling, 1..10; provider-internal retries may differ")
+            command.add_argument('--max-room-calls',type=int,default=None,help='Optional room-purpose ceiling, 0..10, within the unchanged total model-call ceiling')
+            command.add_argument('--persist-provider-sessions',action='store_true',help='Opt-in local Codex checkpoints; automatic resume requires verified stable account identity')
+            command.add_argument('--codex-transport',choices=['exec-json','app-server'],default='exec-json')
+            command.add_argument('--experimental-app-server',action='store_true',help='Explicit gate for the existing experimental Codex app-server transport')
     args = parser.parse_args()
     if args.command in {"init-db", "serve", "bootstrap-human", "preflight", "setup-code"}:
         dsn = os.environ.get("TALKABOUT_DATABASE_URL")
@@ -103,7 +107,8 @@ def main():
                     journal.set_setting('stop', False)
                     journal.set_setting('stop_state', 'running')
         if args.command == "status":
-            print(json.dumps({"queue": journal.status(), "stop_state": journal.setting("stop_state", "running")}))
+            from .codex_sessions import session_status
+            print(json.dumps({"queue": journal.status(), "stop_state": journal.setting("stop_state", "running"),'provider_sessions':session_status(journal)}))
             return
         if args.command == "stop":
             with journal.db:
@@ -143,13 +148,19 @@ def main():
                     parser.error("Choose exactly one runtime; steps 1..1000, max-seconds 1..300")
                 if args.command == "connect" and not args.runtime: parser.error("connect requires a real runtime; synthetic is test-only")
                 if args.runtime and not args.approve_external: parser.error('External runtime calls require explicit --approve-external')
+                if args.max_room_calls is not None and not 0 <= args.max_room_calls <= 10:parser.error('max-room-calls must be 0..10')
+                if args.persist_provider_sessions and args.runtime!='codex':parser.error('Provider session checkpoints currently require Codex')
+                if args.codex_transport=='app-server' and (args.runtime!='codex' or not args.experimental_app_server):
+                    parser.error('app-server requires Codex and explicit --experimental-app-server')
                 if args.runtime and os.name != 'nt': parser.error('External CLI execution requires verified Windows Job containment; POSIX execution is disabled')
                 deadline = time.monotonic() + args.max_seconds
                 client.deadline = deadline
                 if args.runtime:
                     from .agent_runtime import StructuredRuntime
                     from .connector import verify_runtime, ConnectionCheckError, RoomRuntimePool
-                    test_runtime = StructuredRuntime(args.runtime, credential_env=config.get('token_env', 'TALKABOUT_TOKEN'), platform_credential=token, run_deadline=deadline, auth_mode=args.auth_mode)
+                    runtime_options={'credential_env':config.get('token_env','TALKABOUT_TOKEN'),'platform_credential':token,'run_deadline':deadline,'auth_mode':args.auth_mode}
+                    if args.codex_transport!='exec-json':runtime_options['codex_transport']=args.codex_transport
+                    test_runtime = StructuredRuntime(args.runtime, **runtime_options)
                     probe = test_runtime.probe()
                     if probe.get('reason') or not probe.get('available'):
                         test_runtime.shutdown()
@@ -164,7 +175,15 @@ def main():
                         code = error.code if isinstance(error, AdapterError) else str(error) if isinstance(error, ConnectionCheckError) else 'runtime_check_failed'
                         raise SystemExit(code + ': inspect connection state; use --retry-check only to explicitly authorize another test; additional provider usage may occur') from None
                     print(json.dumps({'runtime': args.runtime, 'check': receipt.get('status'), 'evidence': 'worker_reported_test'}))
-                    runtime = RoomRuntimePool(lambda: StructuredRuntime(args.runtime, credential_env=config.get('token_env', 'TALKABOUT_TOKEN'), platform_credential=token, run_deadline=deadline, auth_mode=args.auth_mode))
+                    session_journal=None
+                    if args.persist_provider_sessions:
+                        from .codex_sessions import CodexSessionJournal
+                        session_journal=CodexSessionJournal(journal,connector_lease,test_runtime._connection_binding)
+                    runtime = RoomRuntimePool(lambda: StructuredRuntime(args.runtime, **runtime_options),session_journal=session_journal)
+                    total_remaining=max(0,args.max_model_calls-check_calls)
+                    room_remaining=min(total_remaining,args.max_room_calls if args.max_room_calls is not None else total_remaining)
+                    print(json.dumps({'connection_check_calls':check_calls,'total_calls_remaining':total_remaining,'room_calls_remaining':room_remaining,
+                                      'next_action':'room_worker_ready' if room_remaining else 'connection_check_only_review_explicit_room_budget'}))
                 else:
                     runtime = SyntheticRuntime()
                     check_calls = 0
@@ -190,7 +209,8 @@ def main():
                 worker = Worker(client, journal, ReportedRuntime(), adapter_policy={'external': bool(args.runtime), 'tool_limits_verified': bool(args.runtime), 'allowed_tools': []}, run_deadline=deadline)
                 final_state = 'stopped'
                 for _ in range(args.steps):
-                    if args.runtime and runtime.calls + check_calls >= args.max_model_calls:
+                    if args.runtime and (runtime.calls + check_calls >= args.max_model_calls or
+                                         args.max_room_calls is not None and runtime.calls >= args.max_room_calls):
                         print('model_call_budget_exhausted')
                         break
                     if time.monotonic() >= deadline:

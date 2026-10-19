@@ -389,6 +389,9 @@ class StructuredRuntime:
         self.calls = 0
         self.session_id = None
         self.thread_id = None
+        # Native auth mode/email/home are not stable provider account identity.
+        # No official stable subject is currently exposed by this adapter.
+        self._verified_account_subject = None
         self.runtime_version = None
         self.last_outcome = 'not_started'
         self.last_diagnostics = None

@@ -329,6 +329,7 @@ class Worker:
                     return "stopped"
                 context = {"room_id": rid, "generation": task["generation"], "membership_revision": task["membership_revision"], "agent_id": self.actor_id, "display_name": self.actor["display_name"], "role": task.get("role", "participant"),
                            "topic": room["topic"], "purpose": task["purpose"], "inputs": room["messages"][-8:]}
+                context.update(task_id=tid,task_attempt=task['attempt'])
                 context["phase"] = task.get("phase")
                 context["round"] = task.get("round")
                 context["artifact_proposals"] = [{"artifact_id": a["id"], "text": a["versions"][-1]["text"]} for a in room["artifacts"] if a["versions"]][-4:]
