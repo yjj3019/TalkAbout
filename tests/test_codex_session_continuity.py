@@ -145,6 +145,27 @@ def test_cancelled_late_completion_is_uncertain_despite_local_shutdown_and_provi
     finally:close(j,l,p)
 
 
+@pytest.mark.parametrize('boundary',['cancel_during_preflight','failure_before_dispatch'])
+def test_previous_completion_is_not_reused_as_a_new_turn_terminal_status(tmp_path,boundary):
+    provider=Provider();cancel=threading.Event()
+    class Interrupted(FakeCodex):
+        def preflight(self):
+            if self.last_outcome=='completed' and boundary=='cancel_during_preflight':cancel.set()
+        def run(self,ctx,cancellation):
+            if provider.calls:raise ConnectionCheckError('synthetic_before_dispatch')
+            return super().run(ctx,cancellation)
+    j,l,p=open_pool(tmp_path/'journal.sqlite',provider,factory=lambda:Interrupted(provider))
+    try:
+        p.run(context(),threading.Event())
+        with pytest.raises(ConnectionCheckError):p.run(context(task='second'),cancel)
+        row=values(j)[0]
+        assert len(provider.calls)==1 and row['state']=='uncertain' and row['provider_turn']=='unknown'
+        assert row['stop_requested']==(boundary=='cancel_during_preflight') and row['local_shutdown'] is True
+        with pytest.raises(SessionRecoveryError,match='outcome_unknown'):p.run(context(task='third'),threading.Event())
+        assert len(provider.calls)==1
+    finally:close(j,l,p)
+
+
 def test_same_room_concurrent_call_is_rejected_without_cancelling_owner(tmp_path):
     provider=Provider();entered=threading.Event();release=threading.Event();errors=[]
     class Slow(FakeCodex):

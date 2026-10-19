@@ -155,6 +155,8 @@ class RoomRuntimePool:
                 try:
                     runtime.preflight()
                     checkpoint = self.session_journal.begin(context,runtime)
+                    # A prior turn's terminal outcome is not evidence for this turn.
+                    runtime.last_outcome = 'not_started'
                     if checkpoint:
                         runtime.session_id=checkpoint['session_id']
                         runtime.thread_id=checkpoint['thread_id']
