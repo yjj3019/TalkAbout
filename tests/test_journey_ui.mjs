@@ -65,3 +65,16 @@ test('a new registration keeps the selected runtime without issuing a credential
  assert.equal(h.calls.filter(c=>c.options.method==='POST').length,1);
  assert.ok(!h.calls.some(c=>c.path.includes('/credentials')));
 });
+
+test('failure recovery points to local terminal status in both languages without implying resume',async()=>{
+ const h=await harness();
+ h.run(`agents=[${JSON.stringify({...agent,connection:{runtime:'codex',state:'failed',error_code:'runtime_failed'}})}];`);
+ for(const lang of ['ko','en']){
+  h.run(`view.language='${lang}';showConnection(agents[0]);`);
+  assert.equal(h.node('journey-status').textContent,labels[lang].journeyFailed);
+  assert.equal(h.node('journey-next').textContent,labels[lang].journeyRecover);
+  assert.ok(h.node('journey-next').textContent.includes('status'));
+  assert.ok(labels[lang].runtimeFailureHelp.includes('journal'));
+ }
+ assert.equal(h.calls.filter(c=>c.options.method==='POST').length,0);
+});

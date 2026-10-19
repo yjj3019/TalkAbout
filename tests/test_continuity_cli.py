@@ -80,9 +80,36 @@ def test_canonical_opt_in_restart_reports_missing_identity_without_second_room_c
           '--max-model-calls','2','--max-room-calls','1','--steps','1','--max-seconds','10']
     monkeypatch.setattr(sys,'argv',args);cli.main()
     first=sum(runtime.calls for runtime in made);assert first==2
-    with pytest.raises(SystemExit,match='worker_failed'):cli.main()
+    with pytest.raises(SystemExit,match='worker_failed: provider_session_identity_unavailable') as failure:cli.main()
+    assert 'stable provider account identity' in str(failure.value) and '계정' in str(failure.value)
     assert sum(runtime.calls for runtime in made)==first
     monkeypatch.setattr(sys,'argv',['talkabout','status','--config',str(config)]);cli.main()
     rows=[json.loads(line) for line in capsys.readouterr().out.splitlines() if line.startswith('{')]
     status=next(row['provider_sessions'] for row in rows if 'provider_sessions' in row)
     assert status['identity_unavailable']==1 and status['last_error']=='provider_session_identity_unavailable'
+    recovery=status['recovery']
+    assert recovery['code']=='provider_session_identity_unavailable' and recovery['automatic_retry'] is False
+    assert all(recovery[key][language] for key in ('reason','next_action') for language in ('ko','en'))
+    assert '--retry-check' in recovery['next_action']['en'] and 'preserve the journal' in recovery['next_action']['en']
+    emitted=[row['provider_session_recovery'] for row in rows if 'provider_session_recovery' in row]
+    assert emitted==[recovery]
+    assert recovery['inspect_command']['example']=='python -m talkabout.cli status --config agent.local.json'
+    assert 'same config' in recovery['inspect_command']['en']
+
+
+@pytest.mark.parametrize('typed',[False,True])
+def test_unknown_failures_never_echo_arbitrary_error_or_offer_session_retry(fixture,tmp_path,monkeypatch,capsys,typed):
+    from talkabout.codex_sessions import SessionRecoveryError
+    config,made=configured(fixture,tmp_path,monkeypatch)
+    class FailedWorker:
+        def __init__(self,*args,**kwargs):pass
+        def step(self):
+            error=SessionRecoveryError if typed else RuntimeError
+            raise error('PRIVATE_RAW_ERROR')
+    monkeypatch.setattr(cli,'Worker',FailedWorker)
+    monkeypatch.setattr(sys,'argv',['talkabout','connect','--config',str(config),'--runtime','codex','--approve-external',
+                                   '--max-model-calls','2','--steps','1'])
+    with pytest.raises(SystemExit,match='worker_failed') as failure:cli.main()
+    output=capsys.readouterr().out
+    assert 'PRIVATE_RAW_ERROR' not in str(failure.value)+output and 'provider_session_recovery' not in output
+    assert sum(runtime.calls for runtime in made)==1

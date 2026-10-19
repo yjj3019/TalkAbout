@@ -149,6 +149,35 @@ class CodexSessionJournal:
             self._write(connection,'provider_session_last_error',code)
 
 
+def recovery_guidance(code):
+    """Only fixed, non-secret explanations; never echo arbitrary exceptions."""
+    if not isinstance(code,str) or code not in _ERRORS:return None
+    if code=='provider_session_identity_unavailable':
+        reason={'ko':'고정 provider 계정 식별 근거가 없어 자동 대화 재개를 차단했습니다. 이메일·로그인 방식·홈 경로로 계정을 추정하지 않습니다.',
+                'en':'Automatic conversation resume is blocked because verified stable provider account identity is unavailable. Email, auth mode and home paths cannot establish it.'}
+        action={'ko':'로컬 status와 journal을 보존하세요. 검증 가능한 계정 식별을 제공하는 어댑터가 필요합니다. --retry-check, journal 삭제 또는 다른 계정 이름 입력으로 해결하지 마세요.',
+                'en':'Inspect local status and preserve the journal. Resume needs an adapter with verified stable account identity. Do not use --retry-check, delete the journal or invent an account label to bypass this block.'}
+    elif code=='provider_session_outcome_unknown':
+        reason={'ko':'시작한 작업의 결과가 불확실하여 자동 재호출을 차단했습니다. 로컬 종료 성공만으로 provider 종료를 확정할 수 없습니다.',
+                'en':'A started turn has an uncertain outcome, so automatic recall is blocked. Local shutdown alone does not confirm provider completion.'}
+        action={'ko':'journal과 실행 기록을 보존하고 상태를 검토하세요. 같은 모델 작업을 다시 실행하거나 --retry-check로 복구하려 하지 마세요.',
+                'en':'Preserve the journal and execution evidence for review. Do not repeat the model work or use --retry-check as recovery.'}
+    elif code=='provider_session_result_recovery_required':
+        reason={'ko':'이미 완료된 마지막 작업은 native 세션에서 다시 실행할 수 없습니다.',
+                'en':'The last completed task cannot be rerun through the native session.'}
+        action={'ko':'result_saved가 있으면 기존 Worker가 같은 완료 key로 결과만 재전달합니다. 저장 결과가 없으면 기록을 검토하세요. 모델을 다시 호출하지 마세요.',
+                'en':'If result_saved exists, the existing Worker resends only that result with the same completion key. If no saved result exists, review the records; do not recall the model.'}
+    else:
+        reason={'ko':'계정·실행 환경·방 권한 범위 또는 체크포인트 검증을 통과하지 못해 세션 재개를 차단했습니다.',
+                'en':'Session recovery is blocked because account, execution profile, room scope or checkpoint validation did not pass.'}
+        action={'ko':'로컬 status와 현재 방·멤버십·실행 환경을 확인하고 journal을 보존하세요. 토큰 재발급이나 journal 삭제로 차단을 우회하지 마세요.',
+                'en':'Inspect local status, current room membership and execution profile; preserve the journal. Do not bypass the block by issuing credentials or deleting the journal.'}
+    return {'code':code,'reason':reason,'next_action':action,'automatic_retry':False,
+            'inspect_command':{'example':'python -m talkabout.cli status --config agent.local.json',
+                'ko':'agent.local.json 대신 이전 실행과 동일한 설정 파일을 지정하세요. 이 status 명령은 모델이나 서버를 호출하지 않습니다.',
+                'en':'Replace agent.local.json with the same config file used previously. This status command calls neither the model nor the server.'}}
+
+
 def session_status(journal):
     """No native IDs, subjects, credential hashes or profile paths in CLI status."""
     result={'records':0,'completed':0,'uncertain':0,'identity_unavailable':0}
@@ -162,4 +191,7 @@ def session_status(journal):
             else:result['uncertain']+=1
             if value.get('resume_blocked_reason'):result['identity_unavailable']+=1
         except (ValueError,AttributeError):result['uncertain']+=1
+    code='provider_session_outcome_unknown' if result['uncertain'] else result['last_error']
+    if code is None and result['identity_unavailable']:code='provider_session_identity_unavailable'
+    result['recovery']=recovery_guidance(code)
     return result

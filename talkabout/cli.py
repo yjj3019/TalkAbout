@@ -224,8 +224,13 @@ def main():
                     except RunBudgetExceeded:
                         print('run_budget_exhausted')
                         break
-                    except Exception:
+                    except Exception as error:
                         final_state = 'failed'
+                        from .codex_sessions import SessionRecoveryError,recovery_guidance
+                        guidance=recovery_guidance(str(error)) if isinstance(error,SessionRecoveryError) else None
+                        if guidance:
+                            print(json.dumps({'provider_session_recovery':guidance},ensure_ascii=False))
+                            raise SystemExit('worker_failed: '+guidance['code']+': '+guidance['reason']['ko']+' / '+guidance['reason']['en']) from None
                         raise SystemExit('worker_failed: result retained as uncertain; inspect status, do not blindly rerun') from None
                     print(result)
                     safe_drain=callable(getattr(worker,'safe_to_continue_after',None)) and worker.safe_to_continue_after(result)

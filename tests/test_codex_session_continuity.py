@@ -6,7 +6,7 @@ import uuid
 
 import pytest
 
-from talkabout.codex_sessions import CodexSessionJournal,SessionRecoveryError,session_status
+from talkabout.codex_sessions import CodexSessionJournal,SessionRecoveryError,session_status,recovery_guidance
 from talkabout.connector import ConnectorLease,ConnectionCheckError,RoomRuntimePool
 from talkabout.worker import Journal
 
@@ -203,7 +203,8 @@ def test_journal_contains_only_digests_native_ids_and_state_not_secrets(tmp_path
         serialized=json.dumps(values(j))
         for forbidden in ['PRIVATE_CREDENTIAL','private prompt','synthetic-stable-subject','synthetic-cli','room-one','task-one']:
             assert forbidden not in serialized
-        assert 'session_id' not in json.dumps(session_status(j))
+        status_json=json.dumps(session_status(j))
+        assert '"session_id"' not in status_json and values(j)[0]['session_id'] not in status_json
     finally:close(j,l,p)
 
 
@@ -252,3 +253,23 @@ def test_result_saved_restart_replays_only_same_completion_key_not_model(fixture
         assert not p.runtimes  # No provider session restoration needed for saved results.
     finally:
         close(j,l,p);client.http.close()
+
+
+def test_recovery_guidance_is_fixed_bilingual_and_never_echoes_unknown_text(tmp_path):
+    assert recovery_guidance('PRIVATE_TOKEN arbitrary provider error') is None
+    provider=Provider();j,l,p=open_pool(tmp_path/'journal.sqlite',provider,subject=None)
+    try:
+        assert session_status(j)['recovery'] is None
+        p.run(context(),threading.Event())
+        assert session_status(j)['recovery']['code']=='provider_session_identity_unavailable'
+        with j.db:
+            key=j.db.execute("SELECT k FROM settings WHERE k LIKE 'provider_session:%'").fetchone()[0]
+            row=values(j)[0];row['state']='uncertain';p.session_journal._write(j.db,key,row)
+        guidance=session_status(j)['recovery']
+        assert guidance['code']=='provider_session_outcome_unknown' and guidance['automatic_retry'] is False
+        for code in ('provider_session_result_recovery_required','provider_session_binding_changed'):
+            explanation=recovery_guidance(code)
+            assert all(explanation[key][lang] for key in ('reason','next_action') for lang in ('ko','en'))
+        j.set_setting('provider_session_last_error','PRIVATE_TOKEN')
+        assert 'PRIVATE_TOKEN' not in json.dumps(session_status(j))
+    finally:close(j,l,p)

@@ -1,0 +1,74 @@
+{
+  "reviewed": "2026-10-19",
+  "status": "local recovery explanation implemented; actual runtime resume still blocked",
+  "base_commit": "193fd60f0b65843c60280d658013902be5e117a3",
+  "history_policy": "preserve 193fd60 and 8b798537 as ancestors; no amend, push or PR",
+  "selected_gap": "known session recovery errors were collapsed to generic worker_failed and status exposed code without a safe next action",
+  "changes": [
+    "Fixed KO/EN local reason, next action and same-config offline status example",
+    "Unknown exception details are not echoed",
+    "Status prioritizes uncertain records over an identity-only explanation",
+    "Existing GUI recovery text directs users to local terminal status; no new journey state",
+    "No retry-check, journal deletion or invented account label offered as a resume bypass"
+  ],
+  "targeted_python": {
+    "passed": 47,
+    "failed": 0,
+    "errors": 0,
+    "skipped": 0,
+    "targets": [
+      "tests/test_codex_session_continuity.py",
+      "tests/test_continuity_cli.py",
+      "tests/test_worker_ownership.py",
+      "tests/test_run_budget.py"
+    ],
+    "run_id": "continuity-targeted-ff129ecc30364f0c8867385f3f3e8635",
+    "junit_sha256": "b043c3c55cfd5a61ee2fa33dfe66fe041f749a98d5da2fa95a13b18fda9a49ea"
+  },
+  "node_ui": {
+    "tests": 137,
+    "pass": 137,
+    "fail": 0,
+    "skipped": 0,
+    "log_sha256": "7547b9a6f50db751171e8e22dea22325ef0cdbd4c35cf3b4b3bff54eddb40eba",
+    "scope": "all seven installed synthetic DOM suites"
+  },
+  "historical_full_193fd60": {
+    "python_passed": 505,
+    "python_skipped": 18,
+    "postgres_notrun_subset": 17,
+    "posix_skip": 1,
+    "node_passed": 136,
+    "chrome_subset_passed": 5,
+    "not_rerun_for_this_copy_and_local_output_increment": true
+  },
+  "notrun_this_increment": [
+    "Full Python suite",
+    "Chrome browser suite",
+    "PostgreSQL fixture suite",
+    "Real provider account/connectivity/response/restart tests"
+  ],
+  "warning": "existing Starlette TestClient httpx deprecation",
+  "source_sha256": {
+    "talkabout/cli.py": "a74d89cf9842dec4bc94aceffa040d77ff56141bce8b1f184dc93fc820b54be7",
+    "talkabout/codex_sessions.py": "6b2fdcf212455b5cb709441e75640fb32a2b824dda7ad1a34f2769a01d46bc76",
+    "talkabout/web/state.mjs": "6016fc94272c810977e38527463a85a2bd57e90d5b4f6a69d02da60203ff44dd",
+    "tests/test_codex_session_continuity.py": "edf2f5cdfdff77118ecddad416d92d6e8e77f0076333803e2262bf76705a25f3",
+    "tests/test_continuity_cli.py": "b5561b2f2edc6988e1e40551c6826b51f6de6539b48a8a348f1a703b7f7c852a",
+    "tests/test_journey_ui.mjs": "1049ef4dbc68804b16f64cba5e915ba4f97d578b6589704cad5a9ea612e1f81f"
+  },
+  "boundary": {
+    "actual_provider_calls": 0,
+    "new_actual_trial_credentials": 0,
+    "remote_push_pr_attempts": 0,
+    "installs": 0,
+    "server_api_db_security_policy_changes": false,
+    "stable_identity_heuristic_or_override_added": false,
+    "prior_record_hashes_preserved": 5
+  },
+  "remaining": [
+    "No trusted stable provider account subject: automatic resume is blocked",
+    "Browser cannot display exact local checkpoint cause through the current public API",
+    "Real registration-to-response-to-restart acceptance and multi-runtime PoC remain unverified"
+  ]
+}

@@ -31,3 +31,21 @@ This is not an end-to-end real-agent acceptance result. Registration, invitation
 The remaining gate is trusted stable identity, followed by separately authorized real-runtime checks for the complete journey and failure boundaries. No email/home heuristic or manual override substitutes for that evidence. Optional PostgreSQL fixture tests are NOTRUN when no fresh isolated configuration is provided; existing services are never probed.
 
 전체 회귀 수치와 제외 이유: [full validation record](validation/scoped-session-full-review-2026-10-19.json). 이전 174개 부분 검증과 이번 전체 실행은 별도 기록입니다. 상세 옵션: [session checkpoint guide](CODEX_SESSION_CONTINUITY.md).
+
+## 로컬 복구 안내 보완 / Local recovery guidance follow-up
+
+193fd60 이후에는 차단 동작을 완화하지 않고 안내 공백만 보완했습니다. 기존 GUI 여정은 등록·초대·연결 확인·현재 방의 worker 보고 응답을 이미 구분합니다. online heartbeat나 등록만으로 실제 답변을 표시하는 새 판정을 만들지 않았습니다. UI의 일반 복구 버튼은 실행 터미널의 로컬 status를 먼저 확인하도록 KO/EN으로 안내합니다.
+
+이전 CLI는 계정 식별 미확인도 일반 worker_failed로 표시했습니다. 이제 허용된 로컬 세션 오류에 한해 원인·다음 조치·상태 확인 명령 예시를 KO/EN JSON으로 제공합니다. status의 provider_sessions.recovery도 동일한 안전한 안내를 제공합니다. 신원 미확인, 불확실한 호출, 저장 결과 재전달 필요를 구분하고 automatic_retry=false를 명시합니다. 알 수 없는 오류·토큰·native ID·계정 정보는 안내에 복사하지 않습니다.
+
+기존 실행의 설정 파일을 사용해 상태를 확인할 수 있습니다. 아래 파일명은 예시이며, 다른 설정이나 새 journal로 바꾸는 복구 절차가 아닙니다. 이 명령은 모델이나 서버를 호출하지 않습니다.
+
+```text
+python -m talkabout.cli status --config agent.local.json
+```
+
+계정 식별이 확인되지 않으면 journal을 보존하고 검증 가능한 고정 계정 식별을 제공하는 어댑터를 기다려야 합니다. --retry-check는 연결 확인 재시도용이며 대화 복원을 해결하지 않습니다. journal 삭제·토큰 재발급·임의 계정 이름은 차단을 우회하는 방법으로 제공하지 않습니다. result_saved 복구는 기존 Worker의 같은 완료 key 재전달이며 모델 재호출과 다릅니다.
+
+The browser still receives only existing public connection error codes, so it cannot display the local checkpoint's exact cause. This increment adds local CLI explanations and a terminal-status direction in the existing UI. Relaying precise local checkpoint causes into the browser would require separately reviewed interface changes; no server API, DB or security policy was expanded. Actual automatic resume remains blocked and real runtime acceptance remains unverified.
+
+이번 안내 변경 검증은 [recovery guidance validation](validation/recovery-guidance-review-2026-10-19.json)에 별도 기록합니다. 193fd60의 전체 검증 수치를 이번 변경의 재실행 결과로 표시하지 않습니다.
