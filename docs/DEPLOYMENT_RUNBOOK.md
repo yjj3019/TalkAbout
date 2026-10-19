@@ -4,11 +4,11 @@ The [Podman package](../deploy/podman/README.md) defines a separate private-cont
 
 **LOCAL P0 PROTOTYPE / NOT DEPLOYED — Reviewed: 2026-10-13**
 
-Git push/PR/merge are authorized. A merged repository is separate from a running service. The deployment target is selected privately; its unique existing connection, host key, dedicated path, runtime and DB must be verified before copying or starting anything. Do not use another application's directory/server/database as a fallback.
+This runbook grants no authorization to push, create a PR, merge or deploy. These actions remain blocked in the current local verification scope; earlier approval statements are not reusable execution permission. A merged repository is separate from a running service. The deployment target is selected privately; its unique existing connection, host key, dedicated path, runtime and DB must be verified before copying or starting anything. Do not use another application's directory/server/database as a fallback.
 
 ## 한국어
 
-현재 패키지는 loopback text-only API·KO/EN GUI·pull worker·최소 stdio MCP입니다. 실제 AI/runtime, browser DOM/SSE, 제품 MCP client, MFA/복구/분산 rate limit, 운영 보존·archival·총 disk quota는 미검증 또는 미구현입니다. [기능표](FEATURE_MATRIX.md)를 배포 성공으로 바꾸지 않습니다. 프로젝트는 사용자 지정 MIT이며 제3자 라이선스와 고지는 보존합니다. 운영 human/agent credential과 실제 AI 호출은 이번 검증에서 만들거나 실행하지 않습니다.
+현재 패키지는 loopback text-only API·KO/EN GUI·pull worker·최소 stdio MCP입니다. 실제 AI/runtime, 제품 MCP client, MFA/복구/분산 rate limit, 운영 보존·archival·총 disk quota는 미검증 또는 미구현입니다. browser DOM/SSE는 새 합성 fixture의 Chrome 검증 근거가 있으며 실제 provider·운영 환경 검증과 구분합니다. [기능표](FEATURE_MATRIX.md)를 배포 성공으로 바꾸지 않습니다. 프로젝트는 사용자 지정 MIT이며 제3자 라이선스와 고지는 보존합니다. 운영 human/agent credential과 실제 AI 호출은 이번 검증에서 만들거나 실행하지 않습니다.
 
 필요한 추가 결정/승인은 다음과 같습니다.
 
@@ -52,4 +52,4 @@ This is deployment preparation for a private prototype. Verify the approved priv
 
 Build the wheel in isolation and use an app-private venv. Record source SHA and wheel hash. The Windows dependency snapshot is not a Linux compatibility claim. CLI validates loopback PostgreSQL settings with a bounded connect timeout; preflight is read-only and serve never initializes schema/accounts automatically. /ready checks scheduler and PostgreSQL schema; /health reports process state. Fixture readiness cannot be mistaken for a production DB.
 
-Actual browser/SSE, external MCP product clients and the real-runtime PoC remain NOTRUN. No public address or running service is promised until target compatibility, allocation and required approvals are resolved. Repository merge, synthetic HTTP smoke tests and deployment are separate outcomes.
+Synthetic Chrome/DOM/SSE and isolated PostgreSQL results are recorded separately from production acceptance. External MCP product clients and the real-runtime PoC remain unverified. No public address or running service is promised until target compatibility, allocation and required approvals are resolved. Repository merge, synthetic HTTP smoke tests and deployment are separate outcomes. See the [remaining verification procedure](REMAINING_VALIDATION.md) and [current continuity readiness](CODEX_CONTINUITY_REVIEW.md); the original 2026-10-13 checklist below is not a current test result.

@@ -49,3 +49,9 @@ python -m talkabout.cli status --config agent.local.json
 The browser still receives only existing public connection error codes, so it cannot display the local checkpoint's exact cause. This increment adds local CLI explanations and a terminal-status direction in the existing UI. Relaying precise local checkpoint causes into the browser would require separately reviewed interface changes; no server API, DB or security policy was expanded. Actual automatic resume remains blocked and real runtime acceptance remains unverified.
 
 이번 안내 변경 검증은 [recovery guidance validation](validation/recovery-guidance-review-2026-10-19.json)에 별도 기록합니다. 193fd60의 전체 검증 수치를 이번 변경의 재실행 결과로 표시하지 않습니다.
+
+## Remaining fixture verification follow-up / 남은 fixture 검증
+
+2026-10-19: existing local PostgreSQL 18.6 binaries were reused with a new owned loopback-only cluster. All **17 previously NOTRUN PostgreSQL cases passed**, zero failures/errors/skips, exit 0; owned init/test/server Jobs stopped successfully. No application code changed and no existing DB was used. This is separate from the earlier 508-pass/18-skip full invocation and 137-pass UI run; do not describe it as a repeated full-suite pass.
+
+The one POSIX fail-closed case remains **NOTRUN**: WSL distribution availability does not establish an approved disposable test workspace or installed isolated dependencies. No distro was started, host mounted or remote environment accessed. Reproduction and deployment prerequisites: [remaining validation procedure](REMAINING_VALIDATION.md). Exact case IDs and sanitized evidence: [PG follow-up record](validation/remaining-postgres-review-2026-10-19.json). Stable provider account identity and real runtime user acceptance remain blocked/unverified.
