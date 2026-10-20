@@ -85,13 +85,22 @@ def test_confirmed_epoch_cleanup_still_starts_an_isolated_runtime(boundary):
         assert pool.shutdown() is True
 
 
-def test_cli_failed_cleanup_reports_failure_and_exits_nonzero_without_replaying_output(fixture, tmp_path, monkeypatch):
+@pytest.mark.parametrize('work_outcome', ['completed', 'failed', 'saved'])
+def test_cli_failed_cleanup_reports_failure_and_exits_nonzero_without_replaying_output(fixture, tmp_path, monkeypatch, work_outcome):
+    import httpx
     import json
     import sys
     from conftest import LocalClient
     from talkabout import agent_runtime, cli
     store, core, rid = fixture
     client = LocalClient(store); client.close = client.http.close
+    request = client.request; saved_keys = []
+    def transport(method, path, body=None, key=None, params=None):
+        if work_outcome == 'saved' and method == 'POST' and path.startswith('rooms/') and path.endswith('/complete'):
+            saved_keys.append(key)
+            raise httpx.ConnectError('synthetic completion unavailable')
+        return request(method, path, body, key, params)
+    client.request = transport
     client.report_terminal = lambda runtime, state, error_code=None: client.request(
         'PUT', 'agents/me/connection', {'runtime':runtime,'state':state,'error_code':error_code}, 'terminal-report')
     made = []
@@ -106,6 +115,7 @@ def test_cli_failed_cleanup_reports_failure_and_exits_nonzero_without_replaying_
             self.calls += 1
             if context['purpose'] == 'connection_test': return context['challenge']
             self.room_used = True
+            if work_outcome == 'failed': raise ValueError('synthetic work failure')
             return 'Synthetic response retained despite local cleanup failure.'
         def shutdown(self): return not self.room_used
     config = tmp_path/'agent.local.json'
@@ -122,10 +132,23 @@ def test_cli_failed_cleanup_reports_failure_and_exits_nonzero_without_replaying_
     assert store.principals['a']['connection']['state'] == 'failed'
     assert store.principals['a']['connection']['error_code'] == 'runtime_failed'
     messages = core.read('fixture-human',rid)['messages']
-    assert len(messages) == 1 and messages[0]['text'] == 'Synthetic response retained despite local cleanup failure.'
+    assert len(messages) == (1 if work_outcome == 'completed' else 0)
+    if messages: assert messages[0]['text'] == 'Synthetic response retained despite local cleanup failure.'
     from talkabout.worker import Journal
     journal = Journal(tmp_path/'worker.sqlite')
     try:
-        assert journal.status() == {'done':1}
+        expected_state = {'completed':'done','failed':'uncertain','saved':'result_saved'}[work_outcome]
+        assert journal.status() == {expected_state:1}
+        if work_outcome == 'saved':
+            _,state,payload = journal.next()
+            assert state == 'result_saved' and payload['complete_key'] == saved_keys[0]
+            assert payload['complete']['result']['text'] == 'Synthetic response retained despite local cleanup failure.'
         assert journal.stop_requested() and journal.setting('stop_state') == 'unreachable'
     finally: journal.close()
+    # Automatic restart must not turn a failed stop into another model invocation.
+    fresh = LocalClient(store); fresh.close = fresh.http.close
+    monkeypatch.setattr(cli,'APIClient',lambda *args:fresh)
+    with pytest.raises(SystemExit, match='connector_stopped'):
+        cli.main()
+    assert sum(runtime.calls for runtime in made) == 2 and fresh.calls == []
+    assert len(core.read('fixture-human',rid)['messages']) == len(messages)
