@@ -11,6 +11,41 @@ from talkabout.adapters import AdapterError, CLIRuntime
 from talkabout.runtime import RuntimeTimeout, bounded_call
 
 
+def worker_client():
+    """Exercise real Core/Worker cancellation without importing the web test stack.
+
+    HTTP integration is covered by test_worker_api; this subprocess measures
+    containment, so FastAPI/OpenTelemetry cold imports must not consume its budget.
+    """
+    from talkabout.core import Core
+    from talkabout.domain import AGENT_PERMISSIONS
+    from talkabout.store import MemoryStore
+    store = MemoryStore()
+    token = 'fixture-process-agent'
+    store.provision({'id': 'process-agent', 'owner': 'fixture-owner', 'kind': 'agent',
+                     'display_name': 'Process Agent', 'handle': 'process-agent'},
+                    token, AGENT_PERMISSIONS | {'rooms:create'})
+    core = Core(store)
+    core.create(token, {'topic': 'Synthetic process cancellation'}, 'process-room')
+    class CoreClient:
+        def request(self, method, path, body=None, key=None, params=None):
+            if method == 'GET' and path == 'agents/me':
+                return store.auth(token)
+            if method == 'GET' and path == 'agents/me/events':
+                return core.events(token, **(params or {}))
+            parts = path.split('/')
+            assert parts[0] == 'rooms' and len(parts) >= 2, (method, path)
+            if method == 'GET':
+                room = core.read(token, parts[1])
+                if len(parts) == 2:
+                    return room
+                assert len(parts) == 4 and parts[2] == 'tasks', path
+                return next(task for task in room['tasks'] if task['id'] == parts[3])
+            assert method == 'POST', method
+            return core.mutation(token, parts[1], '/'.join(parts[2:]), key, body)
+    return CoreClient()
+
+
 def timeout_boundary(mode, adapter, pidfile):
     """Advance the unchanged .7s deadline at a known synthetic launch stage.
 
@@ -124,12 +159,9 @@ def main():
         timeout_boundary(mode, adapter, pidfile)
     elif mode in {'stop', 'heartbeat'}:
         # Exercise the real Worker cancellation paths, with an isolated MemoryStore.
-        from tests.conftest import build_fixture, LocalClient
-        from talkabout.store import MemoryStore
         from talkabout.worker import Worker, Journal
-        store, _, _ = build_fixture(MemoryStore())
         journal = Journal(Path(pidfile).with_suffix('.sqlite'))
-        client = LocalClient(store)
+        client = worker_client()
         original = client.request
         def request(method, path, *args, **kwargs):
             # Inject failure only after the synthetic descendants are observable.

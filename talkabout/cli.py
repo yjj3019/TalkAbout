@@ -182,8 +182,10 @@ def main():
                     runtime = RoomRuntimePool(lambda: StructuredRuntime(args.runtime, **runtime_options),session_journal=session_journal)
                     total_remaining=max(0,args.max_model_calls-check_calls)
                     room_remaining=min(total_remaining,args.max_room_calls if args.max_room_calls is not None else total_remaining)
+                    pending=journal.next() if room_remaining==0 else None
+                    next_action='room_worker_ready' if room_remaining else 'saved_result_recovery_only' if pending and pending[1]=='result_saved' else 'connection_check_only_review_explicit_room_budget'
                     print(json.dumps({'connection_check_calls':check_calls,'total_calls_remaining':total_remaining,'room_calls_remaining':room_remaining,
-                                      'next_action':'room_worker_ready' if room_remaining else 'connection_check_only_review_explicit_room_budget'}))
+                                      'next_action':next_action}))
                 else:
                     runtime = SyntheticRuntime()
                     check_calls = 0
@@ -209,17 +211,20 @@ def main():
                 worker = Worker(client, journal, ReportedRuntime(), adapter_policy={'external': bool(args.runtime), 'tool_limits_verified': bool(args.runtime), 'allowed_tools': []}, run_deadline=deadline)
                 final_state = 'stopped'
                 for _ in range(args.steps):
-                    if args.runtime and (runtime.calls + check_calls >= args.max_model_calls or
-                                         args.max_room_calls is not None and runtime.calls >= args.max_room_calls):
+                    budget_exhausted=bool(args.runtime and (runtime.calls + check_calls >= args.max_model_calls or
+                                         args.max_room_calls is not None and runtime.calls >= args.max_room_calls))
+                    pending=journal.next() if budget_exhausted else None
+                    saved_result_only=bool(budget_exhausted and pending and pending[1]=='result_saved')
+                    if budget_exhausted and not saved_result_only:
                         print('model_call_budget_exhausted')
                         break
                     if time.monotonic() >= deadline:
                         print("run_budget_exhausted")
                         break
                     try:
-                        if args.request_turn: worker.request_turns()
+                        if args.request_turn and not saved_result_only: worker.request_turns()
                         report('idle')
-                        result = worker.step()
+                        result = worker.step(saved_result_only=True) if saved_result_only else worker.step()
                         if result in {'waiting', 'retry_wait', 'completed'}: report('idle')
                     except RunBudgetExceeded:
                         print('run_budget_exhausted')

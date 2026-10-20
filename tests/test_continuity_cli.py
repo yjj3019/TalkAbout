@@ -113,3 +113,43 @@ def test_unknown_failures_never_echo_arbitrary_error_or_offer_session_retry(fixt
     output=capsys.readouterr().out
     assert 'PRIVATE_RAW_ERROR' not in str(failure.value)+output and 'provider_session_recovery' not in output
     assert sum(runtime.calls for runtime in made)==1
+
+
+@pytest.mark.parametrize('total,room',[(1,None),(2,0)])
+def test_saved_completion_drains_at_total_or_room_cap_without_new_work(fixture,tmp_path,monkeypatch,capsys,total,room):
+    import httpx
+    from talkabout.worker import Journal,SyntheticRuntime,Worker
+    store,core,rid=fixture;path=tmp_path/'worker.sqlite'
+    journal=Journal(path);client=LocalClient(store);original=client.request
+    def lost_response(method,resource,body=None,key=None,params=None):
+        value=original(method,resource,body,key,params)
+        if method=='POST' and resource.endswith('/complete'):raise httpx.ConnectError('synthetic lost completion response')
+        return value
+    client.request=lost_response
+    try:
+        with pytest.raises(httpx.ConnectError):Worker(client,journal,SyntheticRuntime()).step()
+        _,state,payload=journal.next();assert state=='result_saved'
+        complete_key=payload['complete_key'];cursor=journal.setting('cursor')
+    finally:journal.close();client.http.close()
+    config,made=configured(fixture,tmp_path,monkeypatch);make_client=cli.APIClient;calls=[]
+    def tracked_client(*args):
+        value=make_client(*args);request=value.request
+        def track(method,resource,body=None,key=None,params=None):
+            calls.append((method,resource,key));return request(method,resource,body,key,params)
+        value.request=track;return value
+    monkeypatch.setattr(cli,'APIClient',tracked_client);monkeypatch.setattr(cli,'Worker',Worker)
+    args=['talkabout','connect','--config',str(config),'--runtime','codex','--approve-external',
+          '--max-model-calls',str(total),'--steps','3','--request-turn']
+    if room is not None:args+=['--max-room-calls',str(room)]
+    monkeypatch.setattr(sys,'argv',args);cli.main()
+    output=[json.loads(line) for line in capsys.readouterr().out.splitlines() if line.startswith('{')]
+    assert next(row for row in output if 'next_action' in row)['next_action']=='saved_result_recovery_only'
+    journal=Journal(path)
+    try:
+        assert journal.status()=={'done':1} and journal.setting('cursor')==cursor
+    finally:journal.close()
+    assert sum(runtime.calls for runtime in made)==1  # Only the explicitly allowed fake connection check.
+    assert [key for method,resource,key in calls if resource.startswith('rooms/') and resource.endswith('/complete')]==[complete_key]
+    assert not any(resource.endswith(('/claim','/turn-requests','/events','/snapshot')) for _,resource,_ in calls)
+    messages=core.read('fixture-human',rid)['messages']
+    assert len(messages)==1 and messages[0]['execution_evidence']!='worker_reported_runtime'

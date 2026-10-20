@@ -232,7 +232,7 @@ class Worker:
                                                    "attempt": task["attempt"], "generation": task["generation"], "membership_revision": task["membership_revision"]})
         self.journal.ingest(response, self.actor_id)
 
-    def step(self):
+    def step(self, *, saved_result_only=False):
         self.last_step_started_runtime=False
         check_deadline(self.run_deadline)
         if self.journal.stop_requested():
@@ -240,18 +240,21 @@ class Worker:
             unknown = status.get("uncertain", 0) or status.get("call_started", 0)
             self.journal.stop_state("unreachable" if unknown else "stopped")
             return "stop_unconfirmed" if unknown else "stopped"
-        try:
-            self.poll()
-        except StopRequested:
-            self.journal.stop_state("stopped")
-            return "stopped"
-        except Backpressure:
-            if not self.journal.next():
-                return "backpressure"
+        if not saved_result_only:
+            try:
+                self.poll()
+            except StopRequested:
+                self.journal.stop_state("stopped")
+                return "stopped"
+            except Backpressure:
+                if not self.journal.next():
+                    return "backpressure"
         entry = self.journal.next()
         if not entry:
             return "waiting"
         tid, state, payload = entry
+        if saved_result_only and state!='result_saved':
+            return 'model_call_budget_exhausted'
         self.last_step_started_runtime=bool(payload.get('runtime_started',False))
         stop_seen = threading.Event()
         rid = payload["event"]["room_id"]
