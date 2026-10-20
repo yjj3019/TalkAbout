@@ -142,7 +142,14 @@ class RoomRuntimePool:
                 raise ConnectionCheckError('connector_session_busy')
             for old in list(self.runtimes):
                 if old[0] == key[0] and old != key:
-                    self.runtimes.pop(old).shutdown()
+                    try:
+                        stopped = self.runtimes[old].shutdown() is True
+                    except Exception:
+                        stopped = False
+                    if not stopped:
+                        self.closed = True
+                        raise ConnectionCheckError('connector_runtime_stop_unconfirmed')
+                    del self.runtimes[old]
             created = key not in self.runtimes
             if created:
                 if len(self.runtimes) >= self.limit:
@@ -195,8 +202,14 @@ class RoomRuntimePool:
         with self.lock:
             self.closed = True
             runtimes = list(self.runtimes.values())
-        results = [runtime.shutdown() for runtime in runtimes]
-        return all(results)
+        stopped = True
+        for runtime in runtimes:
+            try:
+                if runtime.shutdown() is not True:
+                    stopped = False
+            except Exception:
+                stopped = False
+        return stopped
 
 
 class ConnectorLease:

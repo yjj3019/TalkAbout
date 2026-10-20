@@ -255,7 +255,12 @@ def main():
             source = locals().get('source_runtime')
             try:
                 if callable(getattr(source, 'shutdown', None)):
-                    if source.shutdown() is not True: final_state = 'failed'
+                    if source.shutdown() is not True:
+                        final_state = 'failed'
+                        with journal.db:
+                            journal.set_setting('stop', True)
+                            journal.set_setting('stop_state', 'unreachable')
+                        raise SystemExit('runtime_cleanup_unconfirmed: inspect status before explicitly resuming')
             except Exception:
                 final_state = 'failed'
                 raise
