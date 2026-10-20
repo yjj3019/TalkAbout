@@ -1,0 +1,43 @@
+{
+  "reviewed": "2026-10-20",
+  "tested_application_commit": "7bd48465476c05a9f0a438271bd80f5652009d69",
+  "application_code_changed": false,
+  "scope": "One previously excluded PostgreSQL acceptance case only; separate invocation",
+  "case": "tests/test_runtime_checks.py::test_postgres_receipt_survives_restart_and_revocation",
+  "passed": 1,
+  "failed": 0,
+  "skipped": 0,
+  "test_exit": 0,
+  "server_version": "18.6",
+  "fixture": "Existing test binaries; fresh owned data directory; 127.0.0.1 only; verified PID, data directory and listen address",
+  "timeout": {
+    "origin": "Local harness subprocess.wait; not an approval or security restriction",
+    "previous_attempt": "initdb disk synchronization exceeded 45 seconds; server and test not started; init Job stopped",
+    "authorized_retry_max_init_seconds": 180,
+    "disk_synchronization_retained": true,
+    "test_and_security_limits_unchanged": true
+  },
+  "semantics": "Recreates PostgresStore and verifies persisted worker readiness, then credential revocation; does not claim PostgreSQL server restart or real-provider acceptance",
+  "cleanup": {
+    "init_stopped": true,
+    "server_stopped": true,
+    "test_job_stopped": true
+  },
+  "run_id": "journey-postgres-85aa934adfc447beb28dff553dcfb6d4",
+  "evidence_sha256": {
+    "init.log": "03c3892756958ad8dc3994f8cc57cca0b7a00dd38e099a55118e79006281e2d7",
+    "server.log": "cdb9151ce09fd379cd8c6831a5addf165dbe5f883b75dec4f0def254e9b89329",
+    "python.log": "071ae690e994587e060d28b359745615c048cdfe0157c7f654cde3b1f51e9a79",
+    "cases.jsonl": "7399544cc0080a8132acfbbc73f25f9568623066c56e8e1b2236e58db19e60c7",
+    "ownership.jsonl": "12d5d368d1aca616c3600c327e42a72f1e821945fda7a94941266c26471e0fcd"
+  },
+  "result_sha256": "881dba07ebfa6ad01e7a6f8fcc662c4e73a8b1f6d84b93f373aa0d268ec35674",
+  "boundary": {
+    "operating_database_access": false,
+    "actual_provider_calls": 0,
+    "new_actual_credentials": 0,
+    "system_security_changes": false,
+    "remote_attempts": 0
+  },
+  "remaining": "Whole regression, actual provider acceptance, blocked MCP integration, remote publication and operating deployment are not completed by this result."
+}

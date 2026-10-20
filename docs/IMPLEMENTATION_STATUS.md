@@ -2,7 +2,7 @@
 
 ### Git delivery and deployment preparation update
 
-Git push/PR/merge are now authorized; earlier no-push statements below are historical checkpoints. The service remains NOT DEPLOYED. [Deployment runbook](DEPLOYMENT_RUNBOOK.md) records the designated target, unsupported production scope and required allocation/security approvals. No operating credentials or external AI calls were made.
+Current local verification does not authorize push/PR/merge or deployment. These remain blocked or incomplete; earlier delivery/approval statements below are dated checkpoints. The [predeployment consistency record](validation/predeployment-consistency-review-2026-10-20.json) links the current selected checks and separate PostgreSQL follow-up. The [deployment runbook](DEPLOYMENT_RUNBOOK.md) records the remaining target and operating acceptance requirements.
 
 Added read-only CLI preflight, sanitized loopback DB configuration validation, bounded connection timeout, PostgreSQL/schema/scheduler readiness, foreground concurrency/shutdown limits and wheel packaging validation. The updated local aggregate passed 95 Python cases including 11 real isolated PostgreSQL cases and the stdio MCP process; UI logic passed 5. A real synthetic loopback HTTP server returned health/ready and rejected unauthenticated room access, then shut down. This is a private smoke test, not a deployed user service. Browser/AI/product MCP remain NOTRUN. Build resources, pip check, local links and syntax/diff checks passed.
 

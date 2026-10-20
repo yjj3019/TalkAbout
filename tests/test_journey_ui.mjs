@@ -79,15 +79,15 @@ test('failure recovery points to local terminal status in both languages without
  assert.equal(h.calls.filter(c=>c.options.method==='POST').length,0);
 });
 
-for(const reported of [0,1])for(const [missing,expected] of [['connection','journeyUnconnected'],['runtime_check','journeyUnverified']]){
- test('room projection null '+missing+' cannot reuse global evidence; reported='+reported,async()=>{
-  const h=await harness(),member={...room.members['synthetic-agent'],permissions:['room:read','room:speak','task:claim','task:heartbeat','task:complete','task:skip'],connection:live.connection,runtime_check:live.runtime_check,response_evidence:{worker_reported:reported},[missing]:null};
+for(const absent of ['null','omitted'])for(const reported of [0,1])for(const [missing,expected] of [['connection','journeyUnconnected'],['runtime_check','journeyUnverified']]){
+ test('room projection '+absent+' '+missing+' cannot reuse global evidence; reported='+reported,async()=>{
+  const h=await harness(),member={...room.members['synthetic-agent'],permissions:['room:read','room:speak','task:claim','task:heartbeat','task:complete','task:skip'],connection:live.connection,runtime_check:live.runtime_check,response_evidence:{worker_reported:reported},[missing]:absent==='null'?null:undefined};
   h.run(`scopedAgent=${JSON.stringify(live)};scopedRoom=${JSON.stringify({...room,members:{'synthetic-agent':member}})};`);
   assert.equal(h.run(`journeyStatus(scopedAgent,scopedRoom,${now}).state`),expected);
  });
- for(const language of ['ko','en'])test('render scoped null '+missing+' in '+language+'; reported='+reported,async()=>{
+ for(const language of ['ko','en'])test('render scoped '+absent+' '+missing+' in '+language+'; reported='+reported,async()=>{
   const h=await harness(),clock=Date.now()/1000,current={...live,connection:{...live.connection,last_seen_at:clock},runtime_check:{...live.runtime_check,expires_at:clock+300}};
-  const member={...room.members['synthetic-agent'],permissions:['room:read','room:speak','task:claim','task:heartbeat','task:complete','task:skip'],connection:current.connection,runtime_check:current.runtime_check,response_evidence:{worker_reported:reported},[missing]:null};
+  const member={...room.members['synthetic-agent'],permissions:['room:read','room:speak','task:claim','task:heartbeat','task:complete','task:skip'],connection:current.connection,runtime_check:current.runtime_check,response_evidence:{worker_reported:reported},[missing]:absent==='null'?null:undefined};
   h.run(`view.language='${language}';scopedAgent=${JSON.stringify(current)};roomCache=[${JSON.stringify({...room,members:{'synthetic-agent':member}})}];`);
   h.node('connection-room').value=room.id;h.run('renderJourney(scopedAgent);');
   assert.equal(h.node('journey-status').textContent,labels[language][expected]);
@@ -95,3 +95,13 @@ for(const reported of [0,1])for(const [missing,expected] of [['connection','jour
   assert.equal(h.calls.filter(c=>c.options.method==='POST').length,0);
  });
 }
+
+for(const [name,changes,expected] of [
+ ['stale room contact',{connection:{...live.connection,last_seen_at:now-76}},'journeyOffline'],
+ ['expired room receipt',{runtime_check:{...live.runtime_check,expires_at:now-1}},'journeyUnverified'],
+ ['replaced room receipt without current response',{response_evidence:{worker_reported:0}},'journeyAwaitResponse']
+])test('fresh global evidence cannot replace '+name,async()=>{
+ const h=await harness(),member={...room.members['synthetic-agent'],permissions:['room:read','room:speak','task:claim','task:heartbeat','task:complete','task:skip'],connection:live.connection,runtime_check:live.runtime_check,response_evidence:{worker_reported:1},...changes};
+ h.run(`scopedAgent=${JSON.stringify(live)};scopedRoom=${JSON.stringify({...room,members:{'synthetic-agent':member}})};`);
+ assert.equal(h.run(`journeyStatus(scopedAgent,scopedRoom,${now}).state`),expected);
+});

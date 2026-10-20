@@ -26,12 +26,13 @@
   "local_document_links": {"checked": 73, "broken": 0},
   "diff_check": "PASS",
   "secret_pattern_scan": "No common credential patterns found in added diff; synthetic IDs and official documentation URLs only.",
-  "not_run": ["real provider/auth/account/model calls", "actual user file upload", "real parser/scanner/container execution", "MCP authentication", "real provider file transfer", "public API wiring", "operating database or security settings", "mcp-box", "remote push", "PR creation", "merge", "deployment"],
+  "not_run": ["real provider/auth/account/model calls", "actual user file upload", "real parser/scanner/container execution", "MCP authentication", "real provider file transfer", "public API wiring", "operating database or security settings", "private-fixture-host", "remote push", "PR creation", "merge", "deployment"],
   "limits": [
     "Authority resolvers and human authorizers are trusted host injection points, not an authentication implementation.",
     "Memory state is lost on restart and cannot protect real external side effects across processes.",
     "Only bounded UTF-8 text/code fixtures are supported; image/PDF and actual malware safety are unimplemented.",
     "File versions are immutable per upload; version chaining, artifact persistence and actual UI/API integration remain proposed.",
     "Already returned bytes cannot be recalled; prepared provider inputs do not prove a provider received them."
-  ]
+  ],
+  "privacy_redaction": {"reviewed": "2026-10-20", "scope": "Private test-machine aliases replaced; measurements and outcomes preserved. Original Git history is not rewritten."}
 }

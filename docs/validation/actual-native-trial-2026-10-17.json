@@ -69,10 +69,11 @@
     "additional inference after the uncertain outcome",
     "new provider login, OAuth scope, API key or billing-mode fallback",
     "operating database/service/configuration/firewall/deployment changes",
-    "mcp-box access",
+    "private-fixture-host access",
     "merge or deployment",
     "actual S3 attachment processing or S4 command/MCP execution"
   ],
   "release_gate": "BLOCKED: S1 model response/reconnect and S2 actual dialogue/recovery have not passed",
-  "next_step": "Before another model start, review the uncertain outcome and remaining budget. A separately approved diagnostic attempt should capture only safe native exit code and bounded error categories, not raw authentication/stderr content. Preserve the stop ledger and do not reset or silently replenish the budget."
+  "next_step": "Before another model start, review the uncertain outcome and remaining budget. A separately approved diagnostic attempt should capture only safe native exit code and bounded error categories, not raw authentication/stderr content. Preserve the stop ledger and do not reset or silently replenish the budget.",
+  "privacy_redaction": {"reviewed": "2026-10-20", "scope": "Private test-machine aliases replaced; measurements and outcomes preserved. Original Git history is not rewritten."}
 }

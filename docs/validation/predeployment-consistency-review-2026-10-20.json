@@ -1,0 +1,203 @@
+{
+  "reviewed": "2026-10-20",
+  "base_application_commit": "7bd48465476c05a9f0a438271bd80f5652009d69",
+  "status": "LOCAL_CONSISTENCY_CHECKS_PASS_PUBLICATION_AND_DEPLOYMENT_BLOCKED",
+  "application_code_changed": false,
+  "ui_boundaries": {
+    "review": "Selected membership projections, including null or absent fields, stay authoritative. No new application defect found after 7bd4846.",
+    "new_cases": 15,
+    "coverage": [
+      "Omitted connection and receipt fields with zero or prior response count",
+      "KO/EN status and no invented last contact",
+      "Stale scoped contact despite fresh global contact",
+      "Expired scoped receipt despite fresh global receipt",
+      "New receipt with no current response remains awaiting response"
+    ]
+  },
+  "current_verification": {
+    "node": {
+      "passed": 94,
+      "failed": 0,
+      "skipped": 0,
+      "exit": 0,
+      "targets": [
+        "tests/test_journey_ui.mjs",
+        "tests/test_connection_ui_wizard.mjs"
+      ],
+      "job_stopped": true,
+      "run_id": "predeployment-node-52f5f2cb49174a2ab8b8d148f1d21096",
+      "log_sha256": "bb487e85d5a8561cf23785c1aaa97d9e7a21dfcf9e61257e6a9298c291e62e89"
+    },
+    "postgres_followup": {
+      "record": "journey-postgres-review-2026-10-20.json",
+      "passed": 1,
+      "tested_commit": "7bd48465476c05a9f0a438271bd80f5652009d69",
+      "separate_invocation": true,
+      "rerun_in_this_review": false
+    },
+    "historical_api_worker": {
+      "record": "journey-scope-review-2026-10-20.json",
+      "passed": 53,
+      "rerun_in_this_review": false
+    },
+    "whole_suite_rerun": false,
+    "real_provider_acceptance": false
+  },
+  "documentation": {
+    "updated": [
+      "README.md",
+      "README.en.md",
+      "docs/ACCEPTANCE_TESTS.md",
+      "docs/FEATURE_MATRIX.md",
+      "docs/IMPLEMENTATION_STATUS.md",
+      "docs/RELEASE_GAP_MATRIX.md",
+      "docs/REMAINING_VALIDATION.md"
+    ],
+    "changes": [
+      "Current push/PR/merge permission claims corrected to blocked local scope",
+      "GitHub delivery, operating deployment and actual runtime acceptance remain incomplete",
+      "Separate single-case PG result linked without rewriting earlier exclusion/17-case records",
+      "Blocked JUnit collector removed from current reproduction command; no platform override or process-guard relaxation"
+    ]
+  },
+  "publication_review": {
+    "scope_note": "Conservative history after the locally available origin tracking checkpoint; no fetch, live remote-state or unpublished-commit assertion",
+    "local_tracking_base": "d09dcc248f7dccfacdc62f6a7df7a3e45566bd44",
+    "candidate_files_scanned_before_this_summary": 170,
+    "historical_blob_versions_scanned": 100,
+    "local_history_changed_paths": [
+      "README.en.md",
+      "README.md",
+      "docs/CODEX_CONTINUITY_REVIEW.md",
+      "docs/CODEX_SESSION_CONTINUITY.md",
+      "docs/DEPLOYMENT_RUNBOOK.md",
+      "docs/REAL_RUNTIME_TRIAL_PLAN.md",
+      "docs/RELEASE_GAP_MATRIX.md",
+      "docs/REMAINING_VALIDATION.md",
+      "docs/SESSION_LOG.md",
+      "docs/USER_FLOW.md",
+      "docs/validation/actual-native-trial-2026-10-17.json",
+      "docs/validation/attachment-preview-refresh-review-2026-10-17.json",
+      "docs/validation/codex-0163-config-review-2026-10-17.json",
+      "docs/validation/controller-adoption-full-review-2026-10-18.json",
+      "docs/validation/controller-diagnostics-review-2026-10-17.json",
+      "docs/validation/journal-connection-lifetime-review-2026-10-17.json",
+      "docs/validation/journey-scope-review-2026-10-20.json",
+      "docs/validation/native-failure-causality-review-2026-10-17.json",
+      "docs/validation/offline-native-diagnosis-2026-10-17.json",
+      "docs/validation/onboarding-readiness-2026-10-17.json",
+      "docs/validation/recovery-guidance-review-2026-10-19.json",
+      "docs/validation/remaining-postgres-review-2026-10-19.json",
+      "docs/validation/saved-result-process-review-2026-10-20.json",
+      "docs/validation/scoped-session-continuity-2026-10-19.json",
+      "docs/validation/scoped-session-full-review-2026-10-19.json",
+      "docs/validation/timeout-boundary-review-2026-10-17.json",
+      "docs/validation/trial-permission-review-2026-10-17.json",
+      "talkabout/adapters.py",
+      "talkabout/agent_runtime.py",
+      "talkabout/cli.py",
+      "talkabout/codex_sessions.py",
+      "talkabout/connector.py",
+      "talkabout/core.py",
+      "talkabout/trial_controller.py",
+      "talkabout/trial_observation.py",
+      "talkabout/web/app.mjs",
+      "talkabout/web/index.html",
+      "talkabout/web/state.mjs",
+      "talkabout/worker.py",
+      "tests/fixtures/codex_0163_overrides.json",
+      "tests/readiness_fixture_app.py",
+      "tests/runtime_process_fixture.py",
+      "tests/test_agent_runtime.py",
+      "tests/test_browser_readiness.py",
+      "tests/test_browser_text_files.py",
+      "tests/test_cli_adapters.py",
+      "tests/test_codex_session_continuity.py",
+      "tests/test_connection_ui_wizard.mjs",
+      "tests/test_connector_verification.py",
+      "tests/test_continuity_cli.py",
+      "tests/test_journal_connection_lifecycle.py",
+      "tests/test_journey_contract.py",
+      "tests/test_journey_ui.mjs",
+      "tests/test_process_cleanup.py",
+      "tests/test_release_scenarios.py",
+      "tests/test_run_budget.py",
+      "tests/test_runtime_config_diagnostics.py",
+      "tests/test_saved_result_drain.py",
+      "tests/test_text_files_ui.mjs",
+      "tests/test_trial_controller_diagnostics.py",
+      "tests/test_trial_controller_lifecycle.py",
+      "tests/test_trial_observation.py",
+      "tools/run_trial_diagnostic.py"
+    ],
+    "credential_patterns_confirmed": 0,
+    "current_internal_addresses_or_personal_absolute_paths_confirmed": 0,
+    "non_sensitive_pattern_matches": [
+      {
+        "path": "tests/ui-review.test.mjs",
+        "line": 102,
+        "rule": "profile_absolute_path",
+        "version": "working_tree",
+        "classification": "Keyboard Home/End navigation label, not a filesystem path"
+      },
+      {
+        "path": "docs/REMAINING_VALIDATION.md",
+        "line": 39,
+        "rule": "profile_absolute_path",
+        "version": "b3c27a274bb04966b0b773c4c3116f8710205430",
+        "classification": "Prose about identity substitutes, not a filesystem path"
+      }
+    ],
+    "current_alias_redactions": [
+      "docs/validation/INTERNAL_FOUNDATION_2026-10-17.json",
+      "docs/validation/PR8_WORKER_AND_READINESS_2026-10-17.json",
+      "docs/validation/actual-native-trial-2026-10-17.json"
+    ],
+    "remaining_historical_alias_metadata": [
+      {
+        "path": "docs/validation/actual-native-trial-2026-10-17.json",
+        "line": 72,
+        "rule": "environment_identifier",
+        "version": "deed66840e64e04cac91f04d9299798ba1b8ef21",
+        "introduced_commit": "d5f867d9842a5adff83573c5a338fe968f5031bb",
+        "classification": "Simple environment alias in an old non-execution statement, not credential material; current file redacted, original commit publicly retrievable"
+      }
+    ],
+    "read_only_remote_confirmation": {
+      "reviewed": "2026-10-20",
+      "repository": "yjj3019/TalkAbout",
+      "repository_public": true,
+      "commit": "d5f867d9842a5adff83573c5a338fe968f5031bb",
+      "commit_url": "https://github.com/yjj3019/TalkAbout/commit/d5f867d9842a5adff83573c5a338fe968f5031bb",
+      "publicly_retrievable": true,
+      "default_branch_membership": "NOT_CHECKED",
+      "path": "docs/validation/actual-native-trial-2026-10-17.json",
+      "field": "not_performed[3]",
+      "classification": "Simple private environment alias in a non-execution statement, not a token/password/key",
+      "remote_mutations": 0,
+      "method": "Two authenticated GET-only metadata reads; no file payload or matched value printed"
+    },
+    "limitation": "Pattern scan plus candidate context review, not exhaustive personal-data certification. Review covers current candidate files and locally available tracking-base history; no live remote-state assertion.",
+    "publication_blocker": "Push/PR/merge remain blocked by the current task boundary. The historical alias commit is already retrievable from the public repository; this is environment metadata, not a confirmed credential. Current-file redaction does not erase that history. No rewrite, push or alternate publication path attempted."
+  },
+  "boundaries": {
+    "actual_provider_calls": 0,
+    "new_actual_credentials": 0,
+    "operating_database_access": false,
+    "security_settings_changed": false,
+    "remote_publication_mutations": 0,
+    "remote_metadata_reads": 2
+  },
+  "remaining_gates": [
+    "Actual provider first response/reconnect and multi-runtime acceptance",
+    "MCP process integration shell path remains blocked",
+    "Public push/PR/merge remain blocked; history metadata decision outstanding",
+    "Operating deployment and POSIX acceptance remain unverified"
+  ],
+  "evidence_sha256": {
+    "node_result": "6da0f57164fa2b2693ea338f2b6367fce2bf97f14e0b88a063d92b13ae2a0917",
+    "publication_scan": "d658e6f2223fb50f805c00babb98018a71b072a9e6f7b018e5ecad58d2a28e21",
+    "remote_metadata": "38bfe1b1ad78a15d454cc4dc827ec60d4d1a92702a6a182ab26a9cce47ae222c"
+  },
+  "not_claimed": "No new full-suite pass, real-provider success, current GitHub publication or operating deployment"
+}

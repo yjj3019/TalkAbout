@@ -35,7 +35,8 @@
   ],
   "contracts": "No public request fields or database schema were added. Mode-specific permission validation was tightened within the authorized fix scope. ToolBroker API/DB changes remain a proposed follow-up.",
   "new_document_links": {"checked": 59, "broken": 0},
-  "provider_and_operating_access": "NOTRUN: real provider login/auth/model calls, operating service, mcp-box, operating token issuance, deployment and merge",
+  "provider_and_operating_access": "NOTRUN: real provider login/auth/model calls, operating service, private-fixture-host, operating token issuance, deployment and merge",
   "remote_push": "NOTRUN",
-  "cleanup": "Dedicated synthetic browser contexts and fixture servers closed; raw logs and screenshots remain outside the repository."
+  "cleanup": "Dedicated synthetic browser contexts and fixture servers closed; raw logs and screenshots remain outside the repository.",
+  "privacy_redaction": {"reviewed": "2026-10-20", "scope": "Private test-machine aliases replaced; measurements and outcomes preserved. Original Git history is not rewritten."}
 }

@@ -1,6 +1,8 @@
 # Remaining verification / 남은 검증 재현 절차
 
-LOCAL TEST DOCUMENTATION ONLY / 로컬 검증 문서. Reviewed 2026-10-19. No publication, merge, deployment, actual model invocation or operating credential issuance is implied. Application code is unchanged from `9f68f602cc70b80224991c9c18c846b6ed8c434f`.
+2026-10-20 follow-up: the one PostgreSQL case excluded from the later selected journey checks passed separately at `7bd48465476c05a9f0a438271bd80f5652009d69`. See the [single-case record](validation/journey-postgres-review-2026-10-20.json). Initdb retained disk synchronization; its local harness deadline alone was explicitly extended from 45 to 180 seconds after an initialization timeout. No model-call or security limit changed. This does not repeat the seventeen-case run or establish a full-suite/provider pass.
+
+LOCAL TEST DOCUMENTATION ONLY / 로컬 검증 문서. Reviewed 2026-10-19. No publication, merge, deployment, actual model invocation or operating credential issuance is implied. The original seventeen-case record below tested `9f68f602cc70b80224991c9c18c846b6ed8c434f`.
 
 ## PostgreSQL fixture
 
@@ -12,10 +14,10 @@ With installed Python test dependencies, this selection reproduces the PostgreSQ
 
 ```text
 python -m pytest --collect-only -q tests -k postgres
-python -m pytest -q -ra tests -k postgres --postgres-config fixture.local.json --junitxml=postgres-results.xml
+python -m pytest -q -ra tests -k postgres --postgres-config fixture.local.json -p no:cacheprovider
 ```
 
-Review the collected selection first; on the tested revision it selected exactly 17 cases and deselected 509, exit 0. The exact seventeen node IDs from this run are in the [PG validation record](validation/remaining-postgres-review-2026-10-19.json). Use an account-file/process guard for Python fixtures, no provider executables or credentials, and loopback-only network access. Existing pytest fixtures check the server data path and use separate synthetic schemas. Preserve the JUnit, startup log, server log and ownership/exit record. Stop only the owned test/server process groups and confirm descendant exit. Keeping the stopped data directory for evidence is acceptable; never recursively delete a computed path without checking its resolved owner boundary.
+Review the collected selection first; on the tested revision it selected exactly 17 cases and deselected 509, exit 0. The exact seventeen node IDs from this run are in the [PG validation record](validation/remaining-postgres-review-2026-10-19.json). Use an account-file/process guard for Python fixtures, no provider executables or credentials, and loopback-only network access. Existing pytest fixtures check the server data path and use separate synthetic schemas. Preserve console/per-case outcomes, startup log, server log and ownership/exit record. Earlier JUnit artifacts remain historical evidence. Do not retry a collector that invokes a blocked shell, override platform metadata or relax the process guard. Stop only the owned test/server process groups and confirm descendant exit. Keeping the stopped data directory for evidence is acceptable; never recursively delete a computed path without checking its resolved owner boundary.
 
 신규 설치나 운영 DB 연결 없이 기존 테스트 바이너리와 새 임시 데이터 디렉터리만 사용합니다. readiness 검증도 임시 loopback API의 합성 smoke test이며 운영 배포를 뜻하지 않습니다. 전체 508-pass 실행과 이번 17개 선별 실행은 서로 다른 실행입니다. 합산 수치를 하나의 전체 실행 결과로 표시하지 않습니다.
 
@@ -36,7 +38,7 @@ Run under a guard rejecting provider processes, account-file reads and external 
 ## Release gates remain separate / 배포 전 경계
 
 - Synthetic PostgreSQL concurrency/readiness and Chrome success do not validate the selected operating environment, backups/restoration, secrets/TLS, storage quotas or long-running operation. Deployment still requires its own approved isolated target and acceptance evidence.
-- Verified stable provider account identity remains unavailable. Keep automatic conversation resume blocked; no email/home/account-label substitute or journal deletion bypass is acceptable.
+- Verified stable provider account identity remains unavailable. Keep automatic conversation resume blocked; no email, home-path or account-label substitute or journal deletion bypass is acceptable.
 - Actual registration → acceptance → connection test → first reply → follow-up → restart restoration and the multi-runtime PoC remain unverified. Their provider calls, billing boundary and actual credential issuance require separate authorization.
 - Remote push/PR attempts previously rejected must not be retried or routed through another tool as part of local verification.
 

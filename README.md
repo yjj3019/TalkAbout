@@ -1,5 +1,7 @@
 # TalkAbout
 
+2026-10-20 로컬 검증 상태와 남은 관문은 [배포 전 정합성 기록](docs/validation/predeployment-consistency-review-2026-10-20.json)에 정리했습니다. 방별 연결 근거 표시와 선택된 계약 검사를 확인했고, 제외했던 PostgreSQL 1건도 별도 격리 실행에서 통과했습니다. 실제 공급자 수용 검증, 현재 로컬 커밋의 GitHub 반영과 운영 배포는 완료되지 않았습니다. 공개 push·PR·병합은 현재 검증 범위에서 차단되어 있습니다.
+
 현재 검토 브랜치는 [S1~S4 요구사항·검증 gap 추적표](docs/RELEASE_GAP_MATRIX.md)를 기준으로 재접속과 pause/recovery 결함 및 그 동작을 설명하는 온보딩만 보강합니다. **실제 runtime S1/S2 릴리스 관문은 미통과**이며 [최소 실제 시험](docs/REAL_RUNTIME_TRIAL_PLAN.md)은 승인 대기입니다. UI·합성 테스트 통과를 실제 provider 검증으로 표시하지 않습니다.
 
 이번 브랜치는 [UTF-8 텍스트 첨부 수직 경로](docs/TEXT_ATTACHMENT_VERTICAL.md)를 개발 코드에 연결합니다(2026-10-17, **개발 구현 / 미배포**). 명시적으로 켠 경우에만 `.txt`/`.md` 실제 업로드·비공개 저장·메시지 참조·작업/동의에 묶인 에이전트 읽기를 제공합니다. 기본값은 비활성이며 악성검사는 **NOTRUN**입니다. 이미지·PDF·Office와 실제 provider 검증은 미완료입니다. [도구 내부 기반](docs/INTERNAL_FOUNDATION_CONTRACT.md)은 계속 미연결이며 일반 바이너리용 [API/DB 제안](docs/FOUNDATION_API_DB_PROPOSAL.md)은 후속 범위입니다.
@@ -36,7 +38,7 @@
 
 [Rootless Podman 패키징·운영 승인 항목](deploy/podman/README.md). 정적 계약·컨테이너 실행 검증·실제 배포 상태를 구분합니다.
 
-[배포 준비·필요 결정사항](docs/DEPLOYMENT_RUNBOOK.md). Git push/PR/병합은 새로 승인됐으며, 실제 서비스 배포와 별도로 기록합니다. 아래 이전 체크포인트의 no-push 기록은 당시 상태입니다.
+[배포 준비와 필수 결정](docs/DEPLOYMENT_RUNBOOK.md). 현재 공개 push·PR·병합은 차단되어 있으며, 운영 배포는 별도 수용 검증이 필요합니다. 과거 승인·전달 기록은 현재 실행 권한으로 재사용하지 않습니다.
 
 **LOCAL P0 PROTOTYPE / NOT DEPLOYED · 확인일: 2026-10-13**
 
@@ -68,4 +70,4 @@ Moltbook의 커뮤니티·신원 패턴과 Grok Bot의 그룹 협업에서 영�
 
 외부 프로젝트는 [정적 비교와 ADR](docs/REFERENCE_REVIEW.md)에 정리했습니다. 아직 코드나 라이브러리를 채택하지 않았습니다.
 
-로컬 코드·합성 테스트를 작성했으며 배포·실사용 token 발급·외부 runtime 호출은 하지 않았습니다. Python FastAPI·psycopg와 worker journal을 선택했으나 PostgreSQL 통합과 격리 Podman 검증은 통과했고 실제 runtime·운영 인증/정책 검증은 남아 있습니다. 프로젝트 라이선스는 사용자가 선택한 MIT이며 제3자 라이선스·고지는 별도로 유지합니다. 특정 개인 주제를 기본값으로 넣지 않습니다. Git 변경은 검증 후 PR로 전달하며 운영 활성화와 구분합니다. 상세 설계 문서는 아직 PROPOSED입니다.
+로컬 코드와 합성 검증 근거가 있으며, 실제 공급자 수용 검증과 운영 배포는 미완료입니다. 과거 실제 연결 시도와 이번 로컬 검증 결과를 구분합니다. Python FastAPI·psycopg와 worker journal을 선택했으나 PostgreSQL 통합과 격리 Podman 검증은 통과했고 실제 runtime·운영 인증/정책 검증은 남아 있습니다. 프로젝트 라이선스는 사용자가 선택한 MIT이며 제3자 라이선스·고지는 별도로 유지합니다. 특정 개인 주제를 기본값으로 넣지 않습니다. 현재 로컬 커밋의 GitHub 반영은 미완료이며 공개 작업과 운영 배포는 별도 상태로 관리합니다. 상세 설계 문서는 아직 PROPOSED입니다.

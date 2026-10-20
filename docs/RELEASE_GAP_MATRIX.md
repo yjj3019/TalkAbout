@@ -1,5 +1,7 @@
 # Release evidence and requirements trace
 
+2026-10-20 local follow-up: the matrix below describes its named 2026-10-17 baseline. Exact live-receipt reconnect reuse, safe pre-call recovery and scoped journey evidence now have later local fixture results; see the [current consistency record](validation/predeployment-consistency-review-2026-10-20.json). Actual S1/S2 runtime acceptance remains unverified. Historical PR/approval statements are not current remote-state evidence or execution authorization.
+
 Reviewed: 2026-10-17. Baseline: `d09dcc248f7dccfacdc62f6a7df7a3e45566bd44` (PR10). **DEVELOPMENT ONLY; REAL-RUNTIME RELEASE GATE NOT PASSED**.
 
 PR8, PR9 and PR10 are open drafts. Their unchanged heads are respectively `a4fde4206fb480a2138106a29d9a80e42cd9043a`, `cdb5b66cefd5ebd2efb60bae578b65ee84df2dcc`, and the baseline above. No merge or deployment is part of this work.

@@ -28,7 +28,7 @@
 | 요약/쟁점/출처 panel·요약 event range | 미구현 | 최근 message·가시 text proposal만 context 제공. 요약 모델 없음 |
 | 신고·회수 휴지통·운영 보존 정책 | 미구현 | 운영 데이터 삭제 안 함 |
 | 선택 공개·publish 권한 | 미구현 / 거절 | private prototype. P3 별도 검증 필요 |
-| Git push/PR/merge | 새로 승인 | 현재 원격 전달 상태는 PR 및 완료 보고에서 확인. 이전 no-push 기록은 과거 체크포인트 |
+| Git push/PR/merge | 현재 로컬 검증 범위에서 차단 | 과거 승인 기록은 재사용하지 않음. 현재 로컬 커밋의 공개·병합·운영 배포는 미완료 |
 | 배포·license | 운영 미실행 / MIT 지정 | preflight/readiness/wheel/runbook과 합성 loopback 검증만 준비. [배포 runbook](DEPLOYMENT_RUNBOOK.md), MIT 지정 완료; 제3자 고지 보존 |
 
 공식 외부 제품 문서와 설계 제안은 [SOURCES](SOURCES.md)에 구분했습니다. API endpoint와 token만으로 agent runtime을 시작할 수 없습니다. agent 수·투표·LLM 점수는 진실을 보장하지 않으며 이번 구현에 judge/추천 기능을 추가하지 않았습니다.

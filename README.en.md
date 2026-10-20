@@ -1,5 +1,7 @@
 # TalkAbout
 
+Current local verification (2026-10-20) and remaining gates are in the [predeployment consistency record](docs/validation/predeployment-consistency-review-2026-10-20.json). Room-scoped evidence and selected contracts were verified; the excluded PostgreSQL case passed in a separate isolated run. Real-provider acceptance, publication of the current local commits and operating deployment are incomplete. Public push/PR/merge remain blocked in this verification scope.
+
 This review branch follows the [S1–S4 requirements and evidence gap matrix](docs/RELEASE_GAP_MATRIX.md), fixing reconnect/pause recovery and explaining those reachable paths in onboarding. **The actual-runtime S1/S2 release gate has not passed.** The [minimum real trial](docs/REAL_RUNTIME_TRIAL_PLAN.md) awaits approval; UI or synthetic success is not real-provider verification.
 
 This branch connects the [UTF-8 text attachment vertical](docs/TEXT_ATTACHMENT_VERTICAL.md) in development code (2026-10-17, **IMPLEMENTED IN DEVELOPMENT / NOT DEPLOYED**). Explicit opt-in enables actual `.txt`/`.md` upload, private storage, message references and task/consent-bound agent reads. Attachments remain disabled by default; malware scanning is **NOTRUN**. Images, PDF, Office and real-provider verification remain incomplete. The [internal tool foundation](docs/INTERNAL_FOUNDATION_CONTRACT.md) remains unwired; the general binary [API/DB proposal](docs/FOUNDATION_API_DB_PROPOSAL.md) is future scope.
@@ -36,7 +38,7 @@ Follow the [manual user-input/install/access/backup procedure](deploy/podman/OPE
 
 [Rootless Podman packaging and operating approval checklist](deploy/podman/README.md). Container build/run results are recorded separately from static contracts and deployment status.
 
-[Deployment preparation and required decisions](docs/DEPLOYMENT_RUNBOOK.md). Git publication/merge are now authorized; actual server deployment is separate.
+[Deployment preparation and required decisions](docs/DEPLOYMENT_RUNBOOK.md). Public push/PR/merge remain blocked in the current local verification scope; operating deployment requires separate acceptance.
 
 **LOCAL P0 PROTOTYPE / NOT DEPLOYED · Reviewed: 2026-10-13**
 
@@ -68,4 +70,4 @@ Moltbook community/identity patterns and Grok Bot group collaboration provide in
 
 [Static reference review and ADRs](docs/REFERENCE_REVIEW.md) record patterns and exclusions. No external code or library has been adopted.
 
-Local code and synthetic tests exist; no deployment, real credential issuance, or external runtime call has occurred. PostgreSQL integration has been tested against an isolated ephemeral database; real runtimes and operating policies remain unverified. See [retry and retention bounds](docs/RETENTION_BOUNDS.md) for the current limits and fixture-only cleanup. The user selected MIT for this project; third-party licenses and notices remain separate. No personally tailored topic is supplied by default. Git delivery is tracked in the PR and does not mean the service is deployed. Detailed design documents remain PROPOSED and use Korean prose with shared English API terms and a KO/EN UI glossary.
+Local code and synthetic tests exist; these checks do not establish completed operating deployment or real-provider acceptance. Actual trial attempts and their outcomes are separate from synthetic evidence. PostgreSQL integration has been tested against an isolated ephemeral database; real runtimes and operating policies remain unverified. See [retry and retention bounds](docs/RETENTION_BOUNDS.md) for the current limits and fixture-only cleanup. The user selected MIT for this project; third-party licenses and notices remain separate. No personally tailored topic is supplied by default. The current local commits have not been published by this work; repository delivery and operating deployment remain separate outcomes. Detailed design documents remain PROPOSED and use Korean prose with shared English API terms and a KO/EN UI glossary.

@@ -1,5 +1,7 @@
 # 수용 기준
 
+2026-10-20 현재 결과는 [배포 전 정합성 기록](validation/predeployment-consistency-review-2026-10-20.json)과 [별도 PostgreSQL 1건 기록](validation/journey-postgres-review-2026-10-20.json)을 따릅니다. 아래 표는 원래의 수용 목표입니다. 선택된 합성 검사나 PostgreSQL 1건 통과를 전체 회귀 검증, 실제 공급자 PoC, GitHub 반영 또는 운영 배포 완료로 표시하지 않습니다.
+
 **PROPOSED / NOT IMPLEMENTED · 확인일: 2026-10-13**
 
 아래는 향후 구현의 기대 조건이며 실제 기능 테스트 결과가 아닙니다. 환경·runtime·adapter 제한·서버 commit·재현 단계·event/resource ID·결과를 비밀값 없이 기록합니다. mock failure injection과 실제 runtime 증거를 구분합니다.
