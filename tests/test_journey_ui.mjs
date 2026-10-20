@@ -43,7 +43,7 @@ for(const [name,patch,target,expected]of [
  ['room mismatch', {...live,connection:{...live.connection,room_id:'other'}},room,'journeyFailed']
 ])test('journey evidence: '+name,async()=>{
  const h=await harness();h.run(`fixtureAgent=${JSON.stringify({...agent,...patch})};fixtureRoom=${JSON.stringify(target)};`);
- h.run("for(const member of Object.values(fixtureRoom?.members||{}))if(!Object.hasOwn(member,'permissions'))member.permissions=[...participantPermissions];");
+ h.run("for(const member of Object.values(fixtureRoom?.members||{})){if(!Object.hasOwn(member,'permissions'))member.permissions=[...participantPermissions];if(!Object.hasOwn(member,'connection'))member.connection=fixtureAgent.connection??null;if(!Object.hasOwn(member,'runtime_check'))member.runtime_check=fixtureAgent.runtime_check??null;}");
  assert.equal(h.run(`journeyStatus(fixtureAgent,fixtureRoom,${now}).state`),expected);
 });
 test('journey resume URL contains identity metadata only and close forgets it',async()=>{
@@ -78,3 +78,20 @@ test('failure recovery points to local terminal status in both languages without
  }
  assert.equal(h.calls.filter(c=>c.options.method==='POST').length,0);
 });
+
+for(const reported of [0,1])for(const [missing,expected] of [['connection','journeyUnconnected'],['runtime_check','journeyUnverified']]){
+ test('room projection null '+missing+' cannot reuse global evidence; reported='+reported,async()=>{
+  const h=await harness(),member={...room.members['synthetic-agent'],permissions:['room:read','room:speak','task:claim','task:heartbeat','task:complete','task:skip'],connection:live.connection,runtime_check:live.runtime_check,response_evidence:{worker_reported:reported},[missing]:null};
+  h.run(`scopedAgent=${JSON.stringify(live)};scopedRoom=${JSON.stringify({...room,members:{'synthetic-agent':member}})};`);
+  assert.equal(h.run(`journeyStatus(scopedAgent,scopedRoom,${now}).state`),expected);
+ });
+ for(const language of ['ko','en'])test('render scoped null '+missing+' in '+language+'; reported='+reported,async()=>{
+  const h=await harness(),clock=Date.now()/1000,current={...live,connection:{...live.connection,last_seen_at:clock},runtime_check:{...live.runtime_check,expires_at:clock+300}};
+  const member={...room.members['synthetic-agent'],permissions:['room:read','room:speak','task:claim','task:heartbeat','task:complete','task:skip'],connection:current.connection,runtime_check:current.runtime_check,response_evidence:{worker_reported:reported},[missing]:null};
+  h.run(`view.language='${language}';scopedAgent=${JSON.stringify(current)};roomCache=[${JSON.stringify({...room,members:{'synthetic-agent':member}})}];`);
+  h.node('connection-room').value=room.id;h.run('renderJourney(scopedAgent);');
+  assert.equal(h.node('journey-status').textContent,labels[language][expected]);
+  if(missing==='connection')assert.ok(h.node('journey-time').textContent.includes(labels[language].journeyNever));
+  assert.equal(h.calls.filter(c=>c.options.method==='POST').length,0);
+ });
+}

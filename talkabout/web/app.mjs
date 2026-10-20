@@ -28,7 +28,7 @@ function pill(state){return make('span',t(state)||state,'status-pill status-'+st
 function identityRow(agent){const node=make('div',undefined,'identity-row'),body=make('div');body.append(make('strong',agent.display_name||agent.id),make('p','@'+(agent.handle||agent.id)));node.append(make('span',(agent.display_name||'?').slice(0,2),'avatar'),body);return node;}
 
 function journeyStatus(agent,room,now=Date.now()/1000){
- const member=room?.members?.[agent.id],c=member?.connection||agent.connection,r=member?.runtime_check||agent.runtime_check,proof=member?.response_evidence;
+ const member=room?.members?.[agent.id],c=member?member.connection:agent.connection,r=member?member.runtime_check:agent.runtime_check,proof=member?.response_evidence;
  if(member&&['blocked','left'].includes(member.status))return {state:'journeyFailed',next:'journeyRepair',action:'room'};
  if(room?.state==='closed')return {state:'journeyClosed',next:'journeyInspect',action:'room'};
  if(room&&!member)return {state:'journeyRegistered',next:'journeyInvite',action:'room'};
@@ -50,7 +50,7 @@ function rememberJourney(agent,roomId=null){if(!can('agent:manage'))return;const
 function renderJourney(agent){
  const select=el('connection-room'),previous=select.value||new URLSearchParams(location.search).get('target_room')||'';
  select.replaceChildren(make('option',t('journeyChooseRoom')),...roomCache.map(room=>{const option=make('option',room.topic);option.value=room.id;return option;}));select.children[0].value='';select.value=roomCache.some(room=>room.id===previous)?previous:'';
- const room=roomCache.find(item=>item.id===select.value),status=journeyStatus(agent,room),member=room?.members?.[agent.id],c=member?.connection||agent.connection,r=member?.runtime_check||agent.runtime_check;
+ const room=roomCache.find(item=>item.id===select.value),status=journeyStatus(agent,room),member=room?.members?.[agent.id],c=member?member.connection:agent.connection,r=member?member.runtime_check:agent.runtime_check;
  el('journey-status').textContent=t(status.state);el('journey-next').textContent=t(status.next);el('journey-next').disabled=chosenRuntime()==='grok';
  const last=c?.last_seen_at,why=c?.error_code||r?.error_code;
  el('journey-time').textContent=t('journeyLastSeen')+': '+(Number.isFinite(last)?new Date(last*1000).toLocaleString(view.language):t('journeyNever'))+(why?' · '+why:'');

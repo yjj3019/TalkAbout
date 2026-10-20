@@ -1,0 +1,101 @@
+{
+  "reviewed": "2026-10-20",
+  "base_commit": "ffa687c3d822e8199ba80a66a82bc29ffb64cf44",
+  "status": "SELECTED_LOCAL_CONTRACTS_VERIFIED_ACTUAL_RUNTIME_GATES_REMAIN_BLOCKED",
+  "scope": "Registration -> invitation/acceptance -> worker-reported check -> first room response -> reconnect/revocation; no feature expansion",
+  "defect": {
+    "trigger": "A selected room projects connection or runtime_check as null while the global agent registry has evidence from another scope",
+    "before": "journeyStatus and renderJourney used || to substitute global evidence; even a prior response count could incorrectly yield participating",
+    "after": "Selected membership projection, including null, is authoritative for status, last contact and error display; global evidence is used only without a selected membership",
+    "server_contract": "No API/worker/ACL change. New API test proves the server already withholds another room check or connection and rejects readiness.",
+    "before_fix_regressions": {
+      "passed": 19,
+      "failed": 6,
+      "note": "Initial negative cases used prior reported response count 1; final cases additionally cover actual fresh-check count 0"
+    },
+    "new_ui_cases": 12,
+    "languages": [
+      "KO",
+      "EN"
+    ]
+  },
+  "new_api_journeys": [
+    {
+      "case": "tests/test_journey_contract.py::test_room_projection_withholds_another_rooms_receipt",
+      "checks": [
+        "Global passed receipt cannot fill a null room receipt",
+        "Other-room connection is null in that room projection",
+        "Server readiness is false for each mismatched scope"
+      ]
+    },
+    {
+      "case": "tests/test_journey_contract.py::test_registration_to_first_response_reconnect_and_revocation",
+      "checks": [
+        "Registration replay retains one identity and has no connection/check",
+        "Scoped synthetic credential and private invitation acceptance",
+        "Fake echo check is worker-reported evidence, never vendor attestation",
+        "No first response at check completion; real Worker then submits one fake runtime result",
+        "Exact live receipt reconnect invokes fake model zero times and reads agents/me only",
+        "Revoked token gets 401 before fake runtime invocation",
+        "Replacement token/check invokes fake echo once but does not count old message as a current first response"
+      ]
+    }
+  ],
+  "verification": {
+    "python": {
+      "passed": 53,
+      "failed": 0,
+      "deselected_postgres": 1,
+      "targets": [
+        "tests/test_journey_contract.py",
+        "tests/test_runtime_checks.py",
+        "tests/test_connector_verification.py"
+      ],
+      "exit": 0
+    },
+    "node": {
+      "tests": 79,
+      "pass": 79,
+      "fail": 0,
+      "skipped": 0,
+      "targets": [
+        "tests/test_journey_ui.mjs",
+        "tests/test_connection_ui_wizard.mjs"
+      ],
+      "exit": 0
+    },
+    "method": "Selected pytest with strict offline guard and no JUnit/host metadata collector; synthetic DOM Node tests",
+    "run_id": "journey-contract-93a26b83da5e469ab77718381a991861",
+    "owned_python_and_node_jobs_stopped": true,
+    "python_ast": "PASS",
+    "preserved_record_hashes": 5,
+    "source_sha256": {
+      "talkabout/web/app.mjs": "01cf79e3b784f074c18a64d4d5724b6023bf72dc7936afc3598938df79496483",
+      "tests/test_journey_ui.mjs": "2c2fdf7cbe6ab807ae1ec27e4a723073452e9fdd62eaec7dba4834601b43ceba",
+      "tests/test_journey_contract.py": "c0e825ea0aaf46409a7d2c9e1aae362031c3c71e4f96ab2f1f0f5917d5f1aef9"
+    },
+    "evidence_sha256": {
+      "result.json": "426a70d7933293651e0cf7fe80b0cff678af3d6df2bd8829e2ca6c267484fafc",
+      "cases.jsonl": "2f714469d7aa7cecc1ccdf1900fe17b3d1bfa0d9508466f5b83c2126ee250ba1",
+      "python.log": "833229a968d88c1c219793dd7bf3da149c104825003617a4746c8d7e5dd3a431",
+      "node.log": "8ca86c42d453fe33973a13b3c69e61aa8706b80d4c022cd1d884f25d0cc3bea6"
+    },
+    "red_evidence_sha256": "f6e9f449a89731d34c8381122df09f1b5e9f1edfa9869743822ff45e674c31d0"
+  },
+  "not_run": [
+    "Whole regression suite; preceding 107-case result is historical",
+    "PostgreSQL persistence/restart for this increment; no database was configured or probed",
+    "Real native provider check/first response/reconnect, multi-runtime collaboration and in-flight cancellation",
+    "MCP process integration: cmd.exe ver remains blocked; no retry, platform override or guard relaxation",
+    "Real browser rendering in this increment; KO/EN checks use synthetic DOM",
+    "POSIX execution and automatic native-session resume with stable account identity",
+    "Public push/PR/merge/deployment"
+  ],
+  "boundaries": {
+    "actual_provider_calls": 0,
+    "actual_credentials_created": 0,
+    "remote_attempts": 0,
+    "operating_data_access": false
+  },
+  "remaining": "Actual runtime acceptance and environment-blocked integration remain unverified. Selected fixture success does not establish a full-suite pass or provider success."
+}
