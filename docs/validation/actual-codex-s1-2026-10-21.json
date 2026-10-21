@@ -1,0 +1,126 @@
+{
+  "reviewed": "2026-10-21",
+  "tested_head": "022b91c6650b9bd7fbcaa88b9847b130c7038e91",
+  "trial_id": "approved-codex-s1-414ffedadaae4b38acf0fd4edbee0d62",
+  "status": "STOPPED_AFTER_LOCAL_API_503_WITH_ONE_UNCERTAIN_PROVIDER_CALL",
+  "authorization_scope": {
+    "new_isolated_windows_trial": true,
+    "temporary_postgres_and_loopback_api": true,
+    "synthetic_human_agents_rooms": {
+      "human": 1,
+      "agent": 1,
+      "private_room": 1
+    },
+    "new_agent_tokens_maximum": 1,
+    "agent_token_ttl_seconds": 600,
+    "new_conservative_model_budget": 3,
+    "worker_wall_seconds_maximum": 120,
+    "provider": "Codex native account; no API-key fallback",
+    "input": "Only a random echo challenge was submitted to the native CLI; provider receipt is unverified. Neutral color dialogue was prepared but room-model work never began.",
+    "excluded": [
+      "public push",
+      "deployment",
+      "operating data changes",
+      "historical call retries",
+      "security-control modifications"
+    ]
+  },
+  "execution": {
+    "tool_command": "python -B -X utf8 run_bounded_codex_trial.py",
+    "tool_review": "Execution was permitted and ran; this was not an auto-review denial.",
+    "runner_exit": 1,
+    "runner_seconds": 73.449,
+    "fixture_ownership_verified": true,
+    "new_agent_tokens_issued": 1,
+    "new_model_reservations": 1,
+    "observed_native_model_starts": 1,
+    "observed_prompt_submissions": 1,
+    "auth_check_completed_event": true,
+    "native_runtime_version": "NOT_CAPTURED before the worker was stopped",
+    "model_terminal_result_observed": false,
+    "model_outcome": "UNKNOWN; preserve the reservation, do not infer zero usage or retry",
+    "actual_echo_response": "UNCONFIRMED",
+    "server_connection_check_completion": "UNCONFIRMED",
+    "first_room_response": "NOTRUN",
+    "server_received_first_room_response": "NOTRUN",
+    "reconnect": "NOTRUN",
+    "new_unused_budget": 2,
+    "automatic_use_of_unused_budget": "PROHIBITED after uncertain outcome",
+    "provider_internal_retries_tokens_cost": "UNKNOWN",
+    "raw_model_transcript_or_auth_file_accessed": false
+  },
+  "stop_trigger": {
+    "stage": "first_worker_start",
+    "action": "Owner readiness poll GET /api/v1/rooms/0d5b508b4aafcb722f914a6143299b6d",
+    "target": "Only the newly owned loopback API and new private room",
+    "observed_http_status": 503,
+    "response_body_and_underlying_exception": "Not retained; do not claim a specific SQL, authentication, provider or product-defect cause.",
+    "static_analysis": "The API can map setup-check failures or dispatch exceptions to HTTP 503. Existing source alone cannot distinguish which occurred in this request.",
+    "new_postgres_error_log_lines": 0,
+    "post_stop_retries_or_provider_calls": 0
+  },
+  "durable_evidence": {
+    "ledger_call_state": "reserved",
+    "ledger_observations": [
+      "workspace_preparing",
+      "workspace_ready",
+      "auth_check_started",
+      "auth_check_completed",
+      "native_start_requested",
+      "native_started",
+      "prompt_submission_requested",
+      "prompt_submitted"
+    ],
+    "journal_runtime_check_states": [
+      "call_started"
+    ],
+    "journal_queue_counts": {},
+    "worker_final_result_present": false,
+    "interpretation": "The worker was stopped while the connection test was in flight. No native_result_observed event, completed reservation or saved worker-final report exists. The parent confirmed owned Job cleanup; this does not establish a normal adapter terminal completion.",
+    "frozen_original_records": [
+      "model-ledger.json",
+      "agent.sqlite",
+      "result.json"
+    ],
+    "clarification": "The original parent result field actual_response=NOTRUN refers to the room-response phase. The submitted connection-test call is UNKNOWN, not NOTRUN."
+  },
+  "cleanup": {
+    "init_stopped": true,
+    "workers_stopped": true,
+    "token_revoked_and_401": true,
+    "room_closed": true,
+    "api_stopped": true,
+    "postgres_stopped": true
+  },
+  "retention": {
+    "new_credential": "Revoked; subsequent request with that same token rejected with HTTP 401.",
+    "new_room": "Closed and read back as closed.",
+    "new_processes": "Init, worker containment, API thread and PostgreSQL containment confirmed stopped.",
+    "new_trial_files": "Retained. No raw bearer value was written to command arguments, logs, Git, or this record.",
+    "historical_uncertain_records": "Untouched; previous exhausted budget was neither reset nor reused."
+  },
+  "repository_changes": "This evidence record only; no production or test changes.",
+  "prior_validation": "704 passes and 8 NOTRUN items remain separate earlier results. This stopped actual trial is not counted as a pass.",
+  "remaining_gates": [
+    "real echo response completion",
+    "first room response stored",
+    "worker reconnect response",
+    "POSIX 1 case",
+    "previously blocked 7 cases",
+    "public publication",
+    "operating deployment"
+  ],
+  "evidence_sha256": {
+    "model-ledger.json": "1c8141f65238c3ce39f3f5714b3f4525bb827a50e3e0ab96f3c339c14e28cca6",
+    "agent.sqlite": "5c9dec1886cc01f5f2307ee1ea87f9b32a4cef0f8f9a2c68beebc558013bedab",
+    "result.json": "9d1a5c8207aaf6b2ca482e8b728857b8ededf1fe4daa33b3ded5ed8bc7e64536",
+    "init.log": "b1f8ed3eb67700dc4ca2d50a20768dd1f47b48ccc8fec0d5ef9022d6a5af2ed6",
+    "server.log": "cdbfd0ebc86936d989c75d204bea571164bd739c76daa0614b15b2905395a98f",
+    "worker-first.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "runner_sha256": "1f3f2184c4c9290dd7023fb70bbb3e596fbc41711432e777746599da1ba3a7c7",
+  "static_checks": {
+    "json_parse": "passed",
+    "git_diff_check": "passed"
+  }
+}
