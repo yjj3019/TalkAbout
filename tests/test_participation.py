@@ -11,6 +11,112 @@ SESSION = '00000000-0000-4000-8000-000000000001'
 OTHER = '00000000-0000-4000-8000-000000000002'
 
 
+def test_reusing_retired_uuid_cannot_revive_delayed_receipts(fixture):
+    _, core, rid = fixture
+    first = join(core, rid)
+    join(core, rid, OTHER)
+    # A restored old client configuration must not make its old cursor valid again.
+    with pytest.raises(Problem, match='retired_session'):
+        core.participation('fixture-a', rid, 'join', {
+            'session_id': SESSION, 'previous_session_id': OTHER,
+            'generation': 1, 'membership_revision': 2})
+    with pytest.raises(Problem):
+        ack(core, rid, first['snapshot_cursor'])
+
+
+def test_rotation_capacity_keeps_current_session_and_retry_is_free(fixture):
+    import uuid
+    store, core, rid = fixture
+    join(core, rid)
+    current = SESSION
+    for i in range(64):
+        fresh = str(uuid.UUID(int=i + 100))
+        body = {'session_id': fresh, 'previous_session_id': current, 'generation': 1, 'membership_revision': 2}
+        core.participation('fixture-a', rid, 'join', body)
+        current = fresh
+    before = copy.deepcopy(store.rooms[rid])
+    assert core.participation('fixture-a', rid, 'join', body)['participation']['session_id'] == current
+    with pytest.raises(Problem, match='session_rotation_capacity'):
+        core.participation('fixture-a', rid, 'join', {**body, 'session_id': OTHER, 'previous_session_id': current})
+    assert store.rooms[rid] == before
+    assert '_retired_participation_ids' not in str(core.read('fixture-human', rid))
+
+
+def test_postgres_participation_restart_rotation_and_hold(postgres_fixture):
+    store, core, rid = postgres_fixture
+    joined = join(core, rid)
+    advice(core, rid)
+    cursor = core.events('fixture-a', joined['snapshot_cursor'], target_room=rid, session_id=SESSION)['next_cursor']
+    saved = ack(core, rid, cursor)
+    from talkabout.core import Core
+    from talkabout.store import PostgresStore
+    restarted = Core(PostgresStore(store.dsn, store.schema))
+    assert ack(restarted, rid, cursor) == saved
+    join(restarted, rid, OTHER)
+    with pytest.raises(Problem, match='retired_session'):
+        restarted.participation('fixture-a', rid, 'join', {'session_id': SESSION, 'previous_session_id': OTHER,
+                                'generation': 1, 'membership_revision': 2})
+    with pytest.raises(Problem):
+        ack(restarted, rid, cursor)
+    control(restarted, rid, 'hold_dispatch')
+    persisted = Core(PostgresStore(store.dsn, store.schema))
+    assert persisted.read('fixture-human', rid)['dispatch_held'] is True
+    with pytest.raises(Problem, match='dispatch_held'):
+        leased(persisted, rid)
+    store.revoke('fixture-a')
+    with pytest.raises(Problem, match='unauthorized'):
+        persisted.notifications('fixture-a', rid, OTHER)
+
+
+def test_postgres_approval_audit_rollback_and_replay(postgres_fixture, monkeypatch):
+    _, core, rid = postgres_fixture
+    before = core.read('fixture-human', rid)
+    pending = core.mutation('fixture-human', rid, 'controls', 'hold',
+                             {'action': 'hold_dispatch', 'expected_revision': before['room_revision']})
+    import talkabout.core as module
+    original = module.emit
+    def crash(room, kind, **payload):
+        if kind == 'control.applied':
+            raise RuntimeError('synthetic PG audit failure')
+        return original(room, kind, **payload)
+    monkeypatch.setattr(module, 'emit', crash)
+    with pytest.raises(RuntimeError):
+        core.mutation('fixture-human', rid, 'controls/'+pending['id']+'/approve', 'approve', {})
+    assert core.read('fixture-human', rid)['dispatch_held'] is False
+    assert core.read('fixture-human', rid)['room_revision'] == before['room_revision']
+    monkeypatch.setattr(module, 'emit', original)
+    saved = core.mutation('fixture-human', rid, 'controls/'+pending['id']+'/approve', 'approve', {})
+    assert core.mutation('fixture-human', rid, 'controls/'+pending['id']+'/approve', 'approve', {}) == saved
+
+
+def test_mcp_accept_and_claim_use_existing_actor_and_credential_scope(fixture):
+    from talkabout.mcp import MCPServer
+    from test_mcp_runtime import ready
+    store, core, rid = fixture
+    other = core.create('fixture-human', {'topic': 'Private invitation'}, 'invite-room')['id']
+    pending = core.mutation('fixture-human', other, 'memberships', 'invite',
+                            {'principal_id': 'a', 'permissions': sorted(core.read('fixture-a', rid)['members']['a']['permissions']), 'status': 'pending'})
+    server = MCPServer(LocalClient(store))
+    ready(server)
+    def call(name, args):
+        return server.handle({'jsonrpc': '2.0', 'id': 3, 'method': 'tools/call', 'params': {'name': name, 'arguments': args}})
+    store.credentials[token_hash('fixture-a')]['room_id'] = rid
+    args = {'room_id': other, 'expected_revision': pending['revision'], 'acknowledge_private': True, 'client_mutation_id': 'accept'}
+    assert call('accept_invitation', args)['result']['isError']
+    assert core.read('fixture-human', other)['members']['a']['status'] == 'pending'
+    store.credentials[token_hash('fixture-a')]['room_id'] = other
+    accepted = call('accept_invitation', args)
+    assert not accepted['result']['isError'] and call('accept_invitation', args)['result'] == accepted['result']
+    assert call('accept_invitation', {**args, 'actor_id': 'human'})['error']['code'] == -32602
+    store.credentials[token_hash('fixture-a')]['room_id'] = rid
+    join(core, rid)
+    task = next(t for t in core.read('fixture-a', rid)['tasks'] if t['state'] == 'queued')
+    store.credentials[token_hash('fixture-a')]['scopes'] = ['room:read']
+    assert call('claim_turn', {'room_id': rid, 'session_id': SESSION, 'task_id': task['id'],
+                'generation': 1, 'membership_revision': 2, 'client_mutation_id': 'claim'})['result']['isError']
+    assert core.read('fixture-human', rid)['tasks'][0]['attempt'] == 0
+
+
 def join(core, rid, session=SESSION, token='fixture-a'):
     room = core.read(token, rid)
     return core.participation(token, rid, 'join', {

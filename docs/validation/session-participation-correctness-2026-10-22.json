@@ -1,0 +1,157 @@
+{
+  "reviewed_commit": "cb18b3070ef8221abd4816c599500e38131d6ed0",
+  "finding": {
+    "id": "retired-client-session-uuid-reuse",
+    "trigger": "join A; replace with B; explicitly reuse A with previous_session_id B",
+    "impact": "old A cursors and delayed requests can become current again under unchanged room/member/credential scope",
+    "failing_regression_ref": "pool-cleanup-f1744d062ffe40ac830f5695ee4a60ac",
+    "fix": "persist retired UUIDs within the membership; reject reuse; cap rotations at 64 without eviction or reset"
+  },
+  "review_scope": [
+    "MCP invitation acceptance, claim and completion reuse server actor/credential/room authorization",
+    "legacy artifact clients unchanged before explicit join; joined agents require session binding",
+    "replacement sessions, cursor/ACK scope, monotone delivered/read receipts and withheld notification bodies",
+    "approved dispatch hold blocks new claims but retains valid leased completion and replay",
+    "existing worker uncertain/no-retry behavior and task/attempt/artifact model retained",
+    "approval decision/audit/replay rollback; no duplicate ledger/outbox introduced",
+    "UI stored/read/completed distinctions and exact control confirmation"
+  ],
+  "final_safe_aggregate": {
+    "ref": "cleanup-aggregate-b35eaade546d4441a66f65d805b34064",
+    "python": {
+      "exit": 0,
+      "job_stopped": true,
+      "seconds": 85.187,
+      "counts": {
+        "passed": 602,
+        "skipped": 19
+      }
+    },
+    "selection": {
+      "collected": 628,
+      "selected": 621,
+      "deselected": [
+        {
+          "nodeid": "tests/test_browser_community.py::test_browser_register_invite_setup_start_and_text_artifact",
+          "reason": "same known denied Uvicorn startup path"
+        },
+        {
+          "nodeid": "tests/test_browser_readiness.py::test_beginner_register_invite_acceptance_guide_reload[ko-1400]",
+          "reason": "same known denied Uvicorn startup path"
+        },
+        {
+          "nodeid": "tests/test_browser_readiness.py::test_beginner_register_invite_acceptance_guide_reload[en-390]",
+          "reason": "same known denied Uvicorn startup path"
+        },
+        {
+          "nodeid": "tests/test_browser_text_files.py::test_browser_upload_read_reply_view_download_revoke_delete[ko-1400]",
+          "reason": "same known denied Uvicorn startup path"
+        },
+        {
+          "nodeid": "tests/test_browser_text_files.py::test_browser_upload_read_reply_view_download_revoke_delete[en-390]",
+          "reason": "same known denied Uvicorn startup path"
+        },
+        {
+          "nodeid": "tests/test_deployment_readiness.py::test_postgres_real_loopback_health_readiness_and_shutdown",
+          "reason": "same known denied Uvicorn startup path"
+        },
+        {
+          "nodeid": "tests/test_mcp_process.py::test_mcp_stdio_process_interoperability",
+          "reason": "known denied platform subprocess during Uvicorn startup"
+        }
+      ]
+    },
+    "node_passed": 167,
+    "node_failed": 0,
+    "node_job_stopped": true
+  },
+  "postgres": {
+    "ref": "participation-postgres-0a9e8b6993e7420aa4af69118aa2d30e",
+    "version": "18.6",
+    "passed": 18,
+    "failed": 0,
+    "ownership_verified": true,
+    "loopback_only": true,
+    "fsync": "on",
+    "same_previously_used_ephemeral_init_method": true,
+    "existing_database_access": false,
+    "checks": [
+      "original 16 PostgreSQL regressions",
+      "participation/read watermark and retired UUID persistence through new application store",
+      "hold survives new application store; revoke blocks notifications",
+      "approval audit failure rolls back DB state; replay idempotent"
+    ],
+    "restart_scope": "new Core/PostgresStore over retained DB, not PostgreSQL process crash/restart",
+    "init_stopped": true,
+    "server_stopped": true,
+    "test_job_stopped": true,
+    "data_directory_preserved": true
+  },
+  "browser_component": {
+    "ref": "pool-cleanup-ddee126acadf477d82816d4ca65748f2",
+    "passed": 1,
+    "failed": 0,
+    "job_stopped": true,
+    "scope": "installed isolated Chrome; actual HTML/ES modules/DOM; every HTTP response synthetic and intercepted; no Uvicorn/server/real session",
+    "checks": [
+      "KO/EN receipts and stored-completion wording",
+      "control confirmation action/room/revision",
+      "hold and release button states"
+    ],
+    "source_ref": "test_participation_browser_component.py",
+    "source_sha256": "77bfcdb6bd4379a07312498e6992fe04344888ada0cd4408c0ca4c793c0ba5d3",
+    "not_a_live_api_or_external_mcp_end_to_end_test": true
+  },
+  "intermediate_timing_failure": {
+    "ref": "cleanup-aggregate-b462169692014b7393fc65fcc8d8e675",
+    "test": "tests/test_run_budget.py::test_cli_run_includes_preflight_in_one_second_budget[False]",
+    "actual_seconds": 1.5348912,
+    "asserted_upper_bound_seconds": 1.35,
+    "outcome": "one failure stopped that aggregate; preserved, not counted as a passing run",
+    "current_isolated_ref": "pool-cleanup-b5279008c0d24b64a6e79410cad7a25e",
+    "current_isolated": {
+      "passed": 36,
+      "skipped_postgres": 2,
+      "failed": 0
+    },
+    "immutable_baseline_ref": "pool-cleanup-112b791f1e4749d2b6a2bf0e19a482ad",
+    "baseline_passed": 1,
+    "relevant_cli_worker_runtime_and_budget_test_diff_from_baseline": "empty",
+    "root_cause": "not established; not reproduced in baseline/current isolated checks or final aggregate",
+    "timing_thresholds_or_guards_modified": false
+  },
+  "remaining_not_run_unique_collected_tests": {
+    "posix": 1,
+    "previously_blocked_startup_paths": 7
+  },
+  "other_not_run": [
+    "actual provider calls",
+    "external MCP client interoperability",
+    "full browser/API end-to-end via previously blocked server startup",
+    "PostgreSQL server crash/restart"
+  ],
+  "compatibility": [
+    "no SQL DDL migration; optional private membership JSON field added",
+    "fresh UUID required after rotation; retired IDs return 409, rotation capacity returns 429 with current state preserved",
+    "no token issuance, native discovery, global config or permission changes"
+  ],
+  "historical_evidence_six_files_unchanged": true,
+  "uncertain_reservations_preserved": 1,
+  "unused_budget_preserved": 2,
+  "actual_provider_calls": 0,
+  "new_actual_credentials": 0,
+  "installs": 0,
+  "pushes": 0,
+  "deployments": 0,
+  "operating_data_changes": 0,
+  "source_sha256": {
+    "talkabout/participation.py": "2ddb7d57ac3a0d400f18401888c601d961b9769a5bedd0bb7647190edd62711e",
+    "tests/test_participation.py": "e9aeb1f1aa99a45adf7f2a28bd576767b7aca134462f3b99b7ad236fdd8a3320",
+    "docs/SESSION_PARTICIPATION.md": "a61e501354669e98f067e5d47cf1569173e673f98fcf7e8915709dab92c40d4d"
+  },
+  "static": {
+    "python_ast": "passed",
+    "json_syntax": "passed",
+    "git_diff_check": "passed"
+  }
+}

@@ -24,6 +24,8 @@ API 표의 상대 경로는 `/api/v1/` 아래입니다. 도구 인자는 `tools/
 
 join 결과의 snapshot은 허용된 이력 전체에 대한 명시적 재동기화입니다. 기존 ACK 값은 새 세션에서 초기화되며, 이력 재조회가 새 실행 attempt를 만들지는 않습니다. 이후 cursor는 해당 세션·credential·방 범위에 묶입니다. 만료 cursor는 `cursor_gap`, 다른 범위/세션 cursor는 거부합니다. 자동으로 최신 위치로 건너뛰지 않습니다. cursor 없이 poll하면 허용된 이력을 페이지 단위로 재생하므로, 정상 연결에서는 마지막 cursor를 보존해야 합니다.
 
+대체된 UUID는 같은 멤버십에서 다시 사용하지 못합니다(`retired_session`). 방 payload에 폐기 ID를 보존하며 교체는 멤버당 최대 64회입니다. 상한에 도달하면 429로 명시적으로 거부하고 기존 세션과 기록을 유지합니다. 삭제나 자동 초기화로 오래된 ACK를 되살리지 않습니다. 현재 UUID로 같은 join을 재시도하는 것은 교체 횟수를 소비하지 않습니다.
+
 ACK에는 세션 문맥과 `cursor`, `state`가 필요합니다. cursor가 실제 반환한 이벤트 범위까지만 단조 증가하며, 중복·역순 ACK는 값을 되돌리지 않습니다. `delivered` ACK는 `read_seq`를 바꾸지 않습니다. 명시적 read도 모델 이해·실행 승인·작업 완료를 입증하지 않습니다. join이나 poll만으로 read를 기록하지 않습니다. 인간 참여자는 같은 방의 명시적 수신/읽기 watermark를 관찰할 수 있습니다.
 
 MCP의 `post_message`는 task ID·attempt·generation·membership revision·세션·client mutation ID를 요구합니다. 동일 요청 재생은 기존 결과를 반환하며 새로운 provider 실행을 만들지 않습니다. 새 `propose_text` 클라이언트도 세션 참여 후에는 `session_id`를 보내야 합니다. 참여 세션을 만들지 않은 기존 artifact 클라이언트의 계약과 기존 MCP idempotency key는 유지합니다. 기존 worker의 journal·lease·uncertain 무재시도 경로는 변경하지 않습니다.

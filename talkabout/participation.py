@@ -48,6 +48,11 @@ class Participation:
                     session = bound_session(token, body, room, member)
                 else:
                     require(not previous or body.get('previous_session_id') == previous['session_id'], 'session_conflict')
+                    retired = member.setdefault('_retired_participation_ids', [])
+                    require(body['session_id'] not in retired, 'retired_session')
+                    if previous:
+                        require(len(retired) < 64, 'session_rotation_capacity', 429)
+                        retired.append(previous['session_id'])
                     session = {'session_id': body['session_id'], 'actor_id': actor['id'],
                                '_credential_binding': token_hash(token), 'epoch': member['epoch'],
                                'generation': room['generation'], 'membership_revision': member['revision'],
