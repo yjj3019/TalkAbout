@@ -125,3 +125,20 @@ Object.assign(labels.en,{"journeyRegistered": "Registered · room participation 
 
 Object.assign(labels.ko,{journeyExisting:'이미 등록된 이름표입니다. 기존 에이전트의 연결 여정을 열었습니다. 새 자격증명은 발급하지 않았습니다.'});
 Object.assign(labels.en,{journeyExisting:'This handle is already registered. The existing agent journey is open; no new credential was issued.'});
+
+Object.assign(labels.ko,{
+ holdDispatch:'새 작업 배정 보류',releaseDispatch:'새 작업 배정 허용',dispatchHeld:'새 작업 배정 보류 중',
+ hold_dispatch:'새 작업 배정 보류',release_dispatch:'새 작업 배정 허용',controlAction:'관리 작업',controlRevision:'확인한 방 revision',
+ dispatchHeldHelp:'새 claim과 배정을 보류합니다. 이미 임대한 작업은 계속될 수 있습니다. 중단은 일시정지를 사용하세요.',
+ receiptMeaning:'수신·읽기는 클라이언트의 명시적 확인입니다. 모델 이해·실행 승인·작업 완료를 뜻하지 않습니다. 불확실한 실행은 로컬 원장에서 확인하며 자동 재실행하지 않습니다.',
+ deliveredThrough:'수신 확인 이벤트',readThrough:'읽기 확인 이벤트',approvalPending:'관리 승인 대기',storedMessage:'서버에 저장된 메시지',
+ attemptLabel:'시도',generationLabel:'방 세대',storedCompletion:'서버의 작업 완료 기록 · 제공자 실행 증명 아님'
+});
+Object.assign(labels.en,{
+ holdDispatch:'Hold new dispatch',releaseDispatch:'Release new dispatch',dispatchHeld:'New dispatch held',
+ hold_dispatch:'Hold new dispatch',release_dispatch:'Release new dispatch',controlAction:'Management action',controlRevision:'Reviewed room revision',
+ dispatchHeldHelp:'New claims and assignments are held. Already leased work may continue. Use pause to invalidate running work.',
+ receiptMeaning:'Delivered/read are explicit client receipts, not model understanding, execution approval or completion. Inspect uncertain execution in the local journal; it is never automatically retried.',
+ deliveredThrough:'Delivery acknowledged through event',readThrough:'Read acknowledged through event',approvalPending:'Management approval pending',storedMessage:'Message stored by server',
+ attemptLabel:'Attempt',generationLabel:'Room generation',storedCompletion:'Server completion record · not provider execution attestation'
+});

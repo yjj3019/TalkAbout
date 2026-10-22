@@ -123,7 +123,7 @@ def schedule(room, principals, now=None):
         elif task["state"] == "leased" and now >= task["lease_expires_at"]:
             task["state"] = "queued"
             emit(room, "task.queued", task_id=task["id"], assignee=task["assignee"], attempt=task["attempt"], generation=task["generation"], membership_revision=task["membership_revision"])
-    if any(t["state"] in {"queued", "leased"} for t in room["tasks"].values()):
+    if room.get('dispatch_held') or any(t["state"] in {"queued", "leased"} for t in room["tasks"].values()):
         return
     eligible = sorted(pid for pid, m in room["members"].items() if m["status"] == "active"
                       and principals[pid]["kind"] == "agent" and participant_permissions(room['mode']) <= set(m["permissions"]))

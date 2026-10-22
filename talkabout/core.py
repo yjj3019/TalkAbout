@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import time
+from .participation import Participation, bound_session
 
 from .identity import REAL_RUNTIMES, public_connection, public_runtime_check
 from .text_files import (claim_proof, filter_refs, public_task, token_hash, validate_refs)
@@ -22,12 +23,17 @@ def public_room(room, actor, principals=None):
         msg=copy.deepcopy(original)
         if 'attachment_refs' in msg:msg['attachment_refs']=filter_refs(actor,room,viewer_member,msg['attachment_refs'])
         messages.append(msg)
-    members = copy.deepcopy(room["members"])
+    members = {pid: {k: copy.deepcopy(v) for k, v in member.items() if not k.startswith('_')}
+               for pid, member in room["members"].items()}
     if principals:
         for pid, listed_member in members.items():
             principal = principals.get(pid, {})
             listed_member.update({k: principal.get(k) for k in ("display_name", "handle", "identity_revision")})
             if actor["kind"] == "human":
+                receipt = room['members'][pid].get('_participation')
+                receipt_valid = receipt and receipt['generation'] == room['generation'] and receipt['epoch'] == listed_member['epoch'] and receipt['membership_revision'] == listed_member['revision']
+                listed_member['delivery_evidence'] = ({k: receipt[k] for k in ('delivered_seq', 'read_seq')}
+                    if receipt_valid else None)
                 connection = principal.get("connection")
                 listed_member["connection"] = public_connection(principal) if connection and connection.get("room_id") in {None, room["id"]} else None
                 check = principal.get("runtime_check")
@@ -49,6 +55,9 @@ def public_room(room, actor, principals=None):
                       for a in room["artifacts"].values() if any(v["seq"] >= viewer_member["read_start_seq"] for v in a["versions"])],
         "membership_revision": viewer_member["revision"],
         "mode_status": room.get("mode_status", "running"), "mode_progress": copy.deepcopy(room.get("mode_progress", {})),
+        "dispatch_held": room.get("dispatch_held", False),
+        "pending_controls": sum(c['state'] == 'pending' and c.get('requested_seq', 0) >= viewer_member['read_start_seq']
+                                for c in room['controls'].values()) if actor['kind'] == 'human' else None,
         "handover": copy.deepcopy(room.get("handover")),
         "deadline": room.get("deadline"), "started_at": room.get("started_at"),
         "effective_permissions": sorted(set(actor["scopes"]) & set(viewer_member["permissions"])),
@@ -76,7 +85,7 @@ def control_parameters(action, parameters, room, member):
     return parameters
 
 
-class Core:
+class Core(Participation):
     def __init__(self, store, text_files=None):
         self.store = store
         self.text_files = text_files
@@ -215,6 +224,10 @@ class Core:
                 raise Problem("not_found", 404)
             human = bits[0] in {"messages", "memberships", "controls"} or verb == "adoptions"
             member = authorize(actor, room, permission, human)
+            if bits[0] == 'artifacts' and actor['kind'] == 'agent' and member.get('_participation'):
+                require('session_id' in body, 'session_required')
+            if bits[0] in {'tasks', 'artifacts'} and 'session_id' in body:
+                bound_session(token, body, room, member)
             if bits[0] == "tasks" and verb == "complete":
                 authorize(actor, room, "room:speak")
             previous, lookup, fingerprint = replay(room, actor, operation, key, body)
@@ -250,6 +263,7 @@ class Core:
                         return save_response(room, lookup, fingerprint, response, member["epoch"])
                 if verb == "claim":
                     active(room)
+                    require(not room.get('dispatch_held'), 'dispatch_held')
                     require(task["state"] == "queued" and now < task["deadline"], "task_unavailable")
                     require(body.get("generation") == task["generation"] == room["generation"] and body.get("membership_revision") == task["membership_revision"] == member["revision"], "stale_attempt")
                     task["attempt"] += 1
@@ -342,7 +356,7 @@ class Core:
                 if verb != "approve":
                     require(len(room["controls"]) < 128, "control_capacity", 429)
                     action = body.get("action")
-                    require(action in {"start", "pause", "resume", "close", "change_topic", "change_mode", "change_limits", "pin"}, "unsupported_control", 422)
+                    require(action in {"start", "pause", "resume", "close", "change_topic", "change_mode", "change_limits", "pin", "hold_dispatch", "release_dispatch"}, "unsupported_control", 422)
                     parameters = control_parameters(action, body.get("parameters", {}), room, member)
                     reason = body.get("reason", "")
                     require(isinstance(reason, str) and len(reason) <= 512, "invalid_reason", 422)
@@ -360,7 +374,10 @@ class Core:
                     require(control["expected_revision"] == room["room_revision"], "room_conflict")
                     action = control["action"]
                     require(room["state"] != "closed", "room_closed")
-                    if action == "start":
+                    if action in {'hold_dispatch', 'release_dispatch'}:
+                        require(room['state'] in {'active', 'preparing', 'paused'}, 'invalid_transition')
+                        room['dispatch_held'] = action == 'hold_dispatch'
+                    elif action == "start":
                         require(room["state"] == "preparing", "invalid_transition")
                         candidates = [(pid, m) for pid, m in room['members'].items() if m['kind']=='agent' and m['status']=='active'
                                       and participant_permissions('bounded_rounds') <= set(m['permissions'])]
@@ -389,7 +406,7 @@ class Core:
                     elif action == "pin":
                         control_parameters(action, control["parameters"], room, member)
                         room["pinned_message_id"] = control["parameters"]["message_id"]
-                    if action != "pin":
+                    if action not in {"pin", "hold_dispatch", "release_dispatch"}:
                         room["generation"] += 1
                         cancel_tasks(room)
                     if action in {"change_topic", "change_mode"}:
@@ -418,7 +435,7 @@ class Core:
                     require(any(v["id"] == body.get("version_id") and v["seq"] >= member["read_start_seq"] for v in artifact["versions"]), "not_found", 404)
                     artifact["adopted"] = body["version_id"]
                 else:
-                    require(set(body) <= {"generation", "membership_revision", "expected_revision", "text", "sources", "caption"}, "invalid_artifact_fields", 422)
+                    require(set(body) <= {"generation", "membership_revision", "expected_revision", "text", "sources", "caption", "session_id"}, "invalid_artifact_fields", 422)
                     text = body.get("text")
                     require(isinstance(text, str) and 1 <= len(text) <= 64000, "text_only", 422)
                     require(isinstance(body.get("sources", []), list) and len(body.get("sources", [])) <= 20, "invalid_sources", 422)
@@ -474,7 +491,7 @@ class Core:
                 pass
         return members, digest([actor["id"], actor.get("room_id"), sorted(actor["scopes"]), members])
 
-    def events(self, token, cursor=None, wait_seconds=0, rebase=False, target_room=None):
+    def events(self, token, cursor=None, wait_seconds=0, rebase=False, target_room=None, session_id=None):
         require(0 <= wait_seconds <= 10, "invalid_wait", 422)
         end = time.monotonic() + wait_seconds
         with self.store.listener() as wait:
@@ -484,11 +501,18 @@ class Core:
                     require(target_room in rooms, "not_found", 404)
                     authorize(actor, rooms[target_room], "room:read")
                     rooms = {target_room: rooms[target_room]}
+                if session_id is not None:
+                    require(target_room is not None, 'invalid_cursor_view')
+                    r = rooms[target_room]
+                    m = authorize(actor, r, 'room:read')
+                    bound_session(token, {'session_id': session_id, 'generation': r['generation'], 'membership_revision': m['revision']}, r, m)
                 members, revision = self.scope(actor, rooms)
                 old = self.store.cursor(cursor) if cursor else None
                 require(not cursor or old is not None or rebase, "cursor_gap", 410)
                 require(not old or old["principal"] == actor["id"], "invalid_cursor", 403)
                 require(not old or old.get("view", "inbox") == (target_room or "inbox"), "invalid_cursor_view")
+                require(not session_id or not old or (old.get('participation_session') == session_id
+                        and old.get('_credential_binding') == token_hash(token)), 'invalid_cursor', 403)
                 require(rebase or not old or old["scope"] == revision, "cursor_scope_changed")
                 offsets = {}
                 gaps = []
@@ -518,17 +542,23 @@ class Core:
                     require(target_room in latest_rooms, "not_found", 404)
                     authorize(latest_actor, latest_rooms[target_room], "room:read")
                     latest_rooms = {target_room: latest_rooms[target_room]}
+                    if session_id is not None:
+                        r = latest_rooms[target_room]
+                        m = authorize(latest_actor, r, 'room:read')
+                        bound_session(token, {'session_id': session_id, 'generation': r['generation'], 'membership_revision': m['revision']}, r, m)
                 require(self.scope(latest_actor, latest_rooms)[1] == revision, "cursor_scope_changed")
                 if events or time.monotonic() >= end or rebase:
                     payload = {"principal": actor["id"], "scope": revision, "view": target_room or "inbox", "offsets": offsets,
                                "epochs": {r: m["epoch"] for r, m in members.items()}, "rotation": rotation + 1}
+                    if session_id is not None:
+                        payload.update(participation_session=session_id, _credential_binding=token_hash(token))
                     next_cursor = ident()
                     self.store.save_cursor(next_cursor, payload)
                     return {"events": events, "next_cursor": next_cursor, "membership_set_revision": revision, "gaps": gaps,
                             "rooms": [public_room(rooms[r], actor) for r in members] if rebase else []}
                 wait(min(0.25, max(0, end - time.monotonic())))
 
-    def room_snapshot(self, token, room_id):
+    def room_snapshot(self, token, room_id, session_id=None):
         actor, rooms, principals = self.store.snapshot(token)
         require(room_id in rooms, "not_found", 404)
         room = rooms[room_id]
@@ -538,9 +568,14 @@ class Core:
         require(room_id in latest_rooms, "not_found", 404)
         authorize(latest_actor, latest_rooms[room_id], "room:read")
         require(self.scope(latest_actor, {room_id: latest_rooms[room_id]})[1] == revision, "cursor_scope_changed")
+        if session_id is not None:
+            latest = latest_rooms[room_id]
+            m = authorize(latest_actor, latest, 'room:read')
+            bound_session(token, {'session_id': session_id, 'generation': latest['generation'], 'membership_revision': m['revision']}, latest, m)
         cursor = ident()
         self.store.save_cursor(cursor, {"principal": actor["id"], "scope": revision, "view": room_id,
-                                       "offsets": {room_id: room["last_seq"]}, "epochs": {room_id: member["epoch"]}, "rotation": 0})
+                                        "offsets": {room_id: room["last_seq"]}, "epochs": {room_id: member["epoch"]}, "rotation": 0,
+                                        **({'participation_session': session_id, '_credential_binding': token_hash(token)} if session_id is not None else {})})
         return {"room": public_room(room, actor, principals), "snapshot_cursor": cursor,
                 "source_event_range": {"from_seq": member["read_start_seq"], "to_seq": room["last_seq"]}}
 

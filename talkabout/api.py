@@ -299,6 +299,10 @@ def create_app(store, start_scheduler=True, allow_fixture_bearer=False, allowed_
             match = re.fullmatch(r"rooms/([a-zA-Z0-9-]+)(?:/(.*))?", path)
             require(match, "not_found", 404)
             room_id, operation = match.groups()
+            if operation in {'participation/join', 'participation/ack'} and method == 'POST':
+                return core.participation(credential, room_id, operation.split('/')[-1], body)
+            if operation == 'notifications' and method == 'GET':
+                return core.notifications(credential, room_id, request.query_params.get('session_id'))
             if operation == "handover/accept" and method == "POST":
                 return core.accept_handover(credential, room_id, key, body)
             if method == "GET":
@@ -307,7 +311,8 @@ def create_app(store, start_scheduler=True, allow_fixture_bearer=False, allowed_
                         wait = float(request.query_params.get("wait_seconds", 0))
                     except ValueError:
                         raise Problem("invalid_wait", 422)
-                    return core.events(credential, request.query_params.get("cursor"), wait, target_room=room_id)
+                    return core.events(credential, request.query_params.get("cursor"), wait, target_room=room_id,
+                                       session_id=request.query_params.get('session_id'))
                 if operation == "snapshot":
                     return core.room_snapshot(credential, room_id)
                 if operation == "stream":
