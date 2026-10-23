@@ -12,6 +12,7 @@ import uvicorn
 
 from talkabout.api import create_app
 from conftest import control
+from mcp_contract import assert_tool_contract
 
 
 def test_mcp_stdio_process_interoperability(fixture,tmp_path):
@@ -51,7 +52,7 @@ def test_mcp_stdio_process_interoperability(fixture,tmp_path):
         initialized=call(1,'initialize',{'protocolVersion':'2025-11-25','capabilities':{},'clientInfo':{'name':'local-synthetic-test-client','version':'1'}})
         assert initialized['result']['protocolVersion']=='2025-11-25'
         process.stdin.write(json.dumps({'jsonrpc':'2.0','method':'notifications/initialized'})+'\n'); process.stdin.flush()
-        assert len(call(2,'tools/list')['result']['tools'])==3
+        assert_tool_contract(call(2,'tools/list')['result']['tools'])
         room=call(3,'tools/call',{'name':'read_room','arguments':{'room_id':rid}})
         assert json.loads(room['result']['content'][0]['text'])['id']==rid
         denied=call(4,'tools/call',{'name':'read_room','arguments':{'room_id':other['id']}})
