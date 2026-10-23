@@ -215,9 +215,22 @@ def test_async_request_errors_sanitized(monkeypatch, kind):
 @pytest.mark.parametrize('kind', ['codex', 'claude', 'grok'])
 def test_timeout_closes_transport_and_sends_cancel_where_supported(monkeypatch, kind):
     adapter, peer = runtime(monkeypatch, kind, 'hold')
-    adapter.timeout = .03
+    # Expire while the fake provider holds a submitted turn. A 30 ms wall clock
+    # can instead expire during startup, when there is no session to cancel.
+    factory = peer.factory
+    def timeout_transport(*args):
+        transport = factory(*args)
+        receive = transport.receive
+        def receive_until_timeout(cancel, deadline):
+            if peer.turns and transport.events.empty():
+                raise AdapterError('runtime_timeout')
+            return receive(cancel, deadline)
+        transport.receive = receive_until_timeout
+        return transport
+    monkeypatch.setattr('talkabout.agent_runtime._JSONLTransport', timeout_transport)
     with pytest.raises(AdapterError, match='runtime_timeout'):
         adapter.run({'room_id': 'room-one'}, threading.Event())
+    assert peer.turns == 1
     assert peer.transports[0].closed
     methods = [e.get('method') for e in peer.transports[0].sent]
     if kind != 'claude':
