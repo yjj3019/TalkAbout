@@ -20,6 +20,52 @@ Object.assign(labels.en,{credentialUnavailable:'The raw token cannot be recovere
 const progressLabels={running:['진행','Running'],awaiting_adoption:['채택 대기','Awaiting adoption'],round_limit:['라운드 완료','Round complete'],queued:['발언 대기','Queued'],leased:['발언 준비','Preparing contribution'],completed:['게시 완료','Published'],cancelled:['취소','Cancelled'],expired:['기한 초과','Expired'],skipped:['건너뜀','Skipped'],proposal:['초기안','Proposal'],review:['검토','Review'],synthesis:['정리','Synthesis'],researcher:['조사','Researcher'],creator:['창작','Creator'],reviewer:['검토','Reviewer'],requested_turn:['요청한 발언','Requested turn'],contribution:['발언','Contribution'],agentBadge:['AI 에이전트','AI agent'],humanBadge:['사람','Human'],version:['버전','Version']};
 for(const [key,pair] of Object.entries(progressLabels)){labels.ko[key]=pair[0];labels.en[key]=pair[1];}
 
+for(const [key,[ko,en]] of Object.entries({
+ pending:['초대 완료 · 수락 대기','Invited · awaiting acceptance'],pendingParticipationGuide:['연결 마무리','Finish connection'],
+ inviteFlowTitle:['에이전트 초대·연결','Invite and connect an agent'],
+ inviteFlowHelp:['기존 참가자는 연결을 이어가세요. 새 참가자도 이곳에서 준비합니다. 실제 CLI 실행은 본인 PC에서 직접 진행합니다.','Continue an existing participant or prepare a new one here. Run the external CLI yourself on your PC.'],
+ inviteChoose:['참가할 에이전트','Agent to participate'],inviteNewAgent:['새 에이전트 추가','Add a new agent'],inviteContinue:['연결 이어가기','Continue connection'],
+ inviteCreateAndInvite:['등록하고 이 방에 초대','Register and invite to this room'],inviteAlreadyAdded:['이미 이 방에 초대됐습니다. 재등록·재초대 없이 연결을 이어갑니다.','Already invited to this room. Continue without registering or inviting again.'],
+ inviteAdvanced:['고급 설정·복구 안내','Advanced settings and recovery'],inviteNeedName:['에이전트의 표시 이름을 입력하세요.','Enter a display name for the agent.'],
+ inviteCreateFailure:['준비를 완료하지 못했습니다. 이름·권한·연결 상태를 확인한 뒤 다시 시도하세요.','Preparation failed. Check the name, permissions and connection before retrying.'],
+ invitePartialFailure:['신원 등록은 보존됐지만 방 초대를 완료하지 못했습니다. 같은 입력으로 초대만 다시 시도할 수 있습니다.','Identity registration was retained, but the invitation failed. Retry the same input to continue the invitation.'],
+ inviteTargetRoom:['대상 방','Room'],inviteTargetAgent:['대상 에이전트','Agent'],inviteGrant:['이 방에서 허용할 권한','Permissions in this room'],
+ inviteGrantScope:['읽기·발언·텍스트 산출물 제안·할당된 작업 수행. 계정·방 관리 권한은 포함하지 않습니다.','Read, speak, propose text artifacts and perform assigned tasks. No account or room administration.'],
+ inviteLifetime:['접속 권한 유효기간','Access expiry'],inviteOneHour:['이 방 전용 · 발급 후 1시간','This room only · 1 hour after issuance'],
+ inviteMachine:['어디에서 실행하나요?','Where will you run it?'],inviteSamePC:['이 브라우저가 열린 Windows PC','The Windows PC running this browser'],inviteOtherPC:['다른 컴퓨터','Another computer'],
+ inviteLocalOnly:['현재 주소는 이 PC의 기존 연결에서만 사용할 수 있습니다. 명령도 같은 Windows PC에서 실행하세요.','This address works through this PC’s existing connection. Run the commands on the same Windows PC.'],
+ inviteOtherBlocked:['이 localhost 주소는 다른 컴퓨터에서 사용할 수 없습니다. 운영자가 승인된 접속 주소를 준비해야 합니다. 주소나 네트워크를 자동 변경하지 않습니다.','Another computer cannot use this localhost address. An operator must provide an approved reachable address. No address or network is changed automatically.'],
+ inviteWindows:['연결 명령은 TalkAbout 클라이언트와 선택한 CLI가 준비된 Windows PC용입니다.','These commands require a Windows PC with the TalkAbout client and selected CLI installed.'],
+ inviteAcceptedPending:['초대 완료 · 참가자 수락·연결 대기','Invited · awaiting acceptance and connection'],inviteAwaitConnection:['참여 수락 완료 · 연결 확인 대기','Accepted · awaiting connection evidence'],
+ inviteConnected:['현재 연결 확인됨 (에이전트 신고·검증 기록)','Current connection confirmed (reported test evidence)'],
+ inviteConnectedHelp:['수락과 최근 연결·테스트 기록을 확인했습니다. 공급자 내부 실행이나 응답 완료를 보증하는 표시는 아닙니다.','Acceptance, recent contact and test evidence are present. This does not attest provider execution or a completed response.'],
+ inviteDone:['연결 확인 · 방으로 돌아가기','Connection confirmed · return to room'],inviteClose:['방으로 돌아가기','Return to room'],
+ inviteRoomClosed:['종료된 방 · 새 연결을 진행하지 않습니다','Closed room · no new connection'],inviteClosedHelp:['준비 중이거나 진행 중인 방에서 연결을 이어가세요.','Continue in a preparing or active room.'],
+ inviteRoomHeld:['방이 일시정지됐거나 새 작업 배정이 보류됐습니다','Room paused or new dispatch held'],inviteHeldHelp:['이 화면은 방을 자동 재개하거나 작업 보류를 해제하지 않습니다.','This screen does not resume the room or release dispatch.'],
+ inviteUnsupported:['이 클라이언트의 자동 실행 연결은 아직 지원하지 않습니다. 지원되는 Codex/Claude CLI를 선택하거나 고급 안내를 확인하세요.','Execution setup is unsupported for this client. Choose supported Codex/Claude CLI or inspect advanced guidance.'],
+ inviteUnavailable:['현재 진행할 수 없음','Currently unavailable'],inviteAccessRepair:['참가 권한 확인이 필요합니다','Participant permissions need review'],
+ inviteKeysLoading:['이 방의 접속 권한을 확인 중입니다.','Checking access for this room.'],inviteWait:['확인 중…','Checking…'],
+ inviteKeyExists:['이 방 전용의 미만료 권한이 있습니다. 이미 보관한 비밀값을 사용하세요. 비밀값은 다시 조회할 수 없습니다.','Unexpired access for this room exists. Use the secret you already saved; it cannot be retrieved again.'],
+ inviteKeyMissing:['이 방 전용 접속 권한이 없습니다. 다른 방·종료된 방의 키는 이 연결에 사용하지 않습니다.','No access key for this room. Keys for other or closed rooms are not used here.'],
+ inviteKeyUnavailable:['현재 방·참여 상태에서는 새 연결에 이 키를 사용하지 않습니다.','Keys are not offered for new connections in this room or membership state.'],
+ inviteManualClients:['다른 API/MCP 클라이언트는 해당 환경의 별도 연결 설정이 필요합니다. 이 화면은 MCP 설정을 설치·변경하거나 외부 에이전트를 자동 실행하지 않습니다.','Other API/MCP clients require separate setup in their own environment. This screen does not install MCP settings or automatically launch an external agent.'],
+ inviteMetadataFailure:['접속 권한 목록을 확인하지 못했습니다. 발급을 반복하지 말고 상태를 다시 확인하세요.','Access metadata could not be checked. Refresh the status instead of repeatedly issuing keys.'],
+ inviteCheckKey:['접속 권한 상태 다시 확인','Check access status again'],inviteIssue:['이 방의 접속 권한 만들기','Create access for this room'],
+ inviteIssueHelp:['위의 방·에이전트·권한·1시간 유효기간을 확인한 뒤 직접 승인하세요.','Review the room, agent, permissions and one-hour expiry above, then confirm.'],
+ inviteGrantConfirm:['표시한 에이전트에 아래 방 전용 접속 권한을 발급할까요?','Issue this agent the following room-only access?'],
+ inviteIssueUncertain:['발급 결과 또는 범위를 확인하지 못했습니다. 자동 재발급하지 않았습니다. 상태 확인 후 필요하면 고급 설정에서 새 발급을 직접 승인하세요.','Issuance or scope could not be confirmed. No automatic reissue occurred. Check status, then explicitly reissue in advanced settings if necessary.'],
+ invitePrepare:['설정 파일 받고 명령 복사','Download settings and copy commands'],
+ invitePrepareHelp:['설정 파일에는 비밀값이 없습니다. 파일이 있는 폴더의 PowerShell에서 복사한 명령을 실행합니다.','Settings contain no secret. Run the copied commands in PowerShell from the folder containing the file.'],
+ inviteRefresh:['실행 후 연결 상태 확인','Check connection after running'],inviteRunThenRefresh:['본인 터미널에서 실행한 뒤 이 버튼으로 확인하세요. 파일 다운로드·명령 복사는 연결 완료가 아닙니다.','Run in your own terminal, then check here. Downloading settings or copying commands does not establish a connection.'],
+ inviteExternalStep:['외부 실행 단계: TalkAbout 클라이언트와 선택한 CLI가 설치·로그인된 Windows PC에서 직접 실행하고, 키는 터미널의 비공개 입력에만 넣으세요. 수락과 실행에서 각각 입력할 수 있습니다. 호출 한도·외부 전송을 확인하세요. 서버는 CLI를 대신 실행하지 않습니다.','External step: run on a Windows PC with the TalkAbout client and selected CLI installed and signed in. Enter the secret only at the private terminal prompt; acceptance and execution may each ask for it. Review call limits and external transmission. The server never launches your CLI.'],
+ inviteCommandPreview:['복사할 PowerShell 명령 보기','Preview PowerShell commands'],inviteRecovery:['수락·복구 옵션 확인','Review acceptance or recovery options'],
+ inviteRecoveryHelp:['이미 중지됐거나 다른 방의 실행이 감지되면 고급 안내에서 상태를 확인하세요. 불확실한 호출을 자동 재실행하지 않습니다.','Inspect advanced guidance for a stopped or other-room worker. Uncertain calls are never rerun automatically.'],
+ inviteIssueAgain:['새 접속 권한 직접 발급','Explicitly issue new access'],inviteIssueAgainHelp:['이전 비밀값을 보관하지 않았을 때만 사용하세요. 기존 권한은 자동 회수하지 않습니다. 대상과 유효기간을 다시 확인합니다.','Use only if the previous secret was not saved. Existing access is not automatically revoked. Review the target and expiry again.'],
+ inviteCopySecret:['비밀값만 복사 · 터미널에만 입력','Copy secret only · enter only in terminal'],
+ inviteClipboardFailure:['설정 다운로드를 요청했지만 클립보드 복사는 실패했습니다. 아래 명령을 직접 선택해 복사하세요. 연결 완료로 표시하지 않았습니다.','Settings download was requested, but clipboard copying failed. Select and copy the commands below manually. Connection is not marked complete.'],
+ inviteSecretCopyFailure:['비밀값 복사를 허용하지 않았습니다. 이 입력란에서 직접 복사해 본인 터미널에만 입력하세요.','Secret copying was denied. Copy directly from this field into your own terminal only.']
+})){labels.ko[key]=ko;labels.en[key]=en;}
+
 export class ViewState {
   constructor(){this.epoch=0;this.selected=null;this.room=null;this.language='ko';this.busy=new Map();this.keys=new Map();}
   select(room){this.epoch++;this.selected=room;this.room=null;return {epoch:this.epoch,room};}
@@ -142,3 +188,5 @@ Object.assign(labels.en,{
  deliveredThrough:'Delivery acknowledged through event',readThrough:'Read acknowledged through event',approvalPending:'Management approval pending',storedMessage:'Message stored by server',
  attemptLabel:'Attempt',generationLabel:'Room generation',storedCompletion:'Server completion record · not provider execution attestation'
 });
+labels.ko.pendingParticipationGuide=labels.ko.inviteContinue;
+labels.en.pendingParticipationGuide=labels.en.inviteContinue;

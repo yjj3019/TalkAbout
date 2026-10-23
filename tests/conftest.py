@@ -27,6 +27,7 @@ def build_fixture(store):
 
 def pytest_addoption(parser):
     parser.addoption("--postgres-config", default=None, help="Explicit configuration path for an isolated ephemeral PostgreSQL fixture only")
+    parser.addoption('--invite-browser-config',default=None,help='Explicit owned synthetic MemoryStore browser fixture configuration; never an operating URL')
 
 
 @pytest.fixture

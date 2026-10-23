@@ -39,7 +39,7 @@ def test_beginner_register_invite_acceptance_guide_reload(tmp_path,language,widt
                 rid=page.request.get(base+'/api/v1/rooms').json()[0]['id']
                 page.locator('#connection-room').select_option(rid);page.locator('#journey-next').click()
                 page.locator('#invite-agent-id').select_option(label='Synthetic Beginner @synthetic-beginner');page.locator('#invite-agent button[type=submit]').click()
-                pw.expect(page.locator('#members')).to_contain_text('Invited' if language=='en' else '초대 대기')
+                pw.expect(page.locator('#members')).to_contain_text('Invited' if language=='en' else '초대 완료 · 수락 대기')
                 page.locator('#nav-agents').click();page.locator('#agents-list button').first.click()
                 page.locator('#connection-room').select_option(rid)
                 pw.expect(page.locator('#journey-status')).to_contain_text('Invitation pending' if language=='en' else '초대대기')

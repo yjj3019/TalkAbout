@@ -7,9 +7,9 @@ const source=readFileSync(new URL('../talkabout/web/app.mjs',import.meta.url),'u
 async function harness(){
  const nodes=new Map(),calls=[],timeouts=[],listeners={};let resolve;
  const held=new Promise(done=>{resolve=done;});
- function node(id){if(!nodes.has(id))nodes.set(id,{value:'',type:'password',textContent:'',hidden:false,open:false,replaceChildren(){},close(){this.open=false;},showModal(){this.open=true;},querySelector(){return node(id+'-button');}});return nodes.get(id);}
+ function node(id){if(!nodes.has(id))nodes.set(id,{value:'',type:'password',textContent:'',hidden:false,open:false,append(){},replaceChildren(){},close(){this.open=false;},showModal(){this.open=true;},querySelector(){return node(id+'-button');}});return nodes.get(id);}
  const context=vm.createContext({ViewState,labels,crypto:globalThis.crypto,AbortController,URLSearchParams,confirm:()=>true,
-  document:{getElementById:node,documentElement:{},querySelectorAll:()=>[]},window:{setInterval:()=>1,clearInterval(){},clearTimeout(){},setTimeout:fn=>{timeouts.push(fn);return timeouts.length;},addEventListener:(name,fn)=>{listeners[name]=fn;}},
+  document:{getElementById:node,createElement:()=>node('synthetic-created-'+nodes.size),documentElement:{},querySelectorAll:()=>[]},window:{setInterval:()=>1,clearInterval(){},clearTimeout(){},setTimeout:fn=>{timeouts.push(fn);return timeouts.length;},addEventListener:(name,fn)=>{listeners[name]=fn;}},
   location:{search:'',origin:'http://127.0.0.1:18081'},history:{pushState(){},replaceState(){}},
   fetch:async(url,options)=>{calls.push({url,options});if(url.endsWith('setup/status'))return{ok:true,json:async()=>({setup_required:true})};if(url.endsWith('setup/csrf'))return{ok:true,json:async()=>({csrf_token:'synthetic-csrf'})};if(url.endsWith('/credentials'))return held;return{ok:false,status:401};}});
  vm.runInContext(source,context);await new Promise(setImmediate);

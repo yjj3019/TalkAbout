@@ -126,7 +126,7 @@ for(const language of ['ko','en'])test('co-creation readiness and room guide req
  const h=await harness();h.run(`view.language='${language}';room={id:'room',mode:'co_creation',effective_permissions:['room:control','room:approve'],members:{}};room.members[agents[0].id]={kind:'agent',status:'active',permissions:participantPermissions.filter(p=>p!=='room:contribute'),connection:{runtime:'synthetic',state:'idle',execution_evidence:'synthetic_test_only',last_seen_at:Date.now()/1000}};`);
  assert.equal(h.run('allParticipantsReady(room)'),false);assert.equal(h.run('startReadiness(room)'),'startNeedParticipantPermissions');assert.ok(labels[language].startNeedParticipantPermissions.includes('room:contribute'));
  h.run('showOnboarding(room,agents[0]);');assert.ok(h.node('onboarding-commands').textContent.includes(labels[language].roomMembershipRepair));assert.ok(!h.node('onboarding-commands').textContent.includes('cli connect'));
- h.run("room.members[agents[0].id].permissions.push('room:contribute');");assert.equal(h.run('allParticipantsReady(room)'),true);h.run('showOnboarding(room,agents[0]);');assert.match(h.node('onboarding-commands').textContent,/cli connect/);
+ h.run("room.members[agents[0].id].permissions.push('room:contribute');");assert.equal(h.run('allParticipantsReady(room)'),true);h.run('showOnboarding(room,agents[0]);');assert.match(h.node('onboarding-commands').textContent,/cli join/);assert.equal(h.node('onboarding-action').value,'');assert.ok(!h.node('onboarding-commands').textContent.includes('cli connect'));
 });
 
 test('stopped journal cannot be given a known-invalid fresh-start command',async()=>{
