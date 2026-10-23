@@ -1,0 +1,31 @@
+{
+  "reviewed_local_head": "bd1b07d3836c9bd2451b597e8805d1bb14ce4021",
+  "scope": "Local synthetic validation; no actual provider retry or deployment",
+  "safe_python_contracts": {"passed": 602, "failed": 0, "postgres_cases_run_separately": 18, "posix_not_run": 1},
+  "synthetic_ui_contracts": {"passed": 167, "failed": 0},
+  "isolated_postgres": {"version": "18.6", "passed": 18, "failed": 0},
+  "postgres_server_restart": {
+    "scenarios_passed": 1,
+    "method": "Owned temporary cluster terminated and restarted over the same data; fsync on; WAL recovery observed",
+    "verified": ["session and read watermark", "retired UUID fencing", "dispatch hold and existing lease", "approval rollback and audit replay", "synthetic uncertain journal without model replay", "saved result replay after lost response"],
+    "not_browser_to_postgres_e2e": true
+  },
+  "real_chrome_synthetic_http_component": {"passed": 1, "not_live_api_e2e": true},
+  "real_browser_server_readiness": {
+    "passed": 2,
+    "languages": ["ko", "en"],
+    "storage": "Fresh synthetic MemoryStore",
+    "http_mocked": false,
+    "original_guard_unchanged_and_applied_in_server_children": true,
+    "credential_runtime_check_control_posts": 0,
+    "verified": ["fixture login", "synthetic agent registration", "room invitation", "participation instructions", "reload preserves pending membership", "desktop and mobile layout"]
+  },
+  "classification_correction": "Readiness host/port startup passed under the unchanged guard. Earlier blanket exclusion based on the prebound-sockets metadata path did not establish a browser failure.",
+  "remaining": ["MCP prebound-sockets integration", "HTTP/PostgreSQL prebound-sockets integration", "other community and attachment browser scenarios", "real POSIX containment", "actual provider and external-runtime PoC", "browser-to-PostgreSQL E2E"],
+  "intermediate_failure": "One unchanged CLI wall-clock assertion exceeded its limit once; fixed baseline, isolated current checks and final aggregate passed. Root cause remains unconfirmed; threshold and guard were unchanged.",
+  "original_private_evidence": "Retained locally; raw logs, databases, journals and screenshots are not included",
+  "actual_provider_calls_in_followup": 0,
+  "new_actual_credentials_in_followup": 0,
+  "production_changes": 0,
+  "ci_scope": "Guarded Windows Python contracts and Node synthetic DOM only; separate local PostgreSQL and browser results are not CI claims"
+}
