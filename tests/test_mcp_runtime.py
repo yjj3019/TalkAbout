@@ -9,6 +9,7 @@ from talkabout.mcp import MCPServer
 from talkabout.runtime import RuntimeTimeout, bounded_call, validate_adapter_policy
 from talkabout.worker import Journal, SyntheticRuntime, Worker
 from conftest import LocalClient
+from mcp_contract import EXPECTED_INPUTS, assert_tool_contract
 
 
 def ready(server):
@@ -23,21 +24,50 @@ def test_mcp_lifecycle_tools_and_no_secret_arguments(fixture):
     assert server.handle({"jsonrpc": "2.0", "id": 0, "method": "tools/list"})["error"]["code"] == -32000
     ready(server)
     tools = server.handle({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})["result"]["tools"]
-    assert {t["name"] for t in tools} == {"list_rooms", "read_room", "propose_text", 'list_invitations',
-        'accept_invitation', 'join_room', 'list_participants', 'poll_room', 'ack_room',
-        'room_notifications', 'claim_turn', 'post_message'}
-    for tool in tools:
-        assert "token" not in tool["inputSchema"]["properties"]
+    assert_tool_contract(tools)
     rejected = server.handle({"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "read_room", "arguments": {"room_id": rid, "token": "fixture-forbidden"}}})
     assert rejected["error"]["code"] == -32602
     result = server.handle({"jsonrpc": "2.0", "id": 4, "method": "tools/call", "params": {"name": "read_room", "arguments": {"room_id": rid}}})
     assert not result["result"]["isError"]
 
 
+@pytest.mark.parametrize('name', EXPECTED_INPUTS)
+def test_mcp_input_contract_rejected_before_api(name):
+    class NoRequests:
+        def __init__(self): self.calls = []
+        def request(self, *args, **kwargs):
+            self.calls.append((args, kwargs))
+            raise AssertionError('invalid MCP input reached API')
+    client = NoRequests()
+    server = MCPServer(client)
+    ready(server)
+    fields, optional = EXPECTED_INPUTS[name]
+    values = {'string': 'fixture-value', 'integer': 1, 'boolean': True}
+    arguments = {key: values[kind] for key, kind in fields.items() if key not in optional}
+    def rejected(args):
+        response = server.handle({'jsonrpc': '2.0', 'id': 3, 'method': 'tools/call',
+                                  'params': {'name': name, 'arguments': args}})
+        assert response['error']['code'] == -32602
+        assert not client.calls
+    # The configured credential supplies identity and authority, never tool input.
+    for injected in ('token', 'actor_id', 'role', 'provider', 'credential_id'):
+        rejected({**arguments, injected: 'fixture-forbidden'})
+    for required in set(fields) - optional:
+        rejected({key: value for key, value in arguments.items() if key != required})
+    for key, kind in fields.items():
+        # bool is an int subclass in Python, but is not an MCP integer.
+        rejected({**arguments, key: True if kind == 'integer' else 1})
+
+
 def test_mcp_scope_pause_idempotency_and_stdio(fixture):
     store, core, rid = fixture
     server = MCPServer(LocalClient(store))
     ready(server)
+    other = core.create('fixture-b', {'topic': 'Private other fixture'}, 'other')
+    for name in ('read_room', 'list_participants'):
+        denied = server.handle({'jsonrpc': '2.0', 'id': 4, 'method': 'tools/call',
+                                'params': {'name': name, 'arguments': {'room_id': other['id']}}})
+        assert denied['result']['isError']
     message = {"jsonrpc": "2.0", "id": 5, "method": "tools/call", "params": {"name": "propose_text", "arguments": {"room_id": rid, "text": "fixture text", "generation": 1, "membership_revision": 2, "client_mutation_id": "fixture-artifact"}}}
     a, b = server.handle(message), server.handle(message)
     assert a["result"] == b["result"] and len(core.read("fixture-a", rid)["artifacts"]) == 1
