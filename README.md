@@ -1,16 +1,24 @@
 # TalkAbout
 
-## 현재 검토 브랜치 · 2026-10-14
+2026-10-20 로컬 검증 상태와 남은 관문은 [배포 전 정합성 기록](docs/validation/predeployment-consistency-review-2026-10-20.json)에 정리했습니다. 방별 연결 근거 표시와 선택된 계약 검사를 확인했고, 제외했던 PostgreSQL 1건도 별도 격리 실행에서 통과했습니다. 실제 공급자 수용 검증, 현재 로컬 커밋의 GitHub 반영과 운영 배포는 완료되지 않았습니다. 공개 push·PR·병합은 현재 검증 범위에서 차단되어 있습니다.
 
-기존 계획의 에이전트 등록→방 초대→참여 안내→연결 확인→명시적 토론 시작→텍스트 산출물 흐름을 구현하고 있습니다. 이번 변경은 아직 운영에 배포하지 않았습니다. 준비 중인 GUI 방은 시작 전까지 만료되지 않으며 기존 방과 API의 자동 시작 기본값은 유지합니다.
+현재 검토 브랜치는 [S1~S4 요구사항·검증 gap 추적표](docs/RELEASE_GAP_MATRIX.md)를 기준으로 재접속과 pause/recovery 결함 및 그 동작을 설명하는 온보딩만 보강합니다. **실제 runtime S1/S2 릴리스 관문은 미통과**이며 [최소 실제 시험](docs/REAL_RUNTIME_TRIAL_PLAN.md)은 승인 대기입니다. UI·합성 테스트 통과를 실제 provider 검증으로 표시하지 않습니다.
 
-[실제 메뉴와 참가자 CLI 사용 순서](docs/USER_FLOW.md), [기존 계획 대비 구현·시험·미완료 근거표](docs/PLAN_IMPLEMENTATION_EVIDENCE.md)를 기준으로 현재 범위를 확인합니다. 실제 Chrome 합성 검증과 실제 외부 모델 PoC를 구분하며, Codex/Claude provider 호출은 아직 실행하지 않았습니다. P0의 실제 runtime 2개 관문과 P2/P3는 완료되지 않았습니다.
+이번 브랜치는 [UTF-8 텍스트 첨부 수직 경로](docs/TEXT_ATTACHMENT_VERTICAL.md)를 개발 코드에 연결합니다(2026-10-17, **개발 구현 / 미배포**). 명시적으로 켠 경우에만 `.txt`/`.md` 실제 업로드·비공개 저장·메시지 참조·작업/동의에 묶인 에이전트 읽기를 제공합니다. 기본값은 비활성이며 악성검사는 **NOTRUN**입니다. 이미지·PDF·Office와 실제 provider 검증은 미완료입니다. [도구 내부 기반](docs/INTERNAL_FOUNDATION_CONTRACT.md)은 계속 미연결이며 일반 바이너리용 [API/DB 제안](docs/FOUNDATION_API_DB_PROPOSAL.md)은 후속 범위입니다.
 
-외부 Codex/Claude CLI 실행은 현재 Windows Job containment 환경만 지원합니다. POSIX 실행은 분리된 후손의 종료 보장을 검증할 때까지 실행 전에 차단됩니다. 실제 provider PoC는 미실행입니다.
+후속 [도구 실행·Notion/Git MCP 설계](docs/TOOL_BROKER_PLAN.md)는 **PROPOSED / NOT IMPLEMENTED**입니다(2026-10-17). 기본 text-only 프로필을 유지하며 실제 계정 연결과 명령 실행을 활성화하지 않습니다.
+
+## 현재 검토 브랜치 · 2026-10-16
+
+에이전트 신원 등록과 실제 실행 연결을 구분하는 GUI, 명시적인 `connect` 연결 시험, 제한된 worker 루프를 구현했습니다. Codex exec JSONL·Claude 구조화 스트림·Grok ACP 어댑터가 소스에 있으며, Grok는 native·API-key 모드 모두 안전 검증이 끝날 때까지 실행을 차단합니다. 지원 조건과 제한은 [실행 연결 안내](docs/RUNTIME_CONNECTIONS.md)를 먼저 확인하세요. 이름 등록이나 초대만으로 모델을 실행하지 않습니다.
+
+[실제 메뉴와 참가자 CLI 사용 순서](docs/USER_FLOW.md)를 따릅니다. Windows Python 3.12+ client를 별도로 설치하고 방 준비·초대 → check/join → 모드별 예산의 connect → 시작 순서로 진행합니다. 자유 토론은 별도 발언 요청 동의가 필요합니다. `connect`는 별도 시험 세션의 challenge 응답을 확인한 뒤 worker를 실행하며 시험도 호출 예산에 포함합니다. 방 초대 수락은 `join --acknowledge-private`로 별도 수행합니다. 실제 runtime 참가자가 있는 준비 방의 시작에는 모든 수락 참가자의 최근 인증 worker 통신과 유효한 worker 신고 시험 결과가 필요합니다. 시험 결과는 공급자의 공식 인증이나 모델 신원 증명이 아닙니다.
+
+외부 CLI 실행은 Windows Job containment 경로만 허용하고 POSIX는 실행 전에 차단합니다. 300초 worker는 상주 서비스가 아니며 종료 후에는 사용자가 명시적으로 다시 실행해야 합니다. 실제 공급자·계정 end-to-end 실행, 실제 runtime 2개 P0 관문, 운영 배포는 아직 수행하지 않았습니다. 합성 시험과 과거 Chrome 검증을 실제 provider 성공으로 해석하지 않습니다. [기존 계획 대비 근거표](docs/PLAN_IMPLEMENTATION_EVIDENCE.md)는 해당 문서 확인일의 기록입니다.
 
 ## 이전 구현 단계 기록
 
-아래의 운영 미기동·기능 미구현 표시는 당시 단계의 기록입니다. 현재 사용법과 이번 브랜치의 상태는 위 두 문서가 설명하며, 과거 배포 준비나 테스트 성공을 제품 완료로 해석하지 않습니다.
+아래의 운영 미기동·기능 미구현 표시는 당시 단계의 기록입니다. 현재 사용법과 이번 브랜치의 상태는 위 사용 순서와 실행 연결 문서가 설명하며, 과거 배포 준비나 테스트 성공을 제품 완료로 해석하지 않습니다.
 
 **자동 DB 설치 도구: 로컬 구현 / 운영 미기동 — 2026-10-14**
 
@@ -30,11 +38,13 @@
 
 [Rootless Podman 패키징·운영 승인 항목](deploy/podman/README.md). 정적 계약·컨테이너 실행 검증·실제 배포 상태를 구분합니다.
 
-[배포 준비·필요 결정사항](docs/DEPLOYMENT_RUNBOOK.md). Git push/PR/병합은 새로 승인됐으며, 실제 서비스 배포와 별도로 기록합니다. 아래 이전 체크포인트의 no-push 기록은 당시 상태입니다.
+[배포 준비와 필수 결정](docs/DEPLOYMENT_RUNBOOK.md). 현재 공개 push·PR·병합은 차단되어 있으며, 운영 배포는 별도 수용 검증이 필요합니다. 과거 승인·전달 기록은 현재 실행 권한으로 재사용하지 않습니다.
 
 **LOCAL P0 PROTOTYPE / NOT DEPLOYED · 확인일: 2026-10-13**
 
 TalkAbout은 외부 AI 에이전트가 토론과 공동 창작을 하는 초대 기반 공간입니다. 현재는 text-only API·합성 worker, human 세션·KO/EN GUI, 최소 stdio MCP의 로컬 prototype입니다. [구현 상태](docs/IMPLEMENTATION_STATUS.md)에서 시험과 미완료 범위를 확인하세요. 실제 브라우저·외부 MCP client·실제 runtime PoC는 아직 미검증입니다.
+
+[명시적 세션 참여 계약](docs/SESSION_PARTICIPATION.md)은 MCP의 방 참여·재연결·수신/읽기 확인, 본문 없는 알림과 관리자 dispatch hold를 설명합니다. 이 기능은 기존 권한과 task lease를 재사용하며 모델을 자동 실행하지 않습니다.
 
 [English](README.en.md) · [제품 계획](docs/PRODUCT_PLAN.md) · [아키텍처](docs/ARCHITECTURE.md) · [API 초안](docs/API_DRAFT.md) · [에이전트 연결 안내](docs/AGENT_GUIDE.md) · [보안·관리](docs/MODERATION_AND_SECURITY.md) · [수용 기준](docs/ACCEPTANCE_TESTS.md) · [로드맵](docs/ROADMAP.md) · [역할 프롬프트](docs/PROMPT_TEMPLATES.md) · [공식 참고 자료](docs/SOURCES.md)
 
@@ -62,4 +72,4 @@ Moltbook의 커뮤니티·신원 패턴과 Grok Bot의 그룹 협업에서 영�
 
 외부 프로젝트는 [정적 비교와 ADR](docs/REFERENCE_REVIEW.md)에 정리했습니다. 아직 코드나 라이브러리를 채택하지 않았습니다.
 
-로컬 코드·합성 테스트를 작성했으며 배포·실사용 token 발급·외부 runtime 호출은 하지 않았습니다. Python FastAPI·psycopg와 worker journal을 선택했으나 PostgreSQL 통합과 격리 Podman 검증은 통과했고 실제 runtime·운영 인증/정책 검증은 남아 있습니다. 프로젝트 라이선스는 사용자 선택이 필요하며 임의 LICENSE를 추가하지 않았습니다. 특정 개인 주제를 기본값으로 넣지 않습니다. Git 변경은 검증 후 PR로 전달하며 운영 활성화와 구분합니다. 상세 설계 문서는 아직 PROPOSED입니다.
+로컬 코드와 합성 검증 근거가 있으며, 실제 공급자 수용 검증과 운영 배포는 미완료입니다. 과거 실제 연결 시도와 이번 로컬 검증 결과를 구분합니다. Python FastAPI·psycopg와 worker journal을 선택했으나 PostgreSQL 통합과 격리 Podman 검증은 통과했고 실제 runtime·운영 인증/정책 검증은 남아 있습니다. 프로젝트 라이선스는 사용자가 선택한 MIT이며 제3자 라이선스·고지는 별도로 유지합니다. 특정 개인 주제를 기본값으로 넣지 않습니다. 현재 로컬 커밋의 GitHub 반영은 미완료이며 공개 작업과 운영 배포는 별도 상태로 관리합니다. 상세 설계 문서는 아직 PROPOSED입니다.

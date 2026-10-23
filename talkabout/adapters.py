@@ -21,7 +21,10 @@ def child_environment(blocked_names=(), blocked_values=()):
     allowed = {'PATH', 'SystemRoot', 'WINDIR', 'COMSPEC', 'PATHEXT', 'HOME', 'USERPROFILE',
                'APPDATA', 'LOCALAPPDATA', 'TEMP', 'TMP', 'LANG', 'LC_ALL',
                'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'CODEX_HOME'}
-    return {key: value for key, value in os.environ.items() if key in allowed and key not in blocked_names and value not in blocked_values}
+    allowed = {key.upper() for key in allowed}
+    blocked = {str(key).upper() for key in blocked_names}
+    return {key: value for key, value in os.environ.items()
+            if key.upper() in allowed and key.upper() not in blocked and value not in blocked_values}
 
 
 def execute_bounded(command, prompt, cancel, timeout=30, blocked_names=(), blocked_values=(), supervisor=None, run_deadline=None):

@@ -1,0 +1,155 @@
+{
+  "reviewed": "2026-10-20",
+  "tested_head": "501d7839e75cc0be8c08d9063eb340c2e91ef360",
+  "scope": "Resolve sixteen PostgreSQL NOTRUN cases and classify the remaining eight gaps; no production or test changes.",
+  "prior_approved_fixture_method": {
+    "reference": "docs/validation/journey-postgres-review-2026-10-20.json",
+    "existing_test_binaries": true,
+    "new_installs": 0,
+    "fresh_owned_data_directory": true,
+    "old_fixture_directories_reused": false,
+    "operating_database_access": false,
+    "ownership_checks": [
+      "server PID",
+      "postmaster data directory",
+      "port",
+      "SQL data_directory",
+      "listen_addresses=127.0.0.1"
+    ],
+    "fsync": "on (verified by SQL; no no-sync or durability override)",
+    "init_timeout_seconds": 180,
+    "test_timeout_seconds": 240,
+    "authentication": "Same prior synthetic fixture bootstrap method in the new owned cluster only; existing authentication and system security settings unchanged.",
+    "fixture_mutations": "Existing tests create synthetic principals, credentials, sessions and one restricted test role inside the newly owned cluster; no actual service credential is issued and no credential value is recorded here.",
+    "preservation": "No operating database, existing room/user, recovery image, old fixture directory or uncertain-call record was accessed or modified. Newly owned cluster files and logs retained; fixture-owned UUID schemas follow existing per-test teardown."
+  },
+  "postgres_run": {
+    "run_id": "cleanup-postgres-ae310f09bea846dbac74e2345a20a151",
+    "server_version": "18.6",
+    "passed": 16,
+    "failed": 0,
+    "skipped": 0,
+    "exit": 0,
+    "runner_seconds": 194.876,
+    "case_ids": [
+      "tests/test_bounded_retention.py::test_postgres_fixture_retention_is_atomic",
+      "tests/test_community_flow.py::test_postgres_preparation_connection_and_start_persist_without_new_ddl",
+      "tests/test_initial_setup.py::test_postgres_restart_failed_attempts_concurrency_and_transaction",
+      "tests/test_initial_setup.py::test_postgres_persistent_expiry_limit_and_legacy_schema",
+      "tests/test_initial_setup.py::test_postgres_runtime_role_can_setup_without_ddl",
+      "tests/test_modes_handover.py::test_postgres_handover_same_key_concurrency_and_modes",
+      "tests/test_postgres.py::test_postgres_two_rooms_reverse_commit_cursor",
+      "tests/test_postgres.py::test_postgres_same_room_lock_serializes_events",
+      "tests/test_postgres.py::test_postgres_pause_complete_race",
+      "tests/test_postgres.py::test_postgres_revocation_wakes_poll",
+      "tests/test_postgres.py::test_postgres_identity_issue_hash_and_replay",
+      "tests/test_postgres.py::test_postgres_artifact_conflict",
+      "tests/test_postgres.py::test_postgres_human_session_identity_and_logout",
+      "tests/test_postgres.py::test_postgres_room_snapshot_limits_cursor_contract",
+      "tests/test_runtime_checks.py::test_postgres_receipt_survives_restart_and_revocation",
+      "tests/test_text_files_api.py::test_postgres_attachment_round_trip_and_migration"
+    ],
+    "init_job_stopped": true,
+    "server_job_stopped": true,
+    "test_job_stopped": true,
+    "owned_root_pids_no_longer_present": true,
+    "cleanup_verification": "All three ManagedProcess Jobs confirmed stopped; direct Get-Process check found none of the owned init/server/test root PIDs. An earlier CIM query was cancelled and its empty output was not used as proof.",
+    "working_tree_clean_during_run": true,
+    "method": "Standard pytest, no JUnit or platform override, unchanged strict offline account/process/network audit guard; owned Windows Jobs for init, server and tests.",
+    "semantics": "Real PostgreSQL persistence, transaction, concurrency, migration, identity, attachment and retention regressions. Tests named restart recreate application Store/Core objects; an actual PostgreSQL server restart or provider reconnect is not established.",
+    "evidence_sha256": {
+      "init.log": "e5658d9a648d5dae9a87a2809cf7e2dd157a8f79c81c76614c551c06802fe1de",
+      "server.log": "f96f8584b8b9c3699483be2171426eec14dd52d47f594d08157263aa8ac07bf7",
+      "python.log": "9bdb54dffa4481cb52f70955086e408dff616d235b3800c4fd7983f8a56e123e",
+      "cases.jsonl": "0e0c7d644c6d24200d8ae1d7809539b7cf99b29e8c2aa55b3f5caf6384e4550e",
+      "ownership.jsonl": "e166a24f2f33e6542f7d13e0f79388b7b61dc9b5331f7e251a711fab5c0f5d21"
+    },
+    "result_sha256": "6944da5300fee890ce8e0e09addf29a1f11a4a1656279777f1248b155a82b1fa"
+  },
+  "remaining_notrun": {
+    "total": 8,
+    "posix": {
+      "count": 1,
+      "case": "tests/test_agent_runtime.py::test_posix_real_launch_fails_closed",
+      "reason": "Explicit skipif(os.name == nt) on this Windows host. No new POSIX environment is authorized; no environment switch or skip bypass was attempted.",
+      "supplemental_only": "The existing mocked unsupported-platform no-launch test passed in the prior aggregate. This does not count as real POSIX execution."
+    },
+    "blocked_paths": {
+      "count": 7,
+      "observed_prior_denial": {
+        "count": 1,
+        "case": "tests/test_mcp_process.py::test_mcp_stdio_process_interoperability",
+        "chain": "Uvicorn Server.startup -> platform.system -> Python win32_ver fallback -> shell OS-version query (cmd.exe /c ver) -> unchanged audit guard raises non_fixture_executable_blocked.",
+        "effect": "Server did not reach started state. This evidence does not independently establish a TalkAbout MCP protocol defect.",
+        "historical_evidence": "process-causality-547a3a12cf3f42b9b62b20b4c75806e9 current console.log; same baseline/current startup failure previously observed."
+      },
+      "shared_path_preventive_exclusions": {
+        "count": 6,
+        "browser_cases": 5,
+        "http_postgres_cases": 1,
+        "reason": "Source inspection shows the same Uvicorn startup path; excluded to avoid repeating the known denied operation. No new per-case denial or execution is claimed.",
+        "source_references": [
+          "tests/browser_fixture_app.py",
+          "tests/test_deployment_readiness.py",
+          "tests/test_mcp_process.py"
+        ]
+      },
+      "case_ids": [
+        "tests/test_browser_community.py::test_browser_register_invite_setup_start_and_text_artifact",
+        "tests/test_browser_readiness.py::test_beginner_register_invite_acceptance_guide_reload[ko-1400]",
+        "tests/test_browser_readiness.py::test_beginner_register_invite_acceptance_guide_reload[en-390]",
+        "tests/test_browser_text_files.py::test_browser_upload_read_reply_view_download_revoke_delete[ko-1400]",
+        "tests/test_browser_text_files.py::test_browser_upload_read_reply_view_download_revoke_delete[en-390]",
+        "tests/test_deployment_readiness.py::test_postgres_real_loopback_health_readiness_and_shutdown",
+        "tests/test_mcp_process.py::test_mcp_stdio_process_interoperability"
+      ],
+      "new_retries": 0,
+      "guard_changes": false,
+      "platform_metadata_prewarming_or_override": false,
+      "classification": "Existing local audit-guard block; no new auto-review denial or pending approval request in this run."
+    }
+  },
+  "combined_coverage": {
+    "method": "Union of separate successful invocations against unchanged production source, not a new single full-suite invocation.",
+    "prior_aggregate_run": "cleanup-aggregate-52411991f91448c1b3febac551081a35",
+    "python": {
+      "passed": 540,
+      "failed": 0,
+      "notrun": 8,
+      "inventory": 548
+    },
+    "node": {
+      "passed": 164,
+      "failed": 0,
+      "notrun": 0,
+      "rerun_in_this_followup": false
+    },
+    "total_passed": 704,
+    "total_failed": 0,
+    "total_notrun": 8,
+    "previous_initial_runner_timeout": "Preserved in prior aggregate record; not repeated and not erased by the successful follow-up."
+  },
+  "new_defects_or_assertion_failures": 0,
+  "production_changes": false,
+  "test_changes": false,
+  "baseline_rerun_needed": false,
+  "source_sha256": {
+    "talkabout/cli.py": "6390ef3870ea3d63a984135613f06f172f07772893731921db47efe4c97a1145",
+    "talkabout/connector.py": "8df5c89903151e9933933e85598cf55bdc783927db93098abd5518322aeed71d",
+    "talkabout/store.py": "791ec5c404ddce13abbad62037bcd81b5f6999af4679d42b99e96a0db7156305",
+    "talkabout/schema.sql": "d2536c0b07ef778efc555b50ef4ee6dd96744be78d133f8e29ede9ee83692499"
+  },
+  "binary_sha256": {
+    "initdb.exe": "d59423ea6106821670ea7289b6d5476feb8741d5fdc8537de25f22dda1f13532",
+    "postgres.exe": "8b8bf5d400487159e3e117053d3f5a89fad0c740b310a3ac69e5720ce4f818e1"
+  },
+  "unchanged_guard_sha256": "2a31c87f994af9054d2ce9c8ac51faaca4942dc69debed166f8d0d841e359ed2",
+  "static_checks": {
+    "json_parse": "passed",
+    "git_diff_check": "passed"
+  },
+  "actual_provider_calls": 0,
+  "new_actual_credentials": 0,
+  "public_push": false,
+  "deployment": false
+}

@@ -1,0 +1,41 @@
+{
+  "reviewed_on": "2026-10-17",
+  "evidence_class": "SYNTHETIC_DOM_AND_REAL_CHROME_FIXTURE_NOT_PROVIDER_SUCCESS",
+  "base": "079340d4afc757463d1886fa0572034db6619da0",
+  "confirmed_defect": {
+    "trigger": "An attachment text request remains pending while the selected room refreshes, including refresh called by SSE room_update.",
+    "call_path": "watchRoom room_update -> refresh -> openRoom(selected,false,false) -> ViewState.select -> read epoch increments",
+    "before": "viewTextFile compared the request's read epoch with the new epoch and discarded an otherwise successful response. It neither opened the dialog nor reported an error, leaving empty text output until the original five-second browser assertion timed out.",
+    "classification": "Application lifecycle-fencing defect. Browser environment timing affected exposure, but a deterministic synthetic DOM reproduction fails without a browser, network or timing sleep. This is not fixed by extending test timeouts."
+  },
+  "minimal_fix": {
+    "scope": "Use the existing selected-room lifecycle epoch, auth epoch and latest-file ticket for preview completion; an ordinary read refresh does not change selected-room scope.",
+    "pending_tracking": "Register a pending file as active before reading, so a refreshed file list that no longer contains it invalidates its ticket even before the response arrives.",
+    "preserved_fences": [
+      "sign-out and replacement sessions",
+      "navigation away and back to the same room",
+      "room access invalidation through clearDetail",
+      "deleted or inaccessible files removed from the current list",
+      "newer file selection replacing an older response"
+    ],
+    "other_changes": "A stale action for a different selected room does not issue a read. Old preview text is cleared when starting a new preview. Late errors cannot overwrite a newer selection.",
+    "authorization": "Server-side object and download ACL checks are unchanged. No new endpoint, permission, automatic execution, provider call or active content preview."
+  },
+  "reproduction": {
+    "node_before_fix": "8 passed, 3 failed: same-room pending read, pending deletion invalidation, stale action HTTP suppression",
+    "chrome_before_fix": "Forced same-room refresh while holding the preview request reproduced the KO attachment output timeout at the original assertion.",
+    "node_after_fix": "All 11 attachment UI tests passed, including route/session and deleted-file fences.",
+    "chrome_after_fix": "KO desktop and EN mobile passed the forced-refresh preview race before adding explicit HTTP-200/body assertions; the final full run verifies those assertions too.",
+    "test_design": "Hold the text request, wait for the room refresh's file-list request (observable render boundary), then release it and require HTTP 200, inert script text display, no script execution, download, consent revoke and deletion. No sleeps, assertion deletion or timeout increase."
+  },
+  "actual_runtime_status": {
+    "historical_failure_cause": "Still unconfirmed because the native stderr was not retained. The independently proven 0.163.0 argv defect was corrected in the parent commit; no real connection retry was made.",
+    "cumulative_native_model_starts": {"codex": 2, "claude": 0},
+    "additional_native_model_starts": 0,
+    "additional_actual_trial_credentials": 0,
+    "original_and_authorized_diagnostic_ledgers": "Both unchanged; stop latches remain set.",
+    "provider_usage": "unknown",
+    "provider_billing": "unknown"
+  },
+  "delivery_policy": "Only after complete Python, Node and Chrome validation plus sensitive-diff review; normal fast-forward push to PR12 branch requires remote head to remain the expected 501fbe1. No main change, merge or deployment."
+}

@@ -42,8 +42,11 @@ def test_slow_preflight_cannot_launch_runtime_after_deadline(fixture, tmp_path):
     client.request = delayed
     journal = Journal(tmp_path/'preflight.sqlite')
     try:
-        worker = Worker(client, journal, runtime, run_deadline=time.monotonic()+.15)
-        with pytest.raises(RunBudgetExceeded): worker.step()
+        # Identity/capability setup is part of preflight too; budget expiry there
+        # is valid and must still prove that no runtime or completion was sent.
+        with pytest.raises(RunBudgetExceeded):
+            worker = Worker(client, journal, runtime, run_deadline=time.monotonic()+.15)
+            worker.step()
         assert runtime.calls == 0
         assert not any(path.endswith('/complete') for _, path in client.calls)
     finally: journal.close()
@@ -90,14 +93,34 @@ def test_runtime_rejects_expired_budget_before_spawn():
     assert runtime.calls == 0
 
 
-def test_cli_run_includes_preflight_in_one_second_budget(fixture, tmp_path, monkeypatch, capsys):
+@pytest.mark.parametrize('preflight_exhausted', [False, True])
+def test_cli_run_includes_preflight_in_one_second_budget(fixture, tmp_path, monkeypatch, capsys, preflight_exhausted):
     import json
+    from types import SimpleNamespace
     from talkabout import cli
+    from talkabout import runtime as runtime_module, worker as worker_module
     store, _, _ = fixture
-    client, runtime = LocalClient(store), DelayedRuntime()
+    class BudgetClock:
+        # Freeze incidental fixture setup cost, then use real elapsed time for
+        # the runtime timeout. The independent wall-clock assertion stays real.
+        now = time.monotonic()
+        running_at = None
+        def monotonic(self):
+            return self.now + (time.monotonic()-self.running_at if self.running_at is not None else 0)
+    clock = BudgetClock()
+    class TimedRuntime(DelayedRuntime):
+        def run(self, context, cancel):
+            clock.running_at = time.monotonic()
+            return super().run(context, cancel)
+    client, runtime = LocalClient(store), TimedRuntime()
+    controlled_time = SimpleNamespace(monotonic=clock.monotonic, time=time.time, sleep=time.sleep)
+    for module in (cli, runtime_module, worker_module):
+        monkeypatch.setattr(module, 'time', controlled_time)
     original = client.request
     def request(method, path, *args, **kwargs):
-        if path == 'agents/me/capabilities': time.sleep(.4)
+        if path == 'agents/me/capabilities':
+            time.sleep(.4)
+            clock.now += 1 if preflight_exhausted else .4
         return original(method, path, *args, **kwargs)
     client.request = request
     client.close = client.http.close
@@ -111,6 +134,7 @@ def test_cli_run_includes_preflight_in_one_second_budget(fixture, tmp_path, monk
     started = time.monotonic()
     cli.main()
     assert time.monotonic()-started < 1.35
-    assert runtime.calls == 1
+    output = capsys.readouterr().out
+    assert runtime.calls == (0 if preflight_exhausted else 1)
+    assert ('run_budget_exhausted' if preflight_exhausted else 'runtime_timeout') in output
     assert not any(path.endswith('/complete') for _, path in client.calls)
-    assert 'runtime_timeout' in capsys.readouterr().out

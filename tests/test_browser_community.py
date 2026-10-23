@@ -13,8 +13,8 @@ from talkabout.worker import APIClient, Journal, SyntheticRuntime, Worker
 
 def test_browser_register_invite_setup_start_and_text_artifact(tmp_path):
     playwright=pytest.importorskip('playwright.sync_api')
-    chrome=Path('C:/Program Files/Google/Chrome/Application/chrome.exe')
-    if not chrome.exists():pytest.skip('Installed isolated Chromium executable unavailable; browser NOTRUN')
+    chrome=Path(os.environ.get('TALKABOUT_TEST_CHROMIUM') or 'C:/Program Files/Google/Chrome/Application/chrome.exe')
+    if not chrome.exists():pytest.skip('Browser NOTRUN: set TALKABOUT_TEST_CHROMIUM for an isolated executable or install test Chrome')
     with socket.socket() as sock:sock.bind(('127.0.0.1',0));port=sock.getsockname()[1]
     base='http://127.0.0.1:'+str(port)
     env={**os.environ,'TALKABOUT_FIXTURE_PORT':str(port)}
@@ -39,11 +39,16 @@ def test_browser_register_invite_setup_start_and_text_artifact(tmp_path):
             shots=Path(__file__).resolve().parents[2]/'release-artifacts';shots.mkdir(exist_ok=True)
             page.goto(base)
             page.locator('#workspace').fill('browser-fixture');page.locator('#username').fill('owner')
-            page.locator('#password').fill('fixture-password-not-real');page.locator('#login button').click()
+            page.locator('#password').fill('fixture-password-not-real')
+            with page.expect_response(lambda response:response.url==base+'/api/v1/session' and response.request.method=='POST') as login_response:
+                page.locator('#login button').click()
+            fixture_csrf=login_response.value.json()['csrf_token']
             page.locator('#dashboard').wait_for(state='visible')
             page.locator('#nav-agents').click();page.locator('#agent-name').fill('Fixture Blue');page.locator('#agent-handle').fill('fixture-blue')
             page.locator('#register-agent button[type=submit]').click()
             playwright.expect(page.locator('#agents-list')).to_contain_text('Fixture Blue')
+            # Registration opens the new connection wizard, without issuing a credential.
+            page.locator('#connection-close').click()
             page.locator('#nav-rooms').click();page.locator('#topic').fill('Synthetic shared text');page.locator('#mode').select_option('co_creation')
             page.locator('#create button').click();page.locator('.room-card',has_text='Synthetic shared text').click()
             playwright.expect(page.locator('#room-state')).to_contain_text('준비 중')
@@ -51,23 +56,52 @@ def test_browser_register_invite_setup_start_and_text_artifact(tmp_path):
             page.locator('#invite-agent-id').select_option(label='Fixture Blue @fixture-blue');page.locator('#invite-agent button[type=submit]').click()
             playwright.expect(page.locator('#members')).to_contain_text('초대 대기')
             page.screenshot(path=str(shots/'community-invitation-ko.png'),full_page=True)
-            participant=page.locator('.member-card',has_text='Fixture Blue')
-            participant.get_by_role('button',name='참여 안내',exact=True).click()
+            participant=page.locator('#members .member-card',has_text='Fixture Blue')
+            # Prepare a missing-scope fixture through the authenticated owner API.
+            room_id=page.evaluate('new URLSearchParams(location.search).get("room")')
+            agent=next(a for a in page.request.get(base+'/api/v1/agents').json() if a['handle']=='fixture-blue')
+            permissions=page.request.get(base+'/api/v1/rooms/'+room_id).json()['members'][agent['id']]['permissions']
+            def set_permissions(scopes):
+                member=page.request.get(base+'/api/v1/rooms/'+room_id).json()['members'][agent['id']]
+                response=page.request.patch(base+'/api/v1/rooms/'+room_id+'/memberships/'+agent['id'],
+                    headers={'Origin':base,'X-CSRF-Token':fixture_csrf,'Idempotency-Key':str(uuid.uuid4())},
+                    data={'expected_revision':member['revision'],'permissions':scopes,'status':'pending'})
+                assert response.status==200
+                with page.expect_response(lambda reply:reply.url==base+'/api/v1/rooms/'+room_id and reply.request.method=='GET'):
+                    page.locator('#refresh').click()
+            set_permissions([p for p in permissions if p!='room:contribute'])
+            participant.get_by_role('button',name='초대 수락·연결 안내 열기',exact=True).click()
+            assert 'cli connect' not in page.locator('#onboarding-commands').inner_text()
+            playwright.expect(page.locator('#onboarding-commands')).to_contain_text('작업 권한')
+            page.locator('#onboarding-close').click();set_permissions(permissions)
+            participant.get_by_role('button',name='초대 수락·연결 안내 열기',exact=True).click()
             assert 'Synthetic shared text' in page.locator('#onboarding-prompt').input_value()
             assert 'TALKABOUT_TOKEN' not in page.locator('#onboarding-prompt').input_value()
             config=page.locator('#onboarding-config').input_value();assert base in config
             playwright.expect(page.get_by_role('dialog',name='이 방의 참여·연결 안내',exact=True)).to_be_visible()
             commands=page.locator('#onboarding-commands').inner_text()
-            assert commands.index('cli run') < commands.index('브라우저 관리 탭')
+            room_id=page.evaluate('new URLSearchParams(location.search).get("room")')
+            expected_commands=[
+                'python -m talkabout.cli check --config agent.local.json --prompt-token',
+                'python -m talkabout.cli join --config agent.local.json --room '+room_id+' --acknowledge-private --prompt-token',
+                'python -m talkabout.cli connect --config agent.local.json --runtime codex --auth-mode native --approve-external --max-model-calls 4 --steps 1000 --max-seconds 300 --prompt-token',
+            ]
+            assert page.locator('#onboarding-action').input_value()=='start'
+            assert [line for line in commands.splitlines() if line.startswith('python -m talkabout.cli ')]==expected_commands
+            assert commands.index('cli connect') < commands.index('브라우저 관리 탭')
             page.locator('#onboarding-commands').scroll_into_view_if_needed()
             page.screenshot(path=str(shots/'community-guide-ko.png'),full_page=True)
             page.locator('#onboarding-close').click();page.locator('#language').click()
-            participant.get_by_role('button',name='Participation guide',exact=True).click()
+            participant.get_by_role('button',name='Open acceptance and connection guide',exact=True).click()
             playwright.expect(page.get_by_role('dialog',name='Room participation and connection',exact=True)).to_be_visible()
+            commands=page.locator('#onboarding-commands').inner_text()
+            assert page.locator('#onboarding-action').input_value()=='start'
+            assert [line for line in commands.splitlines() if line.startswith('python -m talkabout.cli ')]==expected_commands
+            assert commands.index('cli connect') < commands.index('Start discussion in the browser Management tab')
             page.locator('#onboarding-commands').scroll_into_view_if_needed()
             page.screenshot(path=str(shots/'community-guide-en.png'),full_page=True)
             page.locator('#onboarding-close').click();page.locator('#language').click()
-            participant.get_by_role('button',name='참여 안내',exact=True).click()
+            participant.get_by_role('button',name='초대 수락·연결 안내 열기',exact=True).click()
             page.locator('#onboarding-close').click()
             participant.get_by_role('button',name='1시간 토큰 발급',exact=True).click()
             page.locator('#credential-dialog').wait_for(state='visible')
@@ -96,6 +130,23 @@ def test_browser_register_invite_setup_start_and_text_artifact(tmp_path):
                 worker=Worker(client,journal,SyntheticRuntime())
                 for _ in range(3):assert worker.step()=='completed'
             finally:journal.close()
+            client.request('PUT','agents/me/connection',{'runtime':'synthetic','state':'stopped'},str(uuid.uuid4()))
+            page.locator('#refresh').click();page.locator('[data-tab=participants]').click()
+            playwright.expect(participant).to_contain_text('worker 중지')
+            participant.get_by_role('button',name='참여 안내',exact=True).click()
+            assert page.locator('#onboarding-action').input_value()==''
+            commands=page.locator('#onboarding-commands').inner_text()
+            assert 'cli check' in commands and 'cli join' in commands and 'cli connect' not in commands
+            playwright.expect(page.locator('#onboarding-commands')).to_contain_text('--resume-worker')
+            page.locator('#onboarding-action').select_option('start')
+            assert 'cli connect' not in page.locator('#onboarding-commands').inner_text()
+            page.locator('#onboarding-action').select_option('restart')
+            commands=page.locator('#onboarding-commands').inner_text()
+            assert commands.index('cli stop')<commands.index('cli check')<commands.index('cli join')<commands.index('cli connect')
+            assert '--resume-worker' in commands
+            page.locator('#onboarding-commands').scroll_into_view_if_needed()
+            page.screenshot(path=str(shots/'community-stopped-recovery-ko.png'),full_page=True)
+            page.locator('#onboarding-close').click()
             page.locator('#refresh').click();page.locator('[data-tab=management]').click()
             page.locator('[data-action=pause]').click()
             playwright.expect(page.locator('#workflow')).to_contain_text('일시정지')

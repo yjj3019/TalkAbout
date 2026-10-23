@@ -6,6 +6,8 @@ import threading
 import time
 import random
 import math
+import uuid
+from contextlib import closing
 from dataclasses import dataclass
 from email.utils import parsedate_to_datetime
 from urllib.parse import urlsplit
@@ -98,6 +100,16 @@ class APIClient:
     def close(self):
         self.client.close()
 
+    def report_terminal(self, runtime, state, error_code=None):
+        """One bounded status-only cleanup request; never bypass work fences."""
+        if runtime not in {'codex', 'claude', 'grok', 'synthetic'} or state not in {'stopped', 'failed'}:
+            raise ValueError('invalid_terminal_report')
+        response = self.client.request('PUT', 'agents/me/connection',
+            json={'runtime': runtime, 'state': state, 'error_code': error_code},
+            headers={'Idempotency-Key': str(uuid.uuid4())}, timeout=2)
+        response.raise_for_status()
+        return response.json()
+
 
 class Journal:
     def __init__(self, path, inbox_limit=4096, queue_limit=1024, pending_limit=64):
@@ -158,19 +170,22 @@ class Journal:
         self.db.close()
 
     def stop_requested(self):
-        with sqlite3.connect(self.path, timeout=1) as connection:
+        with closing(sqlite3.connect(self.path, timeout=1)) as connection, connection:
             row = connection.execute("SELECT v FROM settings WHERE k='stop'").fetchone()
             return bool(row and json.loads(row[0]))
 
     def stop_state(self, state):
-        with sqlite3.connect(self.path, timeout=1) as connection:
+        with closing(sqlite3.connect(self.path, timeout=1)) as connection, connection:
             connection.execute("INSERT OR REPLACE INTO settings VALUES('stop_state',?)", (json.dumps(state),))
 
 
 class SyntheticRuntime:
     """Local fixture only; never represents a real model or external agent."""
     def run(self, context, cancel):
-        return f"Synthetic fixture contribution: {context['topic']}"
+        result=f"Synthetic fixture contribution: {context['topic']}"
+        for excerpt in context.get('file_excerpts',[]):
+            result+=f"\nSynthetic file read {excerpt['ref']['file_id']} lines {excerpt['line_start']}-{excerpt['line_end']}: {excerpt['text']}"
+        return result[:16000]
 
 
 class Worker:
@@ -217,25 +232,30 @@ class Worker:
                                                    "attempt": task["attempt"], "generation": task["generation"], "membership_revision": task["membership_revision"]})
         self.journal.ingest(response, self.actor_id)
 
-    def step(self):
+    def step(self, *, saved_result_only=False):
+        self.last_step_started_runtime=False
         check_deadline(self.run_deadline)
         if self.journal.stop_requested():
             status = self.journal.status()
             unknown = status.get("uncertain", 0) or status.get("call_started", 0)
             self.journal.stop_state("unreachable" if unknown else "stopped")
             return "stop_unconfirmed" if unknown else "stopped"
-        try:
-            self.poll()
-        except StopRequested:
-            self.journal.stop_state("stopped")
-            return "stopped"
-        except Backpressure:
-            if not self.journal.next():
-                return "backpressure"
+        if not saved_result_only:
+            try:
+                self.poll()
+            except StopRequested:
+                self.journal.stop_state("stopped")
+                return "stopped"
+            except Backpressure:
+                if not self.journal.next():
+                    return "backpressure"
         entry = self.journal.next()
         if not entry:
             return "waiting"
         tid, state, payload = entry
+        if saved_result_only and state!='result_saved':
+            return 'model_call_budget_exhausted'
+        self.last_step_started_runtime=bool(payload.get('runtime_started',False))
         stop_seen = threading.Event()
         rid = payload["event"]["room_id"]
         prefix = f"rooms/{rid}/tasks/{tid}"
@@ -261,11 +281,17 @@ class Worker:
                     self.journal.save(tid, "failed", payload)
                     return "unavailable"
                 payload["claim"] = {"generation": task["generation"], "membership_revision": task["membership_revision"]}
-                payload["claim_key"] = f"claim:{tid}:{task['attempt'] + 1}"
+                # Durable for retries of this claim, distinct across worker journals.
+                payload["claim_key"] = f"claim:{tid}:{uuid.uuid4().hex}"
                 payload["runtime_started"] = False
                 self.journal.save(tid, "claim_pending", payload)
                 state = "claim_pending"
             if state == "claim_pending":
+                suffix = str(payload.get('claim_key', '')).rsplit(':', 1)[-1]
+                if len(suffix) != 32 or any(c not in '0123456789abcdef' for c in suffix):
+                    # Legacy globally shared claim keys cannot prove this journal's ownership.
+                    self.journal.save(tid, 'failed', payload)
+                    return 'stale'
                 if self.journal.stop_requested():
                     self.journal.stop_state("stopped")
                     return "stopped"
@@ -274,6 +300,10 @@ class Worker:
                 self.journal.save(tid, "claimed", payload)
                 state = "claimed"
             if state == "claimed":
+                suffix = str(payload.get('claim_key', '')).rsplit(':', 1)[-1]
+                if len(suffix) != 32 or any(c not in '0123456789abcdef' for c in suffix):
+                    self.journal.save(tid, 'failed', payload)
+                    return 'stale'
                 task = self.client.request("GET", prefix)
                 if task["state"] == "queued" and task["attempt"] == payload["task"]["attempt"] and task["generation"] == payload["task"]["generation"] and task["membership_revision"] == payload["task"]["membership_revision"]:
                     payload.update(safe_pre_call_retry=True, runtime_started=False)
@@ -287,18 +317,60 @@ class Worker:
                     self.journal.save(tid, "failed", payload)
                     return "stale"
                 room = self.client.request("GET", f"rooms/{rid}")
+                latest = next((item for item in room['tasks'] if item['id'] == tid), None)
+                if (room['state'] != 'active' or room['generation'] != task['generation']
+                        or room['membership_revision'] != task['membership_revision']
+                        or not latest or latest['state'] != 'leased'
+                        or latest['assignee'] != self.actor_id
+                        or any(latest[k] != payload['task'][k] for k in ('attempt', 'generation', 'membership_revision'))
+                        or latest['lease_expires_at'] <= time.time() or latest['deadline'] <= time.time()):
+                    self.journal.save(tid, 'failed', payload)
+                    return 'stale'
                 if self.journal.stop_requested():
                     self.journal.save(tid, "cancelled", payload)
                     self.journal.stop_state("stopped")
                     return "stopped"
-                context = {"agent_id": self.actor_id, "display_name": self.actor["display_name"], "role": task.get("role", "participant"),
+                context = {"room_id": rid, "generation": task["generation"], "membership_revision": task["membership_revision"], "agent_id": self.actor_id, "display_name": self.actor["display_name"], "role": task.get("role", "participant"),
                            "topic": room["topic"], "purpose": task["purpose"], "inputs": room["messages"][-8:]}
+                context.update(task_id=tid,task_attempt=task['attempt'])
                 context["phase"] = task.get("phase")
                 context["round"] = task.get("round")
                 context["artifact_proposals"] = [{"artifact_id": a["id"], "text": a["versions"][-1]["text"]} for a in room["artifacts"] if a["versions"]][-4:]
+                claimed=payload['task']
+                if claimed.get('attachment_refs'):
+                    require_proof=claimed.get('lease_proof')
+                    if not require_proof:raise ValueError('attachment_lease_proof_required')
+                    excerpts=[]
+                    for ref in claimed['attachment_refs'][:4]:
+                        read_fence={k:claimed[k] for k in ('generation','membership_revision','attempt')}
+                        chunk=self.client.request('POST',prefix+'/files/'+ref['file_id']+'/read',
+                            {**read_fence,'lease_proof':require_proof,'start':0,'end':2000},
+                            f"file-read:{tid}:{claimed['attempt']}:{ref['file_id']}")
+                        excerpts.append({k:chunk[k] for k in ('ref','name','text','start','end','line_start','line_end',
+                                                             'truncated','untrusted_data','malware_scan')})
+                    context['file_excerpts']=excerpts
+                    # Reads may wait on the network. Recheck consent and fencing immediately
+                    # before handing any fetched text to a runtime; no remote revocation can
+                    # recall bytes already delivered to that runtime.
+                    allowed=self.client.request('GET',f'rooms/{rid}/files')
+                    current_files={item['file_id'] for item in allowed}
+                    room_now=self.client.request('GET',f'rooms/{rid}')
+                    latest=next((item for item in room_now['tasks'] if item['id']==tid),None)
+                    if (not all(ref['file_id'] in current_files for ref in claimed['attachment_refs'][:4])
+                            or room_now['state']!='active' or room_now['generation']!=claimed['generation']
+                            or room_now['membership_revision']!=claimed['membership_revision']
+                            or not latest or latest['state']!='leased' or latest['assignee']!=self.actor_id
+                            or any(latest[k]!=claimed[k] for k in ('attempt','generation','membership_revision'))
+                            or latest['lease_expires_at']<=time.time() or latest['deadline']<=time.time()):
+                        self.journal.save(tid,'failed',payload)
+                        return 'stale'
+                    if self.journal.stop_requested():
+                        self.journal.save(tid,'cancelled',payload);self.journal.stop_state('stopped')
+                        return 'stopped'
                 # Credentials, cursors, lease state, and retry keys are never model inputs.
                 check_deadline(self.run_deadline)
                 payload["runtime_started"] = True
+                self.last_step_started_runtime=True
                 self.journal.save(tid, "call_started", payload)
                 cancel, finished = threading.Event(), threading.Event()
                 heartbeat_failed = threading.Event()
@@ -332,7 +404,8 @@ class Worker:
                 watcher.start()
                 try:
                     remaining = self.run_deadline - time.monotonic() if self.run_deadline is not None else float('inf')
-                    text = bounded_call(self.runtime, context, cancel, min(self.runtime_timeout, max(0, task["deadline"] - time.time()), remaining))
+                    lease_remaining=max(0,latest['lease_expires_at']-time.time()) if claimed.get('attachment_refs') else float('inf')
+                    text = bounded_call(self.runtime, context, cancel, min(self.runtime_timeout, max(0, task["deadline"] - time.time()), lease_remaining, remaining))
                     check_deadline(self.run_deadline)
                 except RuntimeTimeout as error:
                     if stop_seen.is_set():
@@ -367,7 +440,18 @@ class Worker:
             self.journal.stop_state("stopped")
             return "stopped"
         except httpx.HTTPStatusError as exc:
+            if exc.response.status_code==409 and state=='claim_pending' and not payload.get('runtime_started'):
+                # A pause, generation change or competing claim can win after our GET.
+                # Never retry that claim as a model call; retire only this pre-call entry.
+                current=self.client.request('GET',prefix)
+                if current['state']!='queued' or any(current[k]!=payload['claim'][k] for k in ('generation','membership_revision')):
+                    self.journal.save(tid,'failed',payload)
+                    return 'stale'
             if exc.response.status_code in {401, 403, 404, 409, 410, 422}:
                 self.journal.save(tid, "failed", payload)
             raise
         # Transport failures preserve claim_pending/result_saved for same-key recovery.
+
+    def safe_to_continue_after(self,result):
+        """Known pre-call stale work can drain; uncertain/post-call work never auto-repeats."""
+        return result in {'stale','unavailable'} and not getattr(self,'last_step_started_runtime',True)

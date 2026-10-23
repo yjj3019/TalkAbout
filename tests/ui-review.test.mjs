@@ -17,10 +17,10 @@ async function harness(scopes=['room:read','room:manage_members']){
   querySelector(selector){return this.children.find(n=>selector==='.'+n.className)||null;}
   close(){this.open=false;}showModal(){this.open=true;}focus(){this.focused=true;}remove(){}
  }
- const nodes=new Map(),calls=[],handlers=new Map(),timers=[];
+ const nodes=new Map(),calls=[],handlers=new Map(),timers=[],confirmations=[];
  const node=id=>{if(!nodes.has(id))nodes.set(id,new Node());return nodes.get(id);};
  const tabs=['discussion','participants','artifacts','management'].map(name=>{const n=node('tab-control-'+name);n.dataset.tab=name;return n;});
- const actions=['start','pause','resume','close'].map(name=>{const n=new Node('button');n.dataset.action=name;return n;});
+ const actions=['start','pause','resume','close','hold_dispatch','release_dispatch'].map(name=>{const n=new Node('button');n.dataset.action=name;return n;});
  const selectors=selector=>selector==='[data-tab]'?tabs:selector==='[data-action]'?actions:[];
  node('detail').hidden=true;node('agent-registry').hidden=true;
  const streams=[];
@@ -28,7 +28,7 @@ async function harness(scopes=['room:read','room:manage_members']){
  const context=vm.createContext({ViewState,labels,crypto:globalThis.crypto,AbortController,URLSearchParams,EventSource,
   document:{getElementById:node,createElement:tag=>new Node(tag),querySelectorAll:selectors,documentElement:{}},
   window:{addEventListener(){},setInterval:fn=>{timers.push(fn);return timers.length;},clearInterval(){},setTimeout(){},clearTimeout(){}},
-  location:{search:'',origin:'https://fixture.invalid'},history:{pushState(){},replaceState(){}},confirm:()=>true,
+  location:{search:'',origin:'https://fixture.invalid'},history:{pushState(){},replaceState(){}},confirm:text=>{confirmations.push(text);return true;},
   fetch:async(url,options={})=>{const path=url.replace('/api/v1/','');calls.push({path,options});if(path==='setup/status')return {ok:true,json:async()=>({setup_required:true})};if(path==='setup/csrf')return {ok:true,json:async()=>({csrf_token:'synthetic'})};if(handlers.has(path))return handlers.get(path)(options);return {ok:false,status:403};}
  });
  vm.runInContext(source,context);await new Promise(setImmediate);
@@ -36,7 +36,7 @@ async function harness(scopes=['room:read','room:manage_members']){
  run(`user={id:'human',scopes:${JSON.stringify(scopes)}};`);
  const respond=(path,value,status=200)=>handlers.set(path,async()=>({ok:status<400,status,json:async()=>value}));
  respond('rooms',[structuredClone(room)]);respond('rooms/room',structuredClone(room));respond('rooms/room/interventions',[]);respond('admin/handovers',[]);respond('agents',[]);
- return {node,run,calls,handlers,respond,tabs,actions,timers,streams,show:()=>run(`view.select('room');view.room=${JSON.stringify(room)};renderRoom(view.room);`)};
+ return {node,run,calls,handlers,respond,tabs,actions,timers,streams,confirmations,show:()=>run(`view.select('room');view.room=${JSON.stringify(room)};renderRoom(view.room);`)};
 }
 
 test('room manager without registry scope refreshes the room without optional agent calls',async()=>{
@@ -47,6 +47,47 @@ test('room manager without registry scope refreshes the room without optional ag
  assert.equal(h.node('members').textContent.includes(labels.ko.issueCredential),false);
  await h.run("showCredentialMetadata(view.room,{id:'agent'},el('members'))");
  assert.equal(h.calls.some(c=>c.path.endsWith('/credentials')),false);
+});
+
+test('dispatch hold is distinct from pause and completion in KO/EN',async()=>{
+ const h=await harness(['room:read','room:control','room:approve']);
+ for(const language of ['ko','en']){
+  h.run(`view.language='${language}';view.select('room');view.room=${JSON.stringify({...room,state:'active',dispatch_held:true,pending_controls:1})};renderRoom(view.room);`);
+  assert.equal(h.run('workflowState(view.room).title'),'dispatchHeld');
+  assert.ok(h.node('workflow').textContent.includes(labels[language].dispatchHeldHelp));
+  assert.ok(h.node('room-state').textContent.includes(labels[language].approvalPending));
+  assert.equal(h.actions.find(b=>b.dataset.action==='hold_dispatch').disabled,true);
+  assert.equal(h.actions.find(b=>b.dataset.action==='release_dispatch').disabled,false);
+  for(const state of ['closed','paused'])assert.equal(h.run(`workflowState({state:'${state}',dispatch_held:true}).title`),state);
+ }
+});
+
+test('management confirmation identifies the exact action, room and revision',async()=>{
+ const h=await harness();h.show();h.respond('rooms/room/controls',{id:'control'});h.respond('rooms/room/controls/control/approve',{});
+ for(const language of ['ko','en']){
+  h.run(`view.language='${language}';view.select('room');view.room=${JSON.stringify({...room,room_revision:7})};`);
+  h.actions.find(b=>b.dataset.action==='hold_dispatch').onclick();
+  await new Promise(setImmediate);
+  const text=h.confirmations.at(-1);
+  assert.ok(text.includes(labels[language].hold_dispatch));
+  assert.ok(text.includes(room.topic));assert.ok(text.includes(labels[language].controlRevision+': 7'));
+ }
+});
+
+test('receipt and stored completion labels never imply provider attestation',async()=>{
+ const h=await harness();
+ const displayed={...room,state:'active',members:{...room.members,a:{kind:'agent',status:'active',display_name:'Synthetic',delivery_evidence:{delivered_seq:12,read_seq:8}}},
+  tasks:[{assignee:'a',state:'completed',purpose:'participant',attempt:2,generation:3}],
+  messages:[{actor_kind:'agent',display_name:'Synthetic',kind:'contribution',text:'Synthetic content',execution_evidence:'unverified_agent'}]};
+ for(const language of ['ko','en']){
+  h.run(`view.language='${language}';view.select('room');view.room=${JSON.stringify(displayed)};renderRoom(view.room);`);
+  assert.ok(h.node('members').textContent.includes(labels[language].receiptMeaning));
+  assert.ok(h.node('members').textContent.includes(labels[language].readThrough+': 8'));
+  assert.ok(h.node('messages').textContent.includes(labels[language].storedMessage));
+  assert.ok(h.node('messages').textContent.includes(labels[language].journeyUnverified));
+  assert.ok(h.node('tasks').textContent.includes(labels[language].storedCompletion));
+  assert.ok(h.node('tasks').textContent.includes(labels[language].attemptLabel+': 2'));
+ }
 });
 
 test('optional registry 403 does not clear accessible rooms or selected room',async()=>{

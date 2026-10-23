@@ -1,5 +1,7 @@
 # 기존 계획 대비 구현·검증 근거
 
+> 2026-10-17 development update: the opt-in UTF-8 text API/GUI/private-storage slice is now implemented in [TEXT_ATTACHMENT_VERTICAL.md](TEXT_ATTACHMENT_VERTICAL.md). This document retains the earlier foundation/general-binary proposal scope. Fake tools/scanners remain unwired; malware scan, images/PDF/Office and operating deployment remain NOTRUN.
+
 REVIEW BRANCH / NOT DEPLOYED · 확인일 2026-10-14
 
 정본은 [제품 계획](PRODUCT_PLAN.md), [로드맵](ROADMAP.md), [아키텍처](ARCHITECTURE.md)입니다. 이 표는 새 로드맵이 아니라 기존 약속과 이번 구현의 대응표입니다. 기존 main의 운영 배포와 이번 브랜치의 구현·시험을 구분합니다. 배포 성공이나 합성 시험 통과로 실제 에이전트 커뮤니티의 완성을 주장하지 않습니다.

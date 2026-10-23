@@ -1,0 +1,199 @@
+{
+  "reviewed": "2026-10-20",
+  "reviewed_commit": "dc9036f69120c35d7c66f1ac6b72ec6c2f07e39a",
+  "comparison_base": "e7ed9a2e82823c7974178d8df3a3eb5cce6622bf",
+  "status": "SAFE_SUBSET_PASS_WITH_EXPLICIT_NOTRUN_ITEMS",
+  "scope": "Expanded validation of dc9036f; production sources unchanged. Regression tests and this validation record only.",
+  "aggregate_discovery": {
+    "python": "pyproject.toml testpaths=tests; standard pytest across tests with seven known denied paths deselected before execution",
+    "node": "node --test over all seven existing tests/*.mjs files",
+    "ci_or_other_aggregate_command_found": false,
+    "repository_guidance": "No applicable AGENTS.md or .agents/skills found in the worktree, parent work folder or workspace root."
+  },
+  "diff_review": [
+    "Epoch cleanup retains the old runtime until explicit True, closes the pool on False/Exception, and forbids subsequent same-epoch or other-room dispatch.",
+    "Shutdown catches individual Exception failures to attempt every retained runtime and returns False. It does not report a swallowed cleanup exception as success.",
+    "CLI cleanup failure exits nonzero, reports failed/runtime_failed and sets stop=True, stop_state=unreachable. It may replace the immediate work-error message with the cleanup reason; the durable journal still distinguishes uncertain work from saved output and completed output.",
+    "No accepted message or completed queue row is deleted. Saved output and the original completion idempotency key survive transport failure. Automatic restart without explicit resume performs no API request or model call.",
+    "No new product assertion failure was found in the expanded aggregate; no additional production change or test limit relaxation was needed."
+  ],
+  "expanded_regressions": {
+    "file": "tests/test_runtime_pool_cleanup.py",
+    "cases_in_file": 11,
+    "cli_outcomes": [
+      "completed",
+      "failed",
+      "saved"
+    ],
+    "confirmed": [
+      "Accepted output remains one message and one done row despite cleanup failure.",
+      "A model callback exception plus cleanup failure preserves one uncertain row and no accepted message.",
+      "A pre-acceptance completion transport failure plus cleanup failure preserves result_saved, original text and completion key, and no accepted message.",
+      "All three outcomes report failure, persist the stop latch, release the connector lease and block automatic restart before any API request or model call."
+    ],
+    "method": "Real CLI, Worker, SQLite journal and in-memory ASGI API; fake StructuredRuntime and fixed synthetic fixture principals only."
+  },
+  "initial_attempt": {
+    "run_id": "pool-cleanup-d5069f52ddad49b4b8cc9a81d275cac7",
+    "status": "RUNNER_TIMEOUT_NOT_A_PASS",
+    "passed": 8,
+    "assertion_failures_recorded": 0,
+    "remaining_cases_not_completed": 3,
+    "runner_timeout_seconds": 180,
+    "runner_exit": 1,
+    "cleanup": "ManagedProcess.stop executed in finally without error; subsequent read-only process enumeration found zero processes matching this owned run ID.",
+    "cause": "Undetermined. The subsequent aggregate used the same source hashes and unchanged offline guard and all eleven cases passed. No baseline causal attribution is claimed."
+  },
+  "final_aggregate": {
+    "run_id": "cleanup-aggregate-52411991f91448c1b3febac551081a35",
+    "python": {
+      "collected": 548,
+      "selected": 541,
+      "passed": 524,
+      "failed": 0,
+      "skipped": 17,
+      "deselected": 7,
+      "exit": 0,
+      "pytest_seconds": 84.13,
+      "runner_seconds": 86.472,
+      "owned_job_stopped": true
+    },
+    "node": {
+      "passed": 164,
+      "failed": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "exit": 0,
+      "runner_seconds": 2.651,
+      "owned_job_stopped": true
+    },
+    "total_passed": 688,
+    "total_failed": 0,
+    "total_notrun": 24,
+    "skipped": {
+      "postgres_without_explicit_ephemeral_fixture": 16,
+      "posix_only_on_windows": 1,
+      "case_ids": [
+        "tests/test_agent_runtime.py::test_posix_real_launch_fails_closed",
+        "tests/test_bounded_retention.py::test_postgres_fixture_retention_is_atomic",
+        "tests/test_community_flow.py::test_postgres_preparation_connection_and_start_persist_without_new_ddl",
+        "tests/test_initial_setup.py::test_postgres_restart_failed_attempts_concurrency_and_transaction",
+        "tests/test_initial_setup.py::test_postgres_persistent_expiry_limit_and_legacy_schema",
+        "tests/test_initial_setup.py::test_postgres_runtime_role_can_setup_without_ddl",
+        "tests/test_modes_handover.py::test_postgres_handover_same_key_concurrency_and_modes",
+        "tests/test_postgres.py::test_postgres_two_rooms_reverse_commit_cursor",
+        "tests/test_postgres.py::test_postgres_same_room_lock_serializes_events",
+        "tests/test_postgres.py::test_postgres_pause_complete_race",
+        "tests/test_postgres.py::test_postgres_revocation_wakes_poll",
+        "tests/test_postgres.py::test_postgres_identity_issue_hash_and_replay",
+        "tests/test_postgres.py::test_postgres_artifact_conflict",
+        "tests/test_postgres.py::test_postgres_human_session_identity_and_logout",
+        "tests/test_postgres.py::test_postgres_room_snapshot_limits_cursor_contract",
+        "tests/test_runtime_checks.py::test_postgres_receipt_survives_restart_and_revocation",
+        "tests/test_text_files_api.py::test_postgres_attachment_round_trip_and_migration"
+      ]
+    },
+    "deselected": [
+      {
+        "nodeid": "tests/test_browser_community.py::test_browser_register_invite_setup_start_and_text_artifact",
+        "reason": "same known denied Uvicorn startup path"
+      },
+      {
+        "nodeid": "tests/test_browser_readiness.py::test_beginner_register_invite_acceptance_guide_reload[ko-1400]",
+        "reason": "same known denied Uvicorn startup path"
+      },
+      {
+        "nodeid": "tests/test_browser_readiness.py::test_beginner_register_invite_acceptance_guide_reload[en-390]",
+        "reason": "same known denied Uvicorn startup path"
+      },
+      {
+        "nodeid": "tests/test_browser_text_files.py::test_browser_upload_read_reply_view_download_revoke_delete[ko-1400]",
+        "reason": "same known denied Uvicorn startup path"
+      },
+      {
+        "nodeid": "tests/test_browser_text_files.py::test_browser_upload_read_reply_view_download_revoke_delete[en-390]",
+        "reason": "same known denied Uvicorn startup path"
+      },
+      {
+        "nodeid": "tests/test_deployment_readiness.py::test_postgres_real_loopback_health_readiness_and_shutdown",
+        "reason": "same known denied Uvicorn startup path"
+      },
+      {
+        "nodeid": "tests/test_mcp_process.py::test_mcp_stdio_process_interoperability",
+        "reason": "known denied platform subprocess during Uvicorn startup"
+      }
+    ],
+    "warning": "One existing Starlette/httpx deprecation warning.",
+    "method": "Standard pytest without JUnit/platform overrides, unchanged strict offline account/process/network audit guard; owned Windows Job containment. Node suite uses synthetic VM/DOM fixtures, not a real browser.",
+    "external_artifacts": [
+      "result.json",
+      "selection.json",
+      "cases.jsonl",
+      "python.log",
+      "node.log"
+    ],
+    "passed_by_python_file": {
+      "tests/test_agent_runtime.py": 99,
+      "tests/test_attachment_foundation.py": 36,
+      "tests/test_automatic_install.py": 13,
+      "tests/test_bounded_retention.py": 14,
+      "tests/test_cli_adapters.py": 11,
+      "tests/test_codex_session_continuity.py": 19,
+      "tests/test_community_acl.py": 4,
+      "tests/test_community_flow.py": 8,
+      "tests/test_connector_verification.py": 26,
+      "tests/test_continuity_cli.py": 12,
+      "tests/test_core.py": 9,
+      "tests/test_deployment_readiness.py": 8,
+      "tests/test_identity.py": 6,
+      "tests/test_initial_setup.py": 11,
+      "tests/test_journal_connection_lifecycle.py": 6,
+      "tests/test_journey_contract.py": 2,
+      "tests/test_mcp_runtime.py": 4,
+      "tests/test_modes_handover.py": 8,
+      "tests/test_podman_packaging.py": 6,
+      "tests/test_process_cleanup.py": 14,
+      "tests/test_release_scenarios.py": 6,
+      "tests/test_review_regressions.py": 12,
+      "tests/test_room_interfaces.py": 9,
+      "tests/test_run_budget.py": 7,
+      "tests/test_runtime_checks.py": 25,
+      "tests/test_runtime_config_diagnostics.py": 12,
+      "tests/test_runtime_pool_cleanup.py": 11,
+      "tests/test_saved_result_drain.py": 6,
+      "tests/test_sessions.py": 6,
+      "tests/test_text_files_api.py": 26,
+      "tests/test_tool_broker_foundation.py": 24,
+      "tests/test_trial_controller_diagnostics.py": 19,
+      "tests/test_trial_controller_lifecycle.py": 7,
+      "tests/test_trial_observation.py": 15,
+      "tests/test_user_secret_setup.py": 4,
+      "tests/test_worker_api.py": 7,
+      "tests/test_worker_ownership.py": 12
+    }
+  },
+  "static_checks": {
+    "ast_parse": [
+      "talkabout/cli.py",
+      "talkabout/connector.py",
+      "tests/test_runtime_pool_cleanup.py"
+    ],
+    "json_parse": "passed",
+    "git_diff_check": "passed"
+  },
+  "source_sha256": {
+    "talkabout/cli.py": "6390ef3870ea3d63a984135613f06f172f07772893731921db47efe4c97a1145",
+    "talkabout/connector.py": "8df5c89903151e9933933e85598cf55bdc783927db93098abd5518322aeed71d",
+    "tests/test_runtime_pool_cleanup.py": "de8ebccbaf8ed75effcebc09af0a79380ae3af388d954830072a7a4dd08905c0"
+  },
+  "unchanged_guard_sha256": "2a31c87f994af9054d2ce9c8ac51faaca4942dc69debed166f8d0d841e359ed2",
+  "not_executed": [
+    "Known denied MCP stdio integration and same Uvicorn platform subprocess path in five browser cases plus one HTTP/PostgreSQL case; no retry or workaround.",
+    "Actual provider execution, actual token issuance, operating database/user/room/image access, push, PR, merge and deployment.",
+    "An actual browser run, actual PostgreSQL server restart, or real multi-runtime PoC is not established by this aggregate."
+  ],
+  "new_actual_provider_calls": 0,
+  "new_actual_credentials": 0,
+  "remote_publication": false,
+  "prior_evidence": "Earlier PostgreSQL and provider trial records remain historical; they are not counted as passes in this run."
+}

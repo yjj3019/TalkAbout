@@ -1,0 +1,111 @@
+{
+  "reviewed": "2026-10-20",
+  "base_commit": "e7ed9a2e82823c7974178d8df3a3eb5cce6622bf",
+  "scope": "Runtime pool cleanup and CLI failed-stop lifecycle only; no new feature or execution permission",
+  "repository_guidance": {
+    "inspected": [
+      "Worktree AGENTS.md and .agents/skills",
+      "Parent work folder guidance",
+      "Workspace-root guidance"
+    ],
+    "applicable_files_found": false
+  },
+  "confirmed_defects": [
+    {
+      "trigger": "Room generation or membership revision changes and previous runtime shutdown is false or raises",
+      "before": "Old runtime was popped before stop confirmation. False allowed new dispatch; exception lost the only pool reference and could make later cleanup look successful.",
+      "after": "Retain old reference until True; close pool and reject new dispatch on unconfirmed cleanup, including attempts through old epoch or another room."
+    },
+    {
+      "trigger": "One room runtime raises while the pool shuts down",
+      "before": "List comprehension aborted, so later room runtimes were never asked to stop.",
+      "after": "Attempt every retained runtime; return False if any stop fails or raises. Keep references for explicit cleanup retry."
+    },
+    {
+      "trigger": "Room worker produces an accepted response, but final runtime shutdown is unconfirmed",
+      "before": "CLI reported failed server state but returned normally, allowing a supervisor to interpret the process as successful.",
+      "after": "CLI exits nonzero with fixed runtime_cleanup_unconfirmed reason, durably latches stop/unreachable, reports failed state and closes journal/lease. Accepted message and done journal row remain intact."
+    }
+  ],
+  "reproduction": {
+    "pool_before_fix": {
+      "failed": 5,
+      "passed": 3,
+      "run_id": "pool-cleanup-1c1e8da4e7354ae2b55e4eb7b4d8545e"
+    },
+    "pool_fix_related_before_cli_followup": {
+      "passed": 84,
+      "run_id": "pool-cleanup-0260c74b734443d39f824f032c2cc7c1"
+    },
+    "cli_before_fix": {
+      "failed": 1,
+      "run_id": "pool-cleanup-49ddb04f7bf74d948f670dfe2d366630"
+    },
+    "test_limits_or_assertions_relaxed": false
+  },
+  "final_selected": {
+    "passed": 98,
+    "failed": 0,
+    "skipped": 0,
+    "exit": 0,
+    "new_cases": 9,
+    "targets": [
+      "tests/test_runtime_pool_cleanup.py",
+      "tests/test_connector_verification.py",
+      "tests/test_codex_session_continuity.py",
+      "tests/test_continuity_cli.py",
+      "tests/test_worker_api.py",
+      "tests/test_worker_ownership.py",
+      "tests/test_run_budget.py",
+      "tests/test_saved_result_drain.py"
+    ],
+    "run_id": "pool-cleanup-ddbc2e118d0f4e8d9a2014e92d9154fa",
+    "seconds": 31.749,
+    "owned_test_job_stopped": true,
+    "new_case_ids": [
+      "tests/test_runtime_pool_cleanup.py::test_failed_epoch_cleanup_retains_runtime_and_prevents_new_dispatch[unconfirmed-generation]",
+      "tests/test_runtime_pool_cleanup.py::test_failed_epoch_cleanup_retains_runtime_and_prevents_new_dispatch[unconfirmed-membership_revision]",
+      "tests/test_runtime_pool_cleanup.py::test_failed_epoch_cleanup_retains_runtime_and_prevents_new_dispatch[raises-generation]",
+      "tests/test_runtime_pool_cleanup.py::test_failed_epoch_cleanup_retains_runtime_and_prevents_new_dispatch[raises-membership_revision]",
+      "tests/test_runtime_pool_cleanup.py::test_shutdown_attempts_every_room_even_after_one_cleanup_fails[unconfirmed]",
+      "tests/test_runtime_pool_cleanup.py::test_shutdown_attempts_every_room_even_after_one_cleanup_fails[raises]",
+      "tests/test_runtime_pool_cleanup.py::test_confirmed_epoch_cleanup_still_starts_an_isolated_runtime[generation]",
+      "tests/test_runtime_pool_cleanup.py::test_confirmed_epoch_cleanup_still_starts_an_isolated_runtime[membership_revision]",
+      "tests/test_runtime_pool_cleanup.py::test_cli_failed_cleanup_reports_failure_and_exits_nonzero_without_replaying_output"
+    ],
+    "method": "Standard pytest with existing strict account/process/network guard, no JUnit or platform override. Fake runtime callbacks; CLI integration uses the in-memory API and real Worker."
+  },
+  "source_sha256": {
+    "talkabout/connector.py": "8df5c89903151e9933933e85598cf55bdc783927db93098abd5518322aeed71d",
+    "talkabout/cli.py": "6390ef3870ea3d63a984135613f06f172f07772893731921db47efe4c97a1145",
+    "tests/test_runtime_pool_cleanup.py": "77f7f78104d6458e6f1701d04277db9bb7890316a2b458f1a22f82c013d642ab"
+  },
+  "evidence_sha256": {
+    "result.json": "cf494abafec91ac0b376520c9c7d484c03496ac141622b3d0d3e7b32371785ff",
+    "cases.jsonl": "806b993341380b266efd47fae92c2ce0a17ed5dbd3ddc6b94e8a559c368aae0f",
+    "python.log": "fece2593b68590cffa16db26f315039311615f45cc97a5a27b42ab38b4ec4edb"
+  },
+  "red_evidence_sha256": {
+    "pool": "9a58090e03a00744df0b64ebf9b5a88a190dfa3892d8d575dbb308a18e719b0d",
+    "cli": "94fb999f85ca8426ae080b49f05405439c8482c0e79e02b7e51503db21cfb3b4"
+  },
+  "checks": {
+    "python_ast": "PASS",
+    "json_syntax": "PASS"
+  },
+  "boundaries": {
+    "actual_provider_calls": 0,
+    "new_actual_credentials": 0,
+    "operating_data_access": false,
+    "security_settings_changed": false,
+    "remote_mutations": 0,
+    "dependencies_or_schema_changed": false
+  },
+  "notrun": [
+    "Actual provider cleanup/cancellation and first response/reconnect",
+    "MCP process integration and its blocked cmd.exe path",
+    "PostgreSQL, POSIX, browser and complete regression suite in this increment",
+    "Public push/PR/merge and operating deployment"
+  ],
+  "interpretation": "Selected synthetic lifecycle regressions pass. False or exceptional local cleanup is not provider stop confirmation. Existing actual-call uncertainty, credential caps, approval denials and automatic native-resume identity gate remain unchanged."
+}

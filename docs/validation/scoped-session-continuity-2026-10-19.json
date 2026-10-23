@@ -1,0 +1,84 @@
+{
+  "reviewed": "2026-10-19",
+  "status": "local implementation; real provider resume unverified",
+  "base_commit": "c4621cb32d0fc90f3280ec546197861247470aa2",
+  "planning_checkpoint": "9f44b76c4829a5c23b0fcb84bfbac1556df2c8da",
+  "targeted_regression": {
+    "passed": 174,
+    "skipped": 1,
+    "failures": 0,
+    "errors": 0,
+    "targets": [
+      "tests/test_codex_session_continuity.py",
+      "tests/test_continuity_cli.py",
+      "tests/test_connector_verification.py",
+      "tests/test_run_budget.py",
+      "tests/test_agent_runtime.py",
+      "tests\\test_worker_api.py",
+      "tests\\test_worker_ownership.py"
+    ],
+    "run_id": "continuity-targeted-36d38ccfc2294b9cae794cc62c9aa499",
+    "junit_sha256": "1d6ef53ffedf778bfe15fb77875a41b0a7b5725564ede17eadcd09d492332299",
+    "duration_seconds": 25.674,
+    "skip": "existing POSIX-only case on Windows",
+    "warning": "existing Starlette httpx TestClient deprecation"
+  },
+  "earlier_runs": [
+    {
+      "passed": 165,
+      "skipped": 1,
+      "note": "before additional cases"
+    },
+    {
+      "passed": 173,
+      "failed": 1,
+      "skipped": 1,
+      "note": "new submission-recovery fixture omitted params; corrected test wrapper"
+    },
+    {
+      "passed": 24,
+      "failed": 0,
+      "note": "two new test files after fixture correction"
+    }
+  ],
+  "interrupted_sandbox_run": {
+    "run_id": "continuity-targeted-386f9d41858b47a6bd2e0c1738f873d2",
+    "status": "stalled after 15 progress dots; owned runner processes stopped; not counted as a pass",
+    "replacement": "same guarded synthetic runner outside restricted sandbox"
+  },
+  "full_suite_this_increment": "NOT RUN",
+  "historical_base_only": {
+    "python_passed": 496,
+    "python_skipped": 1,
+    "node_passed": 136,
+    "chrome_subset_passed": 5
+  },
+  "actual_provider_calls": 0,
+  "new_actual_trial_credentials": 0,
+  "account_auth_files_read": false,
+  "server_api_changed": false,
+  "schema_migration_added": false,
+  "dependencies_added": false,
+  "mit_license_changed": false,
+  "source_sha256": {
+    "talkabout/codex_sessions.py": "81275532d4a72f71072bd0ccdcbd396c8aba61de786cdc5781d39596e7b67fbf",
+    "talkabout/connector.py": "cde89ea421e534cfddb546b7194b63da8d1aabbbadf98eb73685bdbe404d1fc9",
+    "talkabout/agent_runtime.py": "52cc94766adfa4abdfc143b4742ab793c621a9941548ac8ac5b765810470cd76",
+    "talkabout/cli.py": "6902718740ea7484b702527cd6a003485fff323d7e1994d27c2102cd574f8d2d",
+    "talkabout/worker.py": "ff72d762f9ee7a7320659bf1cfabc98e2208f9561d84de8ae5fa74b9e02b88ba",
+    "tests/test_codex_session_continuity.py": "03c155597b0c67cd40fdddea34ab68d562ecec64ab1dfabd3ccf6f5909091c3b",
+    "tests/test_continuity_cli.py": "0b7aa33ebc77f76a2f3b5e581589851e69ed03ad3cad8a501587c9aec57e3fd0"
+  },
+  "preserved_prior_record_sha256": {
+    "model-ledger.json": "b421e25688e8ded54d1efd29845b44c72258b6940c8ed22c4cdaccba0f050ed6",
+    "authorized-single-codex-2026-10-17.json": "eda09e93733b9355d54b5c8249e663039333844d4472d88d953c8b0ad9a3fa4a",
+    "approved-fixed-codex-connection-2026-10-17.json": "b1e06653079ac6ef2221fb6313bed19cb18761f2b2507429027461a35319a251",
+    "fixed-codex-connection-result.json": "caa8bde6530393c3185398c5849161a6161a3f43dd0f3400bc425634b66e0dc7",
+    "fixed-codex-connection-adjudication.json": "4b8b20774b0ba3845c479c74281ccb14655a54679cfc139d487709a08642da26"
+  },
+  "remaining": [
+    "Actual adapter has no verified stable provider subject; automatic resume is blocked",
+    "Real runtime/reconnect and multi-runtime PoC unverified",
+    "No merge or deployment"
+  ]
+}

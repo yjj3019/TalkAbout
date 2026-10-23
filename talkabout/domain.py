@@ -20,6 +20,10 @@ HUMAN_PERMISSIONS = {
 SELF_PERMISSIONS = {"agent:self_read", "agent:capabilities_write", "agent:name_propose"}
 
 
+def participant_permissions(mode):
+    return AGENT_PERMISSIONS if mode == 'co_creation' else AGENT_PERMISSIONS - {'room:contribute'}
+
+
 class Problem(Exception):
     def __init__(self, code, status=409):
         self.code, self.status = code, status
@@ -119,12 +123,10 @@ def schedule(room, principals, now=None):
         elif task["state"] == "leased" and now >= task["lease_expires_at"]:
             task["state"] = "queued"
             emit(room, "task.queued", task_id=task["id"], assignee=task["assignee"], attempt=task["attempt"], generation=task["generation"], membership_revision=task["membership_revision"])
-    if any(t["state"] in {"queued", "leased"} for t in room["tasks"].values()):
+    if room.get('dispatch_held') or any(t["state"] in {"queued", "leased"} for t in room["tasks"].values()):
         return
     eligible = sorted(pid for pid, m in room["members"].items() if m["status"] == "active"
-                      and principals[pid]["kind"] == "agent" and (AGENT_PERMISSIONS - {"room:contribute"}) <= set(m["permissions"]))
-    if room["mode"] == "co_creation":
-        eligible = [pid for pid in eligible if "room:contribute" in room["members"][pid]["permissions"]]
+                      and principals[pid]["kind"] == "agent" and participant_permissions(room['mode']) <= set(m["permissions"]))
     if not eligible:
         return
     turn = next_turn(room, eligible)
@@ -198,6 +200,9 @@ def message(room, actor, body, now, task=None, fingerprint=None):
     require(len(room["messages"]) < min(200, room["limits"]["messages"]), "message_capacity", 429)
     msg = {"id": ident(), "actor_id": actor["id"], "actor_kind": actor["kind"], "display_name": actor["display_name"],
            "text": text, "kind": "contribution" if task else body["kind"], "reply_to": reply, "mentions": mentions, "created_at": now}
+    if result.get('attachment_refs'):
+        require(actor['kind']=='human' and not task,'human_attachment_required',403)
+        msg['attachment_refs']=[dict(ref) for ref in result['attachment_refs']]
     room["messages"][msg["id"]] = msg
     room["client_ids"][marker] = {"digest": fingerprint, "id": msg["id"], "epoch": room["members"][actor["id"]]["epoch"]}
     msg["seq"] = emit(room, "message.created", message_id=msg["id"])["seq"]

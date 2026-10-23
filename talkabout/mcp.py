@@ -11,8 +11,36 @@ TOOLS = [
     {"name": "list_rooms", "description": "List rooms permitted by the configured agent credential.", "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False}},
     {"name": "read_room", "description": "Read one authorized room, including text artifacts.", "inputSchema": {"type": "object", "properties": {"room_id": {"type": "string"}}, "required": ["room_id"], "additionalProperties": False}},
     {"name": "propose_text", "description": "Propose a text artifact through the common API. No uploads or arbitrary commands.",
-     "inputSchema": {"type": "object", "properties": {"room_id": {"type": "string"}, "text": {"type": "string"}, "generation": {"type": "integer"}, "membership_revision": {"type": "integer"}, "client_mutation_id": {"type": "string"}},
+     "inputSchema": {"type": "object", "properties": {"room_id": {"type": "string"}, "session_id": {"type": "string"}, "text": {"type": "string"}, "generation": {"type": "integer"}, "membership_revision": {"type": "integer"}, "client_mutation_id": {"type": "string"}},
                      "required": ["room_id", "text", "generation", "membership_revision", "client_mutation_id"], "additionalProperties": False}},
+]
+
+
+def tool(name, description, properties, required=None):
+    return {'name': name, 'description': description, 'inputSchema': {
+        'type': 'object', 'properties': {k: {'type': v} for k, v in properties.items()},
+        'required': list(properties) if required is None else required, 'additionalProperties': False}}
+
+
+ROOM = {'room_id': 'string'}
+SESSION = {**ROOM, 'session_id': 'string'}
+CONTEXT = {**SESSION, 'generation': 'integer', 'membership_revision': 'integer'}
+TOOLS += [
+    tool('list_invitations', 'List invitations for the authenticated actor. Does not accept them.', {}),
+    tool('accept_invitation', 'Explicitly accept the private-room notice. Humans in the room can observe messages and explicit read receipts.',
+         {**ROOM, 'expected_revision': 'integer', 'acknowledge_private': 'boolean', 'client_mutation_id': 'string'}),
+    tool('join_room', 'Bind a client session UUID to this credential and room. Retry the same join idempotently. On reconnect rotate UUID, supplying previous_session_id; the returned snapshot is explicit resync and old cursors/writes are rejected. Not native provider identity or model execution permission.',
+         {**CONTEXT, 'previous_session_id': 'string'}, list(CONTEXT)),
+    tool('list_participants', 'List authorized room participants; never guesses a native session.', ROOM),
+    tool('poll_room', 'Fetch events after a session cursor. Missing cursor replays authorized history; expired cursor requires explicit join_room resync. Fetch is not read or task completion.',
+         {**SESSION, 'cursor': 'string', 'wait_seconds': 'integer'}, ['room_id', 'session_id']),
+    tool('ack_room', 'Explicit delivered or read receipt for a returned session cursor. Not model understanding, approval or task completion.',
+         {**CONTEXT, 'cursor': 'string', 'state': 'string'}),
+    tool('room_notifications', 'Metadata only: unread count, oldest time and held/available/empty. No wake or model execution.', SESSION),
+    tool('claim_turn', 'Claim an existing assigned task under its lease and room limits. Does not execute a model.',
+         {**CONTEXT, 'task_id': 'string', 'client_mutation_id': 'string'}),
+    tool('post_message', 'Complete a claimed turn with text using its attempt fencing. Stored response is not proof of provider execution. No unsolicited turns.',
+         {**CONTEXT, 'task_id': 'string', 'attempt': 'integer', 'text': 'string', 'client_mutation_id': 'string'}),
 ]
 
 
@@ -39,7 +67,7 @@ class MCPServer:
                 return self.error(request_id, -32602, "Invalid initialization")
             self.phase = "initializing"
             version = params["protocolVersion"] if params["protocolVersion"] in {"2025-11-25", "2025-06-18"} else "2025-11-25"
-            return {"jsonrpc": "2.0", "id": request_id, "result": {"protocolVersion": version, "capabilities": {"tools": {"listChanged": False}}, "serverInfo": {"name": "TalkAbout", "version": "0.1.0"}, "instructions": "Text-only API adapter; not a persistent worker. Credentials are separately configured. Only list/read/propose_text are supported; turn requests, task execution, handover and human adoption are not MCP tools. Unknown tools are rejected."}}
+            return {"jsonrpc": "2.0", "id": request_id, "result": {"protocolVersion": version, "capabilities": {"tools": {"listChanged": False}}, "serverInfo": {"name": "TalkAbout", "version": "0.1.0"}, "instructions": "Text-only API adapter; not a persistent worker. Credentials are separately configured. Join with an explicit client session UUID and preserve returned cursor; acknowledge delivered/read explicitly. Receipts are not model understanding or completion. post_message requires an assigned claimed task; no automatic model execution, native session discovery, handover, human approval or adoption tools. Unknown tools are rejected."}}
         if method == "ping":
             return {"jsonrpc": "2.0", "id": request_id, "result": {}}
         if self.phase != "ready":
@@ -58,7 +86,7 @@ class MCPServer:
         if set(arguments) - set(schema["properties"]) or not set(schema.get("required", [])) <= set(arguments):
             return self.error(request_id, -32602, "Invalid arguments")
         for key, value in arguments.items():
-            expected = int if schema["properties"][key]["type"] == "integer" else str
+            expected = {'integer': int, 'boolean': bool, 'string': str}[schema["properties"][key]["type"]]
             if type(value) is not expected:
                 return self.error(request_id, -32602, "Invalid argument type")
         if "room_id" in arguments and not re.fullmatch(r"[A-Za-z0-9-]{1,64}", arguments["room_id"]):
@@ -68,12 +96,38 @@ class MCPServer:
                 data = self.client.request("GET", "rooms")
             elif name == "read_room":
                 data = self.client.request("GET", "rooms/" + arguments["room_id"])
+            elif name == 'list_invitations':
+                data = self.client.request('GET', 'agents/me/invitations')
+            elif name == 'list_participants':
+                data = self.client.request('GET', 'rooms/' + arguments['room_id'] + '/memberships')
+            elif name in {'poll_room', 'room_notifications'}:
+                params = {k: v for k, v in arguments.items() if k != 'room_id'}
+                data = self.client.request('GET', 'rooms/' + arguments['room_id'] + ('/events' if name == 'poll_room' else '/notifications'), params=params)
+            elif name in {'join_room', 'ack_room'}:
+                data = self.client.request('POST', 'rooms/' + arguments['room_id'] + '/participation/' + ('join' if name == 'join_room' else 'ack'),
+                                           {k: v for k, v in arguments.items() if k != 'room_id'})
             else:
                 mutation_id = arguments["client_mutation_id"]
                 if not 1 <= len(mutation_id) <= 128:
                     return self.error(request_id, -32602, "Invalid mutation id")
-                body = {k: arguments[k] for k in ("text", "generation", "membership_revision")}
-                data = self.client.request("POST", "rooms/" + arguments["room_id"] + "/artifacts", body, "mcp:" + digest(mutation_id))
+                path = 'rooms/' + arguments['room_id']
+                if name == 'accept_invitation':
+                    path += '/memberships/me/accept'
+                    body = {k: arguments[k] for k in ('expected_revision', 'acknowledge_private')}
+                elif name in {'claim_turn', 'post_message'}:
+                    if not re.fullmatch(r'[A-Za-z0-9-]{1,64}', arguments['task_id']):
+                        return self.error(request_id, -32602, 'Invalid task id')
+                    body = {k: arguments[k] for k in ('session_id', 'generation', 'membership_revision')}
+                    path += '/tasks/' + arguments['task_id'] + ('/claim' if name == 'claim_turn' else '/complete')
+                    if name == 'post_message':
+                        body.update(attempt=arguments['attempt'], result={'client_message_id': mutation_id, 'text': arguments['text']})
+                else:
+                    path += '/artifacts'
+                    body = {k: arguments[k] for k in ('text', 'generation', 'membership_revision')}
+                    if 'session_id' in arguments:
+                        body['session_id'] = arguments['session_id']
+                key = 'mcp:' + digest(mutation_id if name == 'propose_text' else [name, mutation_id])
+                data = self.client.request('POST', path, body, key)
             result = {"content": [{"type": "text", "text": json.dumps(data, ensure_ascii=False)}], "isError": False}
         except httpx.HTTPStatusError as exc:
             result = {"content": [{"type": "text", "text": "API operation rejected: " + str(exc.response.status_code)}], "isError": True}

@@ -1,0 +1,162 @@
+{
+  "reviewed": "2026-10-19",
+  "scope": "local full regression and minimum cancellation-state correction; no publication",
+  "base_commit": "8b79853745ab7ffdd771e4efff3c13069db243a3",
+  "commit_policy": "new follow-up commit; preserves 8b798537 as ancestor, does not amend or replace history",
+  "fix": "Clear prior last_outcome after beginning a new scoped checkpoint, before cancellation/dispatch, so an old completed turn is not recorded as current provider completion",
+  "reproduction_before_fix": {
+    "provider_calls": 1,
+    "new_turn_dispatched": false,
+    "incorrect_new_provider_turn": "completed",
+    "stop_requested": true
+  },
+  "targeted_after_fix": {
+    "passed": 18,
+    "failures": 0,
+    "skip": 0,
+    "scope": "test_codex_session_continuity.py; includes two added cases"
+  },
+  "historical_partial_8b798537": {
+    "passed": 174,
+    "skipped": 1,
+    "scope": "seven selected files; distinct from this full run"
+  },
+  "full_python": {
+    "collected": 523,
+    "passed": 505,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 18,
+    "notrun_postgres_subset": 17,
+    "seconds": 165.911,
+    "skip_details": [
+      {
+        "case": "tests.test_agent_runtime::test_posix_real_launch_fails_closed",
+        "reason": "POSIX-specific fail-closed test"
+      },
+      {
+        "case": "tests.test_bounded_retention::test_postgres_fixture_retention_is_atomic",
+        "reason": "NOTRUN: pass an explicit isolated PostgreSQL fixture config; no existing databases are probed"
+      },
+      {
+        "case": "tests.test_community_flow::test_postgres_preparation_connection_and_start_persist_without_new_ddl",
+        "reason": "NOTRUN: pass an explicit isolated PostgreSQL fixture config; no existing databases are probed"
+      },
+      {
+        "case": "tests.test_deployment_readiness::test_postgres_real_loopback_health_readiness_and_shutdown",
+        "reason": "NOTRUN: pass an explicit isolated PostgreSQL fixture config; no existing databases are probed"
+      },
+      {
+        "case": "tests.test_initial_setup::test_postgres_restart_failed_attempts_concurrency_and_transaction",
+        "reason": "NOTRUN: pass an explicit isolated PostgreSQL fixture config; no existing databases are probed"
+      },
+      {
+        "case": "tests.test_initial_setup::test_postgres_persistent_expiry_limit_and_legacy_schema",
+        "reason": "NOTRUN: pass an explicit isolated PostgreSQL fixture config; no existing databases are probed"
+      },
+      {
+        "case": "tests.test_initial_setup::test_postgres_runtime_role_can_setup_without_ddl",
+        "reason": "NOTRUN: pass an explicit isolated PostgreSQL fixture config; no existing databases are probed"
+      },
+      {
+        "case": "tests.test_modes_handover::test_postgres_handover_same_key_concurrency_and_modes",
+        "reason": "NOTRUN: pass an explicit isolated PostgreSQL fixture config; no existing databases are probed"
+      },
+      {
+        "case": "tests.test_postgres::test_postgres_two_rooms_reverse_commit_cursor",
+        "reason": "NOTRUN: pass an explicit isolated PostgreSQL fixture config; no existing databases are probed"
+      },
+      {
+        "case": "tests.test_postgres::test_postgres_same_room_lock_serializes_events",
+        "reason": "NOTRUN: pass an explicit isolated PostgreSQL fixture config; no existing databases are probed"
+      },
+      {
+        "case": "tests.test_postgres::test_postgres_pause_complete_race",
+        "reason": "NOTRUN: pass an explicit isolated PostgreSQL fixture config; no existing databases are probed"
+      },
+      {
+        "case": "tests.test_postgres::test_postgres_revocation_wakes_poll",
+        "reason": "NOTRUN: pass an explicit isolated PostgreSQL fixture config; no existing databases are probed"
+      },
+      {
+        "case": "tests.test_postgres::test_postgres_identity_issue_hash_and_replay",
+        "reason": "NOTRUN: pass an explicit isolated PostgreSQL fixture config; no existing databases are probed"
+      },
+      {
+        "case": "tests.test_postgres::test_postgres_artifact_conflict",
+        "reason": "NOTRUN: pass an explicit isolated PostgreSQL fixture config; no existing databases are probed"
+      },
+      {
+        "case": "tests.test_postgres::test_postgres_human_session_identity_and_logout",
+        "reason": "NOTRUN: pass an explicit isolated PostgreSQL fixture config; no existing databases are probed"
+      },
+      {
+        "case": "tests.test_postgres::test_postgres_room_snapshot_limits_cursor_contract",
+        "reason": "NOTRUN: pass an explicit isolated PostgreSQL fixture config; no existing databases are probed"
+      },
+      {
+        "case": "tests.test_runtime_checks::test_postgres_receipt_survives_restart_and_revocation",
+        "reason": "NOTRUN: pass an explicit isolated PostgreSQL fixture config; no existing databases are probed"
+      },
+      {
+        "case": "tests.test_text_files_api::test_postgres_attachment_round_trip_and_migration",
+        "reason": "NOTRUN: pass an explicit isolated PostgreSQL fixture config; no existing databases are probed"
+      }
+    ]
+  },
+  "browser_subset": {
+    "collected": 5,
+    "passed": 5,
+    "note": "included in full Python count, not additional tests; fresh headless profile, loopback synthetic fixture only"
+  },
+  "node_ui": {
+    "tests": 136,
+    "pass": 136,
+    "fail": 0,
+    "skipped": 0
+  },
+  "interrupted_initial_full": {
+    "run_id": "continuity-full-e45928f1a15448d78d47d0c5f1c92b36",
+    "python_exit": 3,
+    "passed_before_interruption": 226,
+    "skipped_before_interruption": 3,
+    "reason": "external progress observer used mutable sys.argv; fixed captured path; product assertion failures were not the cause",
+    "node_passed": 136
+  },
+  "run_id": "continuity-full-201aca69ebda4337a55a419df7e94434",
+  "evidence_sha256": {
+    "pytest.xml": "8ddda38123ba25cf1c872875fa9f5cd603fdf39908e259dd68b392823525ccc6",
+    "python.log": "f2f245c8c13a820fe1300cf18ea68633eca3274386ae698d22659c3dc24402c4",
+    "node.log": "ddebf0feaf96ae36a87e0a6569c50b86dfbf063965516ae1de9dc64ad0ea3189",
+    "result.json": "7af47a688888d54589a6d26124855d3b799b4cfbe960d88de050167fb2162e9d"
+  },
+  "tested_source_sha256": {
+    "talkabout\\connector.py": "6210b10af53d2e991ceba2fecf44d91a67e390344afa12cb859dbe69e411be72",
+    "tests\\test_codex_session_continuity.py": "5ff72928437472fa7edb7babf559bd46512fdd03d0c9452ef0484bab8d05368e"
+  },
+  "reviewed_boundaries": [
+    "unavailable identity blocks automatic resume",
+    "credential/profile/version/account changes fail closed",
+    "room and membership epoch isolation; stale epoch refusal",
+    "same completion key resubmission without provider recall",
+    "call_started and uncertain no-replay",
+    "total default one and room cap both enforced",
+    "stop request, provider terminal result and local shutdown remain distinct"
+  ],
+  "execution_boundary": {
+    "actual_provider_calls": 0,
+    "new_actual_trial_credentials": 0,
+    "remote_push_or_pr_attempts": 0,
+    "existing_database_connections": 0,
+    "installs": 0,
+    "network": "Python socket guard permits loopback only; fixture Python children inherit account/process/socket guard; Chrome uses fresh profile and local dead proxy for non-loopback; page routes restrict requests to fixture origin; Node uses synthetic VM fetch"
+  },
+  "notrun": [
+    "PostgreSQL-backed cases: no explicitly configured fresh isolated fixture; no existing DB probed",
+    "Real provider registration/connectivity/first response/follow-up/restart restore",
+    "Multi-runtime PoC",
+    "Deployment and remote publication"
+  ],
+  "known_warning": "existing Starlette TestClient httpx deprecation",
+  "prior_records_preserved": 5
+}

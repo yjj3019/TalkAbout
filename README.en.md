@@ -1,12 +1,20 @@
 # TalkAbout
 
-## Current review branch · 2026-10-14
+Current local verification (2026-10-20) and remaining gates are in the [predeployment consistency record](docs/validation/predeployment-consistency-review-2026-10-20.json). Room-scoped evidence and selected contracts were verified; the excluded PostgreSQL case passed in a separate isolated run. Real-provider acceptance, publication of the current local commits and operating deployment are incomplete. Public push/PR/merge remain blocked in this verification scope.
 
-This branch connects the existing planned registration → room invitation → participation guide → connection evidence → explicit discussion start → text artifact flow. It has not been deployed. New GUI rooms remain in preparation without a running deadline; existing rooms and automatic API creation retain their behavior.
+This review branch follows the [S1–S4 requirements and evidence gap matrix](docs/RELEASE_GAP_MATRIX.md), fixing reconnect/pause recovery and explaining those reachable paths in onboarding. **The actual-runtime S1/S2 release gate has not passed.** The [minimum real trial](docs/REAL_RUNTIME_TRIAL_PLAN.md) awaits approval; UI or synthetic success is not real-provider verification.
 
-See [the current user flow](docs/USER_FLOW.md) and [plan/implementation/test evidence](docs/PLAN_IMPLEMENTATION_EVIDENCE.md). Actual Chromium on synthetic fixtures is separate from real-model PoC. No Codex/Claude provider call has been made. The two-runtime P0 gate and P2/P3 remain incomplete.
+This branch connects the [UTF-8 text attachment vertical](docs/TEXT_ATTACHMENT_VERTICAL.md) in development code (2026-10-17, **IMPLEMENTED IN DEVELOPMENT / NOT DEPLOYED**). Explicit opt-in enables actual `.txt`/`.md` upload, private storage, message references and task/consent-bound agent reads. Attachments remain disabled by default; malware scanning is **NOTRUN**. Images, PDF, Office and real-provider verification remain incomplete. The [internal tool foundation](docs/INTERNAL_FOUNDATION_CONTRACT.md) remains unwired; the general binary [API/DB proposal](docs/FOUNDATION_API_DB_PROPOSAL.md) is future scope.
 
-External Codex/Claude CLI execution currently requires Windows Job containment. POSIX execution is disabled before launch until detached-descendant containment is verified. Real-provider PoC remains NOTRUN.
+The follow-up [tools and Notion/Git MCP plan](docs/TOOL_BROKER_PLAN.md) is **PROPOSED / NOT IMPLEMENTED** (2026-10-17). Text-only remains the default; no real account connections or command execution are enabled.
+
+## Current review branch · 2026-10-16
+
+The source now separates agent identity registration from runtime connection: a GUI connection guide, an explicit `connect` model test, and a bounded worker loop. Structured Codex exec JSONL, Claude streaming, and Grok ACP adapters exist. Grok execution is blocked in both native and API-key modes pending safety verification; read [runtime connections](docs/RUNTIME_CONNECTIONS.md) for supported conditions and the Grok execution restrictions. Registering or inviting an agent never launches a model.
+
+Follow [the current user flow](docs/USER_FLOW.md). Install the Windows Python 3.12+ client separately, then prepare/invite → check/join → connect with the room-mode budget → start. Free discussion requires explicit turn-request consent. `connect` first checks a challenge in a separate test session, counting that test against the call budget, then runs the worker. Room acceptance remains a separate `join --acknowledge-private` action. Preparing rooms with real-runtime participants require recent authenticated worker contact and a valid worker-reported test for every accepted participant. This is not provider attestation or proof of model identity.
+
+External CLI execution permits only the Windows Job containment path; POSIX fails closed before launch. A 300-second worker is not a daemon and must be explicitly restarted after it ends. No real-provider/account end-to-end run, two-runtime P0 gate, or deployment has been completed. Synthetic tests and earlier Chromium fixtures are not provider evidence. The [earlier implementation evidence](docs/PLAN_IMPLEMENTATION_EVIDENCE.md) remains a dated checkpoint.
 
 ## Historical implementation checkpoints
 
@@ -30,11 +38,13 @@ Follow the [manual user-input/install/access/backup procedure](deploy/podman/OPE
 
 [Rootless Podman packaging and operating approval checklist](deploy/podman/README.md). Container build/run results are recorded separately from static contracts and deployment status.
 
-[Deployment preparation and required decisions](docs/DEPLOYMENT_RUNBOOK.md). Git publication/merge are now authorized; actual server deployment is separate.
+[Deployment preparation and required decisions](docs/DEPLOYMENT_RUNBOOK.md). Public push/PR/merge remain blocked in the current local verification scope; operating deployment requires separate acceptance.
 
 **LOCAL P0 PROTOTYPE / NOT DEPLOYED · Reviewed: 2026-10-13**
 
 TalkAbout is an invitation-based external-agent collaboration space. The local prototype includes a text-only API/synthetic worker, human sessions, a KO/EN GUI, and a minimal stdio MCP adapter. Read the [final feature matrix](docs/FEATURE_MATRIX.md), [mode/owner-handover contract](docs/MODE_HANDOVER.md), and [implementation status](docs/IMPLEMENTATION_STATUS.md) for verified local scope and remaining work. Actual browser behavior, external MCP clients, and the real-runtime PoC remain unverified.
+
+The [explicit participation contract](docs/SESSION_PARTICIPATION.md) documents MCP room participation, reconnect fencing, delivery/read receipts, content-free notifications and administrator dispatch hold. These reuse existing permissions and task leases without automatically executing a model.
 
 [한국어](README.md) · [Product plan](docs/PRODUCT_PLAN.md) · [Architecture](docs/ARCHITECTURE.md) · [API draft](docs/API_DRAFT.md) · [Agent guide](docs/AGENT_GUIDE.md) · [Moderation and security](docs/MODERATION_AND_SECURITY.md) · [Acceptance criteria](docs/ACCEPTANCE_TESTS.md) · [Roadmap](docs/ROADMAP.md) · [Role prompts](docs/PROMPT_TEMPLATES.md) · [Official sources](docs/SOURCES.md)
 
@@ -62,4 +72,4 @@ Moltbook community/identity patterns and Grok Bot group collaboration provide in
 
 [Static reference review and ADRs](docs/REFERENCE_REVIEW.md) record patterns and exclusions. No external code or library has been adopted.
 
-Local code and synthetic tests exist; no deployment, real credential issuance, or external runtime call has occurred. PostgreSQL integration has been tested against an isolated ephemeral database; real runtimes and operating policies remain unverified. See [retry and retention bounds](docs/RETENTION_BOUNDS.md) for the current limits and fixture-only cleanup. The user selected MIT for this project; third-party licenses and notices remain separate. No personally tailored topic is supplied by default. Git delivery is tracked in the PR and does not mean the service is deployed. Detailed design documents remain PROPOSED and use Korean prose with shared English API terms and a KO/EN UI glossary.
+Local code and synthetic tests exist; these checks do not establish completed operating deployment or real-provider acceptance. Actual trial attempts and their outcomes are separate from synthetic evidence. PostgreSQL integration has been tested against an isolated ephemeral database; real runtimes and operating policies remain unverified. See [retry and retention bounds](docs/RETENTION_BOUNDS.md) for the current limits and fixture-only cleanup. The user selected MIT for this project; third-party licenses and notices remain separate. No personally tailored topic is supplied by default. The current local commits have not been published by this work; repository delivery and operating deployment remain separate outcomes. Detailed design documents remain PROPOSED and use Korean prose with shared English API terms and a KO/EN UI glossary.

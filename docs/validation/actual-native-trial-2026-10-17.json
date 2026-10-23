@@ -1,0 +1,79 @@
+{
+  "reviewed_on": "2026-10-17",
+  "evidence_class": "ACTUAL_NATIVE_RUNTIME_TRIAL_STOPPED_ON_UNCERTAIN_OUTCOME",
+  "baseline_pr11_commit": "dcc63030eb988fc1c900e289ebda1ded46b94ed2",
+  "tested_application_commit": "7b82c7f249bb7c727bab97bf1988fc71256f1878",
+  "local_static_fix": {
+    "problem": "The shared child environment allowlist compared names case-sensitively and omitted Windows SYSTEMROOT when the allowlist spelled SystemRoot.",
+    "evidence": "Initial canonical Claude native auth check failed. The same safe metadata command with the selected-runtime environment succeeded. Environment key comparison identified SYSTEMROOT as the only missing key.",
+    "change": "Compare allowed and blocked environment variable names case-insensitively. No safety flags, credentials, authentication mode or time bounds were weakened.",
+    "synthetic_regression": "11 adapter/environment/subprocess tests passed",
+    "actual_followup": "Both canonical native metadata preflights passed after the fix. This is not model-response evidence."
+  },
+  "actual_preflight": {
+    "codex": {"cli_version": "0.163.0", "safety_flags": "passed", "existing_native_login": "confirmed", "cleanup": "confirmed"},
+    "claude": {"cli_version": "2.1.301", "safety_flags": "passed", "existing_native_login": "confirmed_after_environment_fix", "cleanup": "confirmed"}
+  },
+  "S1": {
+    "transport_check": "passed through canonical CLI",
+    "invitation_acceptance": "passed through canonical CLI",
+    "native_connection_challenge": "attempted; completion unknown",
+    "observed_error": "runtime_outcome_unknown",
+    "observed_path": "Codex stdout reached EOF before a terminal turn completion was accepted. The request was not treated as successful.",
+    "elapsed_reserved_to_failure_seconds": 1.857,
+    "local_wait_limit_seconds": 30,
+    "native_model_process_starts": 1,
+    "stdin_prompt_submitted": true,
+    "provider_received_or_completed_request": "unknown",
+    "native_exit_code": "not captured by the current error path",
+    "successful_runtime_receipt": false,
+    "agent_contributions": 0,
+    "discussion_start": "NOTRUN",
+    "reconnect": "NOTRUN",
+    "root_cause": "Not established. Native stderr was intentionally not retained; startup/configuration/auth/network failure must not be asserted without additional evidence."
+  },
+  "S2": {"status": "NOTRUN", "two_real_runtime_dialogue": "NOTRUN", "pause_resume": "NOTRUN"},
+  "budget": {
+    "approved_max_model_starts": {"codex": 6, "claude": 3, "total": 9},
+    "observed_native_model_process_starts": {"codex": 1, "claude": 0},
+    "conservatively_consumed": {"codex": 1, "claude": 0},
+    "remaining": {"codex": 5, "claude": 3, "total": 8},
+    "automatic_model_retries": 0,
+    "further_model_starts_blocked": true,
+    "provider_token_usage": "unknown",
+    "provider_billing": "unknown"
+  },
+  "fixture": {
+    "type": "new memory-backed loopback server",
+    "owners_created": 1,
+    "agents_created": 1,
+    "rooms_created": 1,
+    "room_scoped_credentials_created": 1,
+    "credential_ttl_seconds": 3600,
+    "remaining_under_original_credential_count_cap": 2,
+    "local_room_data": "Neutral synthetic color topic/question only",
+    "native_model_input": "Random echo challenge only; no room discussion or recent peer messages reached this model stage",
+    "user_files_or_operating_data_sent": false,
+    "platform_token_in_model_input": false
+  },
+  "cleanup": {
+    "owned_worker_processes_stopped": true,
+    "created_room_closed": true,
+    "issued_credential_revoked": true,
+    "revoked_credential_denied_with_401": true,
+    "fixture_server_stopped": true,
+    "private_fixture_configs_and_journals_removed": true,
+    "provider_native_profiles": "Normal approved native-client state may persist; profiles were not copied, logged out, purged or otherwise inspected by the assistant."
+  },
+  "not_performed": [
+    "additional inference after the uncertain outcome",
+    "new provider login, OAuth scope, API key or billing-mode fallback",
+    "operating database/service/configuration/firewall/deployment changes",
+    "private-fixture-host access",
+    "merge or deployment",
+    "actual S3 attachment processing or S4 command/MCP execution"
+  ],
+  "release_gate": "BLOCKED: S1 model response/reconnect and S2 actual dialogue/recovery have not passed",
+  "next_step": "Before another model start, review the uncertain outcome and remaining budget. A separately approved diagnostic attempt should capture only safe native exit code and bounded error categories, not raw authentication/stderr content. Preserve the stop ledger and do not reset or silently replenish the budget.",
+  "privacy_redaction": {"reviewed": "2026-10-20", "scope": "Private test-machine aliases replaced; measurements and outcomes preserved. Original Git history is not rewritten."}
+}

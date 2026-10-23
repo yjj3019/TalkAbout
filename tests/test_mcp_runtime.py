@@ -23,7 +23,9 @@ def test_mcp_lifecycle_tools_and_no_secret_arguments(fixture):
     assert server.handle({"jsonrpc": "2.0", "id": 0, "method": "tools/list"})["error"]["code"] == -32000
     ready(server)
     tools = server.handle({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})["result"]["tools"]
-    assert {t["name"] for t in tools} == {"list_rooms", "read_room", "propose_text"}
+    assert {t["name"] for t in tools} == {"list_rooms", "read_room", "propose_text", 'list_invitations',
+        'accept_invitation', 'join_room', 'list_participants', 'poll_room', 'ack_room',
+        'room_notifications', 'claim_turn', 'post_message'}
     for tool in tools:
         assert "token" not in tool["inputSchema"]["properties"]
     rejected = server.handle({"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "read_room", "arguments": {"room_id": rid, "token": "fixture-forbidden"}}})

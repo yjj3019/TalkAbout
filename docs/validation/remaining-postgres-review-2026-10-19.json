@@ -1,0 +1,99 @@
+{
+  "reviewed": "2026-10-19",
+  "tested_application_commit": "9f68f602cc70b80224991c9c18c846b6ed8c434f",
+  "application_code_changed": false,
+  "reproduction_selection_check": {
+    "command": "python -m pytest --collect-only -q tests -k postgres -p no:cacheprovider",
+    "collected": 17,
+    "deselected": 509,
+    "exit": 0
+  },
+  "scope": "seventeen previously skipped PostgreSQL cases only; no full regression repeat",
+  "postgres": {
+    "server_version": "18.6",
+    "passed": 17,
+    "failed": 0,
+    "errors": 0,
+    "skipped": 0,
+    "test_exit": 0,
+    "init_exit": 0,
+    "seconds": 140.577,
+    "node_ids": [
+      "tests/test_bounded_retention.py::test_postgres_fixture_retention_is_atomic",
+      "tests/test_community_flow.py::test_postgres_preparation_connection_and_start_persist_without_new_ddl",
+      "tests/test_deployment_readiness.py::test_postgres_real_loopback_health_readiness_and_shutdown",
+      "tests/test_initial_setup.py::test_postgres_restart_failed_attempts_concurrency_and_transaction",
+      "tests/test_initial_setup.py::test_postgres_persistent_expiry_limit_and_legacy_schema",
+      "tests/test_initial_setup.py::test_postgres_runtime_role_can_setup_without_ddl",
+      "tests/test_modes_handover.py::test_postgres_handover_same_key_concurrency_and_modes",
+      "tests/test_postgres.py::test_postgres_two_rooms_reverse_commit_cursor",
+      "tests/test_postgres.py::test_postgres_same_room_lock_serializes_events",
+      "tests/test_postgres.py::test_postgres_pause_complete_race",
+      "tests/test_postgres.py::test_postgres_revocation_wakes_poll",
+      "tests/test_postgres.py::test_postgres_identity_issue_hash_and_replay",
+      "tests/test_postgres.py::test_postgres_artifact_conflict",
+      "tests/test_postgres.py::test_postgres_human_session_identity_and_logout",
+      "tests/test_postgres.py::test_postgres_room_snapshot_limits_cursor_contract",
+      "tests/test_runtime_checks.py::test_postgres_receipt_survives_restart_and_revocation",
+      "tests/test_text_files_api.py::test_postgres_attachment_round_trip_and_migration"
+    ],
+    "fixture": "new owned data directory, existing local test binaries, 127.0.0.1 only",
+    "ownership_verified": [
+      "SHOW data_directory matched fresh resolved path",
+      "SHOW listen_addresses exactly 127.0.0.1"
+    ],
+    "cleanup": {
+      "init_stopped": true,
+      "test_job_stopped": true,
+      "server_stopped": true
+    }
+  },
+  "posix": {
+    "status": "NOTRUN",
+    "case": "tests/test_agent_runtime.py::test_posix_real_launch_fails_closed",
+    "discovery": "WSL launchers and distribution names exist; no distro was started or inspected",
+    "blocker": "No verified, explicitly approved disposable POSIX test workspace with offline dependencies and isolated source; do not mount host paths or use personal Linux data",
+    "expected": "runtime_containment_unsupported; this test confirms refusal, not POSIX provider support"
+  },
+  "prior_full_run": {
+    "tested_commit": "9f68f602cc70b80224991c9c18c846b6ed8c434f",
+    "python_passed": 508,
+    "skipped": 18,
+    "postgres_pending_at_that_time": 17,
+    "posix_skip": 1,
+    "chrome_subset_passed": 5,
+    "node_ui_passed": 137,
+    "evidence_file": "continuity-final-9f68f60.json",
+    "status": "historical separate full invocation, not repeated here"
+  },
+  "coverage_note": "The 17 PG cases are a later separate successful invocation. Do not claim a new all-green full-suite run. The POSIX case remains NOTRUN.",
+  "evidence": {
+    "run_id": "remaining-postgres-c65a2e85132848039e79f356d306113d",
+    "sha256": {
+      "pytest.xml": "e216f45dc46e8eefd587d47ea6f0c00e3e2fcf53e9de686fd09d43ab8817ce1e",
+      "python.log": "56070d92ccfb881905d6451fff6faae78408c397aff068f3ab78575027c3d079",
+      "result.json": "c4fff063a7d98a75b178078ef991a5b11224056ca1ee4c81bea1d82ff03fc1b7",
+      "ownership.jsonl": "c08b794c41d2e20d1d8eefc45cd10d5585985f0ac098a5e44f0e8cb52bcab6fc",
+      "init.log": "5d578bbe76682e2c8aaf64f90fe50cde311769b22d3d46380e38f4fdf8c353c2",
+      "server.log": "90381e3edced8ad4522a9363717bd3e4beb73baf8ae90deb79e20eef29681baa"
+    }
+  },
+  "boundary": {
+    "new_installs": 0,
+    "existing_database_access": false,
+    "new_remote_access": false,
+    "new_host_mounts": false,
+    "external_network_exposure": false,
+    "actual_provider_calls": 0,
+    "new_actual_credentials": 0,
+    "remote_push_pr_attempts": 0,
+    "prior_records_preserved": 5
+  },
+  "remaining_release_gates": [
+    "verified stable provider account identity; automatic resume remains blocked",
+    "actual provider first response/follow-up/restart and multi-runtime PoC",
+    "dedicated approved deployment target and operating acceptance",
+    "POSIX fail-closed test in an approved disposable POSIX fixture"
+  ],
+  "warning": "existing Starlette TestClient httpx deprecation; negative SQL permission/constraint tests deliberately log expected server errors"
+}

@@ -91,6 +91,15 @@ class MemoryStore(SetupStore):
             self.credentials[token_hash(token)]["revoked"] = True
         self.signal.set()
 
+    def credential_active(self, binding, principal_id, room_id=None, required_scopes=()):
+        """Internal receipt validation; never expose token hashes through API payloads."""
+        with self.lock:
+            credential = self.credentials.get(binding)
+            return bool(credential and credential["id"] == principal_id and not credential["revoked"]
+                        and credential["expires_at"] > time.time()
+                        and set(required_scopes) <= set(credential["scopes"])
+                        and credential.get("room_id") in {None, room_id})
+
     def credential_metadata(self, token, agent_id):
         with self.lock:
             actor = self.auth(token)
@@ -110,6 +119,13 @@ class MemoryStore(SetupStore):
             room_bounds(room)
             self.rooms[room_id] = room
         self.signal.set()
+
+    @contextmanager
+    def read_transaction(self, room_id, token):
+        with self.lock:
+            actor=self.auth(token)
+            require(room_id in self.rooms,'not_found',404)
+            yield actor,copy.deepcopy(self.rooms[room_id])
 
     def create(self, token, room):
         with self.lock:
@@ -162,6 +178,21 @@ class MemoryStore(SetupStore):
 
 
 class PostgresStore(SetupStore):
+    @contextmanager
+    def read_transaction(self, room_id, token):
+        with self.connect() as conn:
+            row=conn.execute('SELECT * FROM rooms WHERE id=%s FOR SHARE',(room_id,)).fetchone()
+            require(row,'not_found',404)
+            yield self._auth(conn,token),self._room(conn,row)
+
+    def credential_active(self, binding, principal_id, room_id=None, required_scopes=()):
+        with self.connect() as conn:
+            credential = conn.execute("SELECT principal_id,expires_at,revoked,room_id,scopes FROM credentials WHERE token_hash=%s", (binding,)).fetchone()
+            return bool(credential and credential["principal_id"] == principal_id and not credential["revoked"]
+                        and credential["expires_at"] > time.time()
+                        and set(required_scopes) <= set(credential["scopes"])
+                        and credential["room_id"] in {None, room_id})
+
     def credential_metadata(self, token, agent_id):
         with self.connect() as conn:
             actor = self._auth(conn, token)

@@ -1,0 +1,135 @@
+{
+  "base_commit": "9c4fbc9105989143d3028f1a2a9cce7f112d626e",
+  "scope": "local implementation; synthetic bearer/MemoryStore/ASGI and DOM only",
+  "python": {
+    "exit": 0,
+    "job_stopped": true,
+    "seconds": 93.314,
+    "counts": {
+      "passed": 599,
+      "skipped": 17
+    }
+  },
+  "python_selection": {
+    "collected": 623,
+    "selected": 616,
+    "deselected": [
+      {
+        "nodeid": "tests/test_browser_community.py::test_browser_register_invite_setup_start_and_text_artifact",
+        "reason": "same known denied Uvicorn startup path"
+      },
+      {
+        "nodeid": "tests/test_browser_readiness.py::test_beginner_register_invite_acceptance_guide_reload[ko-1400]",
+        "reason": "same known denied Uvicorn startup path"
+      },
+      {
+        "nodeid": "tests/test_browser_readiness.py::test_beginner_register_invite_acceptance_guide_reload[en-390]",
+        "reason": "same known denied Uvicorn startup path"
+      },
+      {
+        "nodeid": "tests/test_browser_text_files.py::test_browser_upload_read_reply_view_download_revoke_delete[ko-1400]",
+        "reason": "same known denied Uvicorn startup path"
+      },
+      {
+        "nodeid": "tests/test_browser_text_files.py::test_browser_upload_read_reply_view_download_revoke_delete[en-390]",
+        "reason": "same known denied Uvicorn startup path"
+      },
+      {
+        "nodeid": "tests/test_deployment_readiness.py::test_postgres_real_loopback_health_readiness_and_shutdown",
+        "reason": "same known denied Uvicorn startup path"
+      },
+      {
+        "nodeid": "tests/test_mcp_process.py::test_mcp_stdio_process_interoperability",
+        "reason": "known denied platform subprocess during Uvicorn startup"
+      }
+    ]
+  },
+  "python_log_ref": "cleanup-aggregate-cecd0454a69d47bbb85bd7c6e726294b/python.log",
+  "node": {
+    "passed": 167,
+    "failed": 0,
+    "skipped": 0,
+    "exit": 0,
+    "job_stopped": true,
+    "seconds": 4.125
+  },
+  "node_log_ref": "participation-review-38c3a79e19f144d1909aefa8ceaacb1b/node.log",
+  "not_run": {
+    "postgres_requires_explicit_isolated_fixture": 16,
+    "posix_environment_unavailable": 1,
+    "previously_blocked_startup_paths_deselected_without_retry": 7,
+    "actual_provider_and_real_mcp_client_and_browser": "NOTRUN"
+  },
+  "tests_not_implemented_as_new_systems": [
+    "no replacement approval ledger/outbox: existing transaction rollback retained",
+    "no native session discovery, automatic wake or global provider profile changes"
+  ],
+  "compatibility": [
+    "no SQL DDL migration; bounded optional room/member/cursor JSON fields",
+    "legacy artifact writes remain valid before explicit participation; joined agents require session_id",
+    "existing propose_text idempotency key preserved",
+    "old binaries do not enforce dispatch hold or client session fencing; pause before controlled downgrade"
+  ],
+  "limitations": [
+    "client-session binding is not native-provider identity attestation",
+    "existing manual-start verified-worker readiness gate remains; joining MCP does not satisfy it",
+    "notification hold is passive metadata; no background push dispatcher",
+    "uncertain execution stays in the local journal; UI does not invent a server-known uncertain outcome",
+    "real PostgreSQL concurrency/restart and external clients not exercised"
+  ],
+  "initial_attempts": [
+    {
+      "ref": "pool-cleanup-3dd95246d8084368b111ac86bda915ab",
+      "outcome": "preimplementation missing-method failures; 180s timeout; not a passing run",
+      "owned_process_matches_after_reconnect": 0
+    },
+    {
+      "ref": "pool-cleanup-dc7b2140efe84f1dab4dceb96a2de203",
+      "passed": 14,
+      "failed": 2,
+      "reason": "test event field kind instead of type; test expected pre-extension tool set; corrected"
+    },
+    {
+      "ref": "pool-cleanup-71aac58bd665438ba6a09be35190368f",
+      "passed": 67,
+      "failed": 0,
+      "job_stopped": true
+    }
+  ],
+  "historical_evidence_six_sha256_unchanged": {
+    "model-ledger.json": "1c8141f65238c3ce39f3f5714b3f4525bb827a50e3e0ab96f3c339c14e28cca6",
+    "agent.sqlite": "5c9dec1886cc01f5f2307ee1ea87f9b32a4cef0f8f9a2c68beebc558013bedab",
+    "result.json": "9d1a5c8207aaf6b2ca482e8b728857b8ededf1fe4daa33b3ded5ed8bc7e64536",
+    "init.log": "b1f8ed3eb67700dc4ca2d50a20768dd1f47b48ccc8fec0d5ef9022d6a5af2ed6",
+    "server.log": "cdbfd0ebc86936d989c75d204bea571164bd739c76daa0614b15b2905395a98f",
+    "worker-first.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "uncertain_reservations_preserved": 1,
+  "unused_budget_preserved_not_reused": 2,
+  "actual_provider_calls": 0,
+  "new_actual_credentials": 0,
+  "trial_restarts": 0,
+  "pushes": 0,
+  "deployments": 0,
+  "operating_data_changes": 0,
+  "static": {
+    "python_ast": "passed",
+    "git_diff_check": "passed"
+  },
+  "source_sha256": {
+    "README.en.md": "d72b521c5dab5deb97d9059d6fe6c9f2b41a33c5c2b358395790b394c3a40c4f",
+    "README.md": "1ca11e752dad3bc20cafda0e8463bd745abdf4d7d0f6bc4a57acf818cbdc9394",
+    "docs/SESSION_PARTICIPATION.md": "fc15958c2e2cc272386af4c99fe6eee4dee619a40dab966914d28bf38b02dd59",
+    "talkabout/api.py": "a39d248644eb126834ebd319f7353a567e7aeb691bd52747c199e48ed0de8f1e",
+    "talkabout/core.py": "91bdd0c6746a465607b49967170b6b2a4f9e43180acc2a530feb1a81cac40b7d",
+    "talkabout/domain.py": "1ebf8a93e032367ed9749f965c14680ef2cb246422afb0b2b616be81a4069d7a",
+    "talkabout/mcp.py": "66aa56777f5d492f8de07bbe32cfe3176b142d1df3c7580a18d9f6d0b981a29e",
+    "talkabout/participation.py": "f2ef22043672d6c3281f9c84ee871d61d347cdca3a7e44cd3839affa0d236cd9",
+    "talkabout/web/app.mjs": "9cc9ca991022fd15ac0a6c41d56557c66aa7f649b901c62020f01543866ffae7",
+    "talkabout/web/index.html": "30756166db88aa72a2f8ff5fc8d67695dc2237aa7bf4907364dae42550ccde13",
+    "talkabout/web/state.mjs": "0bb591dec1931192a7359b18bc49a1c484c3f1899c8ac9a77ad1951db6773089",
+    "tests/test_mcp_runtime.py": "cacfb1c1a88aec503ecbe3de8bec08dcecb282bf01237756c36c801d1a984976",
+    "tests/test_participation.py": "f1fffe151ee2f4a19ef300175ce4430f1d5b1df38b6883bff4870703ff216a95",
+    "tests/ui-review.test.mjs": "6be0d79e7ffcf4f85f6810b0fd62c7a0948ed7dd7f136a2eb9331a53b46d2751"
+  }
+}

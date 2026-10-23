@@ -1,0 +1,42 @@
+{
+  "date": "2026-10-17",
+  "base_commit": "b3ac8fad669be97f4f369b29cfa789c293780c86",
+  "tested_code_and_tests_commit": "77df67e9eec884a29556082959c8c15e6acf2386",
+  "tested_tree": "e2f0ae59f7639f4968417310e58672a1dc5f4803",
+  "subsequent_changes": "Documentation and this verification record only",
+  "python_full": {"passed": 301, "failed": 0, "errors": 0, "skipped": 17},
+  "node_ui": {"passed": 107, "failed": 0, "skipped": 0},
+  "focused_chrome_and_process_cleanup": {"passed": 11, "failed": 0},
+  "focused_worker_regressions": {"passed": 25, "failed": 0},
+  "supplemental_chrome_journey": {
+    "passed": 194,
+    "failed": 0,
+    "scope": "Synthetic working-tree run: KO/EN, desktop and 390px, three room modes, actual invitation/check/join, API billing consent and withdrawal, stopped/failed/stale recovery, scope mismatch, read retry and navigation",
+    "provenance_limit": "Supplemental journey was run during readiness development; final committed stopped-start and missing-contribution-scope behavior is additionally covered by the passing full-suite actual Chrome test."
+  },
+  "regressions_verified": [
+    "stop/deadline still fence ordinary work while one fixed-endpoint terminal status report remains bounded to a 2-second HTTP timeout after runtime shutdown",
+    "separate journals cannot reuse a claim idempotency response; response-loss retry retains its own durable key",
+    "legacy shared claim_pending/claimed keys fail closed before model execution",
+    "a pause, topic generation change or task attempt replacement observed in the latest room snapshot prevents the model call",
+    "co_creation requires room:contribute in server start checks, scheduler, credential readiness and UI guide; missing permission leaves a manual room preparing",
+    "stopped/failed/stale worker state requires explicit recovery selection; a stopped worker never receives the known-invalid fresh-start command",
+    "KO/EN pending invitation names and check/join/connect order are checked against actual Chrome UI"
+  ],
+  "skips": {"postgres_fixture_not_configured": 16, "posix_only": 1},
+  "earlier_runs": [
+    "Initial test-only full run had a heartbeat process-fixture startup failure; the unchanged cleanup test passed in focused reruns and final full validation.",
+    "Two crash-recovery fixtures were updated to persist worker-owned random claim keys; explicit legacy-key rejection has separate regression coverage."
+  ],
+  "limits": [
+    "Terminal status reporting is best effort: revoked credentials or network failure can still leave a stale observation until expiry; no cleanup path claims remote success without a response.",
+    "Latest snapshot validation reduces obsolete calls but cannot make a remote control change after the snapshot atomic with provider execution. Existing server completion fencing and cancellation remain required.",
+    "Distinct claim keys prevent accidental cross-journal replay; they are not a new authenticated server-issued lease capability for arbitrary external tool writes."
+  ],
+  "contracts": "No public request fields or database schema were added. Mode-specific permission validation was tightened within the authorized fix scope. ToolBroker API/DB changes remain a proposed follow-up.",
+  "new_document_links": {"checked": 59, "broken": 0},
+  "provider_and_operating_access": "NOTRUN: real provider login/auth/model calls, operating service, private-fixture-host, operating token issuance, deployment and merge",
+  "remote_push": "NOTRUN",
+  "cleanup": "Dedicated synthetic browser contexts and fixture servers closed; raw logs and screenshots remain outside the repository.",
+  "privacy_redaction": {"reviewed": "2026-10-20", "scope": "Private test-machine aliases replaced; measurements and outcomes preserved. Original Git history is not rewritten."}
+}
