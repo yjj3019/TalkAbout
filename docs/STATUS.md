@@ -12,6 +12,7 @@
 | API·도메인·worker·GUI 코드 | 구현됨 | `talkabout/`, `tests/` |
 | 합성(synthetic) 회귀 | **통과** (2026-10-25: Python 633 · Node 196) | 아래 §2 |
 | 실제 PostgreSQL 통합 19건 | **통과** (2026-10-25, 임시 18.6 클러스터) | 아래 §2 |
+| CI(GitHub Actions) 동일 명령 | **통과** — 633 passed / 3 skipped | run `40140013613` |
 | 실제 공급자 모델 호출 | **미검증** — Codex 1회 시도 결과 unknown, Claude 0회 | [actual-native-trial-2026-10-17.json](validation/actual-native-trial-2026-10-17.json) |
 | 실제 2-runtime 토론·재연결 (S1/S2) | **미통과** | [RELEASE_GAP_MATRIX.md](RELEASE_GAP_MATRIX.md) |
 | 운영 배포·운영 계정·MFA | **미완료** | [DEPLOYMENT_RUNBOOK.md](DEPLOYMENT_RUNBOOK.md) |
@@ -47,6 +48,7 @@ pwsh tools/ci_postgres_fixture.ps1 -Action stop -BinDir <postgres>/bin -DataDir 
 2. 회귀 러너가 콘솔 코드페이지 때문에 `UnicodeEncodeError`로 죽던 문제를 수정했습니다(테스트 실패가 exit 1로 보이던 원인).
 3. `--postgres-config`를 러너에 전달할 수 있게 되어, **Python+Node+PostgreSQL을 한 번에** 검증할 수 있습니다.
 4. 임시 PostgreSQL 픽스처 스크립트를 추가하고 실제로 생성→검증→종료까지 실행했습니다.
+5. CI 워크플로가 같은 픽스처로 PostgreSQL 케이스를 실행합니다. 첫 실행(run `40140013613`)에서 로컬과 같은 **633 passed / 3 skipped**로 통과했습니다.
 
 ## 4. 아직 남은 것 (완료로 표시하지 않음)
 
@@ -59,7 +61,6 @@ pwsh tools/ci_postgres_fixture.ps1 -Action stop -BinDir <postgres>/bin -DataDir 
 | paging/archival/disk quota | P0 상한(방 64, 이벤트 2048 등)만 존재 | 운영 정책 결정 |
 | binary/이미지 upload | 기본 비활성, `.txt/.md`만 opt-in | P2 격리·검사 |
 | POSIX 실행 | Windows Job containment 검증 전 차단 | 격리 검증 후 |
-| CI의 PostgreSQL 단계 | 워크플로 미연결(런너 권한·경로 전제 미확인) | 첫 CI 실행에서 확인 후 연결 |
 
 ## 5. 문서 지도
 
@@ -82,7 +83,8 @@ pwsh tools/ci_postgres_fixture.ps1 -Action stop -BinDir <postgres>/bin -DataDir 
 `python -B tools/run_safe_regression.py --postgres-config <private>/pg-fixture.json` runs Python, Node and a real
 ephemeral PostgreSQL cluster in one invocation (`tools/ci_postgres_fixture.ps1` creates and stops it, loopback only,
 never reusing a data directory). On 2026-10-25 the single combined run reported **633 Python passes (3 skips) and
-196 Node passes**, and a separate selection reported **19 PostgreSQL passes** against a fresh 18.6 cluster.
+196 Node passes**, and a separate selection reported **19 PostgreSQL passes** against a fresh 18.6 cluster. The CI
+workflow now runs the same fixture and reported the same 633/3 result on its first run (`40140013613`).
 
 Actual provider evidence is unchanged: one Codex start with an unknown outcome and zero Claude starts. S1/S2 release
 gates, operating deployment, accounts/MFA, paging/archival, binary uploads and POSIX execution remain incomplete, and

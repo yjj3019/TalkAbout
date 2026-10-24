@@ -51,6 +51,16 @@
       "create": "passed: initdb, loopback start, data_directory and listen_addresses verified, config written outside the repository",
       "reuse_refusal": "passed: an existing data directory is rejected",
       "stop": "passed: only the owned cluster stopped"
+    },
+    "ci": {
+      "workflow": "Safe regression",
+      "runner": "windows-latest",
+      "run_id": 40140013613,
+      "pull_request": 16,
+      "result": "success in 2m35s",
+      "python": {"passed": 633, "skipped": 3, "deselected": 7},
+      "node": {"passed": 196, "failed": 0},
+      "note": "Same command and fixture as the local run; the PostgreSQL step is no longer excluded."
     }
   },
   "boundaries": {
@@ -71,7 +81,6 @@
   "remaining_gates": [
     "S1 actual provider response/reconnect (budget remaining: Codex 5, Claude 3)",
     "S2 two-runtime dialogue and pause/recovery",
-    "Operating deployment acceptance",
-    "CI PostgreSQL step (workflow not yet wired)"
+    "Operating deployment acceptance"
   ]
 }
