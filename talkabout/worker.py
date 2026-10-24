@@ -15,7 +15,8 @@ from urllib.parse import urlsplit
 import httpx
 
 from .domain import digest
-from .runtime import BudgetedClient, RuntimeTimeout, bounded_call, check_deadline, validate_adapter_policy
+from .collaboration import add_file_sources, fit_context, shared_context
+from .runtime import BudgetedClient, RuntimeInputError, RuntimeTimeout, bounded_call, check_deadline, runtime_prompt, validate_adapter_policy
 
 
 class StopRequested(Exception):
@@ -58,7 +59,7 @@ class APIClient:
     def request(self, method, path, body=None, key=None, params=None):
         headers = {"Idempotency-Key": key} if key else {}
         policy, started = self.retry_policy, time.monotonic()
-        safe = method.upper() == "GET" or bool(key)
+        safe = method.upper() == "GET" or (bool(key) and not ('/tasks/' in path and path.endswith('/start')))
         for attempt in range(policy.attempts):
             check_deadline(self.deadline)
             if self.should_stop():
@@ -253,7 +254,7 @@ class Worker:
         if not entry:
             return "waiting"
         tid, state, payload = entry
-        if saved_result_only and state!='result_saved':
+        if saved_result_only and state not in {'result_saved','skip_pending'}:
             return 'model_call_budget_exhausted'
         self.last_step_started_runtime=bool(payload.get('runtime_started',False))
         stop_seen = threading.Event()
@@ -263,6 +264,10 @@ class Worker:
             self.journal.save(tid, "uncertain", payload)
             return "uncertain"
         try:
+            if state == 'skip_pending':
+                self.client.request('POST',prefix+'/skip',payload['skip'],payload['skip_key'])
+                self.journal.save(tid,'failed',payload)
+                return 'input_rejected'
             if state == "pre_call_retry":
                 task = self.client.request("GET", prefix)
                 previous = payload["task"]
@@ -280,7 +285,8 @@ class Worker:
                 if task["state"] != "queued":
                     self.journal.save(tid, "failed", payload)
                     return "unavailable"
-                payload["claim"] = {"generation": task["generation"], "membership_revision": task["membership_revision"]}
+                payload["claim"] = {"generation": task["generation"], "membership_revision": task["membership_revision"],
+                                    'execution_protocol': 'server_start_v1'}
                 # Durable for retries of this claim, distinct across worker journals.
                 payload["claim_key"] = f"claim:{tid}:{uuid.uuid4().hex}"
                 payload["runtime_started"] = False
@@ -331,11 +337,11 @@ class Worker:
                     self.journal.stop_state("stopped")
                     return "stopped"
                 context = {"room_id": rid, "generation": task["generation"], "membership_revision": task["membership_revision"], "agent_id": self.actor_id, "display_name": self.actor["display_name"], "role": task.get("role", "participant"),
-                           "topic": room["topic"], "purpose": task["purpose"], "inputs": room["messages"][-8:]}
+                           "topic": room["topic"], "purpose": task["purpose"]}
                 context.update(task_id=tid,task_attempt=task['attempt'])
                 context["phase"] = task.get("phase")
                 context["round"] = task.get("round")
-                context["artifact_proposals"] = [{"artifact_id": a["id"], "text": a["versions"][-1]["text"]} for a in room["artifacts"] if a["versions"]][-4:]
+                context.update(shared_context(room, task))
                 claimed=payload['task']
                 if claimed.get('attachment_refs'):
                     require_proof=claimed.get('lease_proof')
@@ -349,6 +355,7 @@ class Worker:
                         excerpts.append({k:chunk[k] for k in ('ref','name','text','start','end','line_start','line_end',
                                                              'truncated','untrusted_data','malware_scan')})
                     context['file_excerpts']=excerpts
+                    add_file_sources(context, excerpts, available_count=len(claimed['attachment_refs']))
                     # Reads may wait on the network. Recheck consent and fencing immediately
                     # before handing any fetched text to a runtime; no remote revocation can
                     # recall bytes already delivered to that runtime.
@@ -368,6 +375,35 @@ class Worker:
                         self.journal.save(tid,'cancelled',payload);self.journal.stop_state('stopped')
                         return 'stopped'
                 # Credentials, cursors, lease state, and retry keys are never model inputs.
+                try:
+                    fit_context(context)
+                    runtime_prompt(context)
+                except RuntimeInputError as error:
+                    payload.update(runtime_started=False,safe_pre_call_retry=False,input_error=str(error),
+                                   skip={**{k:task[k] for k in ('attempt','generation','membership_revision')},
+                                         'failure_code':str(error)},skip_key=f"input-rejected:{tid}:{task['attempt']}")
+                    self.journal.save(tid,'skip_pending',payload)
+                    self.client.request('POST',prefix+'/skip',payload['skip'],payload['skip_key'])
+                    self.journal.save(tid,'failed',payload)
+                    return 'input_rejected'
+                check_deadline(self.run_deadline)
+                if task.get('execution_protocol') != 'server_start_v1':
+                    self.journal.save(tid, 'failed', payload)
+                    return 'execution_protocol_required'
+                # Persist locally before requesting the server's one-shot permission.
+                # A lost response is uncertain; it must never trigger a model call.
+                payload['server_start_requested'] = True
+                self.journal.save(tid, 'call_started', payload)
+                try:
+                    started = self.client.request('POST', prefix + '/start',
+                        {k: task[k] for k in ('attempt', 'generation', 'membership_revision')},
+                        'start:' + payload['claim_key'])
+                except Exception:
+                    self.journal.save(tid, 'uncertain', payload)
+                    raise
+                if started.get('execute') is not True:
+                    self.journal.save(tid, 'uncertain', payload)
+                    return 'uncertain'
                 check_deadline(self.run_deadline)
                 payload["runtime_started"] = True
                 self.last_step_started_runtime=True
@@ -419,12 +455,17 @@ class Worker:
                     raise
                 finally:
                     finished.set()
-                    thread.join(timeout=16)
-                    watcher.join(timeout=2)
+                    thread.join(timeout=16 if self.run_deadline is None else
+                                min(16, max(0, self.run_deadline - time.monotonic())))
+                    watcher.join(timeout=2 if self.run_deadline is None else
+                                 min(2, max(0, self.run_deadline - time.monotonic())))
+                    if thread.is_alive() or watcher.is_alive():
+                        heartbeat_failed.set()
+                        cancel.set()
                 if heartbeat_failed.is_set():
                     self.journal.save(tid, "uncertain", payload)
                     return "heartbeat_failed"
-                payload["complete"] = {**fence, "result": {"client_message_id": f"{tid}:{task['attempt']}", "text": text, "reply_to": None, "mentions": []}}
+                payload["complete"] = {**fence, "input_manifest": context['input_manifest'], "result": {"client_message_id": f"{tid}:{task['attempt']}", "text": text, "reply_to": None, "mentions": []}}
                 payload["complete_key"] = f"complete:{tid}:{task['attempt']}"
                 self.journal.save(tid, "result_saved", payload)
             if stop_seen.is_set() or self.journal.stop_requested():
@@ -440,6 +481,9 @@ class Worker:
             self.journal.stop_state("stopped")
             return "stopped"
         except httpx.HTTPStatusError as exc:
+            if state == 'claimed' and payload.get('server_start_requested') and not payload.get('runtime_started'):
+                self.journal.save(tid, 'uncertain', payload)
+                raise
             if exc.response.status_code==409 and state=='claim_pending' and not payload.get('runtime_started'):
                 # A pause, generation change or competing claim can win after our GET.
                 # Never retry that claim as a model call; retire only this pre-call entry.

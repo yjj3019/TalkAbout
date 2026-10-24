@@ -13,6 +13,8 @@ from .retention import DEFAULT_RETENTION
 from .bounds import room_bounds, snapshot_bounds
 from .setup import SetupStore
 
+SCHEDULER_CAPACITY_ERRORS = frozenset({'event_capacity', 'room_byte_capacity', 'task_capacity'})
+
 
 class MemoryStore(SetupStore):
     """Contract-test store only; not a PostgreSQL concurrency substitute."""
@@ -77,12 +79,15 @@ class MemoryStore(SetupStore):
         self.signal.set()
 
     @contextmanager
-    def identity_transaction(self, token):
+    def identity_transaction(self, token, credential_id=None):
         with self.lock:
             actor = self.auth(token)
             principals, credentials = copy.deepcopy(self.principals), copy.deepcopy(self.credentials)
             yield actor, principals, credentials
-            require(len(principals) <= 128 and len(credentials) <= 512, "identity_capacity", 429)
+            own_ids = {pid for pid, p in principals.items() if p['owner'] == actor['owner']}
+            active = sum(c['id'] in own_ids and not c['revoked'] and c['expires_at'] > time.time()
+                         for c in credentials.values())
+            require(len(own_ids) <= 128 and active <= 512, "identity_capacity", 429)
             self.principals, self.credentials = principals, credentials
         self.signal.set()
 
@@ -158,15 +163,36 @@ class MemoryStore(SetupStore):
 
     def save_cursor(self, cursor_id, payload):
         with self.lock:
-            require(sum(c["principal"] == payload["principal"] for c in self.cursors.values()) < 4096, "cursor_capacity_archival_unsupported", 429)
-            self.cursors[cursor_id] = {**copy.deepcopy(payload), "expires_at": time.time() + DEFAULT_RETENTION.cursor_seconds}
+            now = time.time()
+            expired = [key for key, value in self.cursors.items()
+                       if value['principal'] == payload['principal'] and value.get('expires_at', 0) <= now]
+            for key in expired:
+                del self.cursors[key]
+            previous = self.cursors.get(cursor_id)
+            require(previous is None or {k:v for k,v in previous.items() if k!='expires_at'} == payload,
+                    'cursor_conflict')
+            if previous is None:
+                require(sum(c["principal"] == payload["principal"] for c in self.cursors.values()) < 4096, "cursor_capacity_archival_unsupported", 429)
+            self.cursors[cursor_id] = {**copy.deepcopy(payload), "expires_at": now + DEFAULT_RETENTION.cursor_seconds}
 
     def tick_all(self):
         from .domain import schedule
+        errors = {}
         with self.lock:
-            for room in self.rooms.values():
-                schedule(room, self.principals)
+            for rid, original in self.rooms.items():
+                room = copy.deepcopy(original)
+                try:
+                    schedule(room, self.principals)
+                    room_bounds(room)
+                except Problem as error:
+                    if error.code not in SCHEDULER_CAPACITY_ERRORS:
+                        raise
+                    errors[rid] = error.code
+                else:
+                    self.rooms[rid] = room
+            self.scheduler_errors = errors
         self.signal.set()
+        return errors
 
     @contextmanager
     def listener(self):
@@ -306,7 +332,7 @@ class PostgresStore(SetupStore):
             conn.execute("NOTIFY talkabout_changed")
 
     @contextmanager
-    def identity_transaction(self, token):
+    def identity_transaction(self, token, credential_id=None):
         from psycopg.types.json import Jsonb
         from psycopg.errors import UniqueViolation
         try:
@@ -321,12 +347,17 @@ class PostgresStore(SetupStore):
                 actor = self._auth(conn, token)
                 principals = {r["id"]: r["payload"] for r in conn.execute("SELECT id,payload FROM principals WHERE owner=%s ORDER BY id LIMIT 129 FOR UPDATE", (actor["owner"],)).fetchall()}
                 require(len(principals) <= 128, "principal_list_capacity_paging_unsupported", 429)
-                rows = conn.execute("SELECT c.* FROM credentials c JOIN principals p ON p.id=c.principal_id WHERE p.owner=%s ORDER BY c.token_hash LIMIT 513 FOR UPDATE OF c", (actor["owner"],)).fetchall()
-                require(len(rows) <= 512, "credential_capacity", 429)
+                now = time.time()
+                rows = conn.execute("SELECT c.* FROM credentials c JOIN principals p ON p.id=c.principal_id WHERE p.owner=%s AND ((NOT c.revoked AND c.expires_at>%s) OR c.credential_id=%s) ORDER BY c.token_hash LIMIT 514 FOR UPDATE OF c", (actor["owner"], now, credential_id)).fetchall()
+                require(sum(not r['revoked'] and r['expires_at'] > now for r in rows) <= 512, "credential_capacity", 429)
                 credentials = {r["token_hash"]: {"id": r["principal_id"], "credential_id": r["credential_id"] or ident(),
                                "scopes": r["scopes"], "expires_at": r["expires_at"], "revoked": r["revoked"], "room_id": r["room_id"]} for r in rows}
+                if not token.startswith('session:'):
+                    current = credentials.get(token_hash(token))
+                    require(current and not current['revoked'] and current['expires_at'] > now, 'unauthorized', 401)
                 yield actor, principals, credentials
-                require(len(principals) <= 128 and len(credentials) <= 512, "identity_capacity", 429)
+                require(len(principals) <= 128 and sum(not c['revoked'] and c['expires_at'] > time.time()
+                        for c in credentials.values()) <= 512, "identity_capacity", 429)
                 for pid, principal in principals.items():
                     conn.execute("INSERT INTO principals(id,owner,name_key,handle,payload) VALUES(%s,%s,%s,%s,%s) ON CONFLICT(id) DO UPDATE SET name_key=excluded.name_key,handle=excluded.handle,payload=excluded.payload",
                                  (pid, principal["owner"], principal["name_key"], principal["handle"], Jsonb(principal)))
@@ -421,24 +452,39 @@ class PostgresStore(SetupStore):
         from psycopg.types.json import Jsonb
         with self.connect() as conn:
             conn.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s,0))", (payload["principal"] + ":cursors",))
-            require(conn.execute("SELECT count(*) AS n FROM cursors WHERE principal_id=%s", (payload["principal"],)).fetchone()["n"] < 4096, "cursor_capacity_archival_unsupported", 429)
-            conn.execute("INSERT INTO cursors(id,principal_id,payload,expires_at) VALUES(%s,%s,%s,%s)", (cursor_id, payload["principal"], Jsonb(payload), time.time() + DEFAULT_RETENTION.cursor_seconds))
+            now = time.time()
+            conn.execute("DELETE FROM cursors WHERE principal_id=%s AND expires_at<=%s", (payload['principal'], now))
+            previous = conn.execute("SELECT principal_id,payload FROM cursors WHERE id=%s", (cursor_id,)).fetchone()
+            require(previous is None or (previous['principal_id'] == payload['principal'] and previous['payload'] == payload), 'cursor_conflict')
+            if previous is None:
+                require(conn.execute("SELECT count(*) AS n FROM cursors WHERE principal_id=%s", (payload["principal"],)).fetchone()["n"] < 4096, "cursor_capacity_archival_unsupported", 429)
+            saved = conn.execute("INSERT INTO cursors(id,principal_id,payload,expires_at) VALUES(%s,%s,%s,%s) ON CONFLICT(id) DO UPDATE SET expires_at=excluded.expires_at WHERE cursors.principal_id=excluded.principal_id AND cursors.payload=excluded.payload RETURNING id",
+                                 (cursor_id, payload["principal"], Jsonb(payload), now + DEFAULT_RETENTION.cursor_seconds)).fetchone()
+            require(saved is not None, 'cursor_conflict')
 
     def tick_all(self):
         from .domain import schedule
         with self.connect() as conn:
             ids = [r["id"] for r in conn.execute("SELECT id FROM rooms WHERE payload->>'state'='active' ORDER BY id LIMIT 65").fetchall()]
             require(len(ids) <= 64, "scheduler_capacity", 429)
+        errors = {}
         for rid in ids:
-            with self.connect() as conn:
-                row = conn.execute("SELECT * FROM rooms WHERE id=%s FOR UPDATE SKIP LOCKED", (rid,)).fetchone()
-                if not row:
-                    continue
-                principals = {p["id"]: p["payload"] for p in conn.execute("SELECT id,payload FROM principals WHERE owner=%s ORDER BY id LIMIT 129", (row["owner"],)).fetchall()}
-                require(len(principals) <= 128, "principal_list_capacity_paging_unsupported", 429)
-                room = self._room(conn, row)
-                schedule(room, principals)
-                self._flush(conn, room, row["last_event_seq"])
+            try:
+                with self.connect() as conn:
+                    row = conn.execute("SELECT * FROM rooms WHERE id=%s FOR UPDATE SKIP LOCKED", (rid,)).fetchone()
+                    if not row:
+                        continue
+                    principals = {p["id"]: p["payload"] for p in conn.execute("SELECT id,payload FROM principals WHERE owner=%s ORDER BY id LIMIT 129", (row["owner"],)).fetchall()}
+                    require(len(principals) <= 128, "principal_list_capacity_paging_unsupported", 429)
+                    room = self._room(conn, row)
+                    schedule(room, principals)
+                    self._flush(conn, room, row["last_event_seq"])
+            except Problem as error:
+                if error.code not in SCHEDULER_CAPACITY_ERRORS:
+                    raise
+                errors[rid] = error.code
+        self.scheduler_errors = errors
+        return errors
 
     @contextmanager
     def listener(self):

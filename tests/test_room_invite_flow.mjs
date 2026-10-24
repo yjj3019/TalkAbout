@@ -12,7 +12,7 @@ const agent={id:'synthetic-agent',display_name:'Synthetic agent',handle:'fixture
 const key=(patch={})=>({credential_id:'synthetic-key',room_id:'room',scopes,expires_at:Date.now()/1000+3600,revoked:false,...patch});
 const issued=(patch={})=>({...key(),token:'synthetic-room-secret',...patch});
 const tick=()=>new Promise(setImmediate);
-async function harness({language='ko',origin='http://127.0.0.1:19999',consent=true,manage=true}={}){
+async function harness({language='ko',origin='http://127.0.0.1:19999',consent=true,manage=true,storage=new Map(),search=''}={}){
  class Node{
   constructor(){this.value='';this.children=[];this.text='';this.type='password';this.hidden=false;this.open=false;this.disabled=false;this.listeners={};this.checked=false;}
   set textContent(v){this.text=v??'';this.children=[];}get textContent(){return this.text+this.children.map(n=>n.textContent??n).join('');}
@@ -23,9 +23,10 @@ async function harness({language='ko',origin='http://127.0.0.1:19999',consent=tr
  const node=id=>{if(!nodes.has(id))nodes.set(id,new Node());return nodes.get(id);};
  let clipboardFails=false;
  const context=vm.createContext({ViewState,labels,crypto:globalThis.crypto,AbortController,URLSearchParams,Blob,
+  localStorage:{getItem:key=>storage.get(key)??null,setItem:(key,value)=>storage.set(key,value)},
   document:{getElementById:node,createElement:()=>new Node(),querySelectorAll:()=>[],documentElement:{}},
   window:{setInterval:()=>1,clearInterval(){},setTimeout:f=>{timers.push(f);return timers.length;},clearTimeout(){},addEventListener(){}},
-  location:{origin,search:''},history:{replaceState(){},pushState(){}},confirm:message=>{confirms.push(message);return consent;},
+  location:{origin,search},history:{replaceState(){},pushState(){}},confirm:message=>{confirms.push(message);return consent;},
   navigator:{clipboard:{writeText:async text=>{if(clipboardFails)throw new Error('synthetic_clipboard_denied');copies.push(text);}}},
   URL:{createObjectURL:blob=>{downloads.push(blob);return 'blob:synthetic';},revokeObjectURL(){}},
   fetch:async(url,options={})=>{const path=url.replace('/api/v1/',''),method=options.method||'GET';calls.push({path,method,options});const handler=handlers.get(method+' '+path);if(handler)return handler(options);return {ok:true,json:async()=>path==='setup/status'?{setup_required:true}:[]};}});
@@ -173,4 +174,28 @@ test('all new HTML localization keys exist; advanced prompt and JSON are collaps
  const dialog=html.slice(html.indexOf('<dialog id="onboarding-dialog"'),html.indexOf('<dialog id="credential-dialog"'));
  for(const [,name] of dialog.matchAll(/data-i18n="([^"]+)"/g))for(const language of ['ko','en'])assert.equal(typeof labels[language][name],'string',name);
  assert.ok(dialog.indexOf('id="invite-advanced"')<dialog.indexOf('id="onboarding-prompt"'));assert.match(dialog,/<details id="invite-advanced">/);assert.match(dialog,/id="invite-secret-value" type="password"/);assert.match(dialog,/id="invite-error" role="alert"/);
+});
+
+test('explicit client preference survives a fresh page and stays scoped to its human owner',async()=>{
+ const storage=new Map(),first=await harness({storage});await first.open();
+ first.node('invite-client').value='claude';first.node('invite-client').onchange();
+ const next=await harness({storage});await next.open();assert.equal(next.node('invite-client').value,'claude');
+ assert.match(next.node('invite-command').textContent,/--runtime claude/);
+ next.run("user={id:'other-human',scopes:[]};connectionRuntimeChoices.clear();");await next.open();
+ assert.equal(next.node('invite-client').value,'codex');
+ assert.ok([...storage.values()].every(value=>value==='claude'));
+ assert.equal(first.calls.filter(c=>c.method==='POST').length,0);
+});
+
+test('disabled preference storage does not block an explicit client choice',async()=>{
+ const storage={get(){throw new Error('synthetic storage denied');},set(){throw new Error('synthetic storage denied');}};
+ const h=await harness({storage});await h.open();h.node('invite-client').value='claude';
+ h.node('invite-client').onchange();assert.match(h.node('invite-command').textContent,/--runtime claude/);
+});
+
+test('a stale journey URL cannot override the explicitly saved client',async()=>{
+ const storage=new Map(),first=await harness({storage});await first.open();first.node('invite-client').value='claude';first.node('invite-client').onchange();
+ const next=await harness({storage,search:'?connect='+agent.id+'&journey_runtime=codex'});
+ next.run('showConnection(agents[0]);');assert.equal(next.node('connection-runtime').value,'claude');
+ assert.match(next.node('connection-command').textContent,/--runtime claude/);
 });

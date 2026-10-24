@@ -30,6 +30,17 @@ def public_session(session):
     return {k: copy.deepcopy(v) for k, v in session.items() if not k.startswith('_')}
 
 
+def bound_task_session(token, body, room, member, task):
+    """A session-aware claim cannot later downgrade to the legacy task contract."""
+    claimed_session=(task or {}).get('participation_session_id')
+    if claimed_session is not None:
+        require('session_id' in body,'session_required')
+    if 'session_id' in body:
+        bound_session(token,body,room,member)
+    if claimed_session is not None:
+        require(body['session_id']==claimed_session,'stale_task_session')
+
+
 class Participation:
     def participation(self, token, room_id, action, body):
         require(isinstance(body, dict), 'invalid_fields', 422)
@@ -90,6 +101,7 @@ class Participation:
             busy = any(t['assignee'] == actor['id'] and t['state'] == 'leased'
                        and t['generation'] == room['generation'] and t['lease_expires_at'] > time.time()
                        for t in room['tasks'].values())
+            uncertain = any(t['state'] == 'uncertain' for t in room['tasks'].values())
             return {'count': len(unread), 'oldest_at': min((m['created_at'] for m in unread), default=None),
-                    'state': 'held' if busy and unread else 'available' if unread else 'empty',
+                    'state': 'held' if (busy or uncertain) and unread else 'available' if unread else 'empty',
                     'read_seq': session['read_seq']}

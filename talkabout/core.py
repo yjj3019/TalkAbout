@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import copy
 import time
-from .participation import Participation, bound_session
+from .participation import Participation, bound_session, bound_task_session
 
 from .identity import REAL_RUNTIMES, public_connection, public_runtime_check
+from .collaboration import project_manifest, project_task, validate_manifest
 from .text_files import (claim_proof, filter_refs, public_task, token_hash, validate_refs)
 
 from .domain import (AGENT_PERMISSIONS, HUMAN_PERMISSIONS, Problem, active, authorize,
@@ -49,10 +50,26 @@ def public_room(room, actor, principals=None):
                     'synthetic':sum(m.get('execution_evidence')=='synthetic_test_only' for m in current),
                     'unverified':sum(m.get('execution_evidence','unverified_agent')=='unverified_agent' for m in current),
                     'last_response_at':max((m['created_at'] for m in current),default=None)}
+    artifacts = [{**copy.deepcopy(a), 'versions': [{**copy.deepcopy(v), 'version_revision': index + 1}
+                  for index, v in enumerate(a['versions']) if v['seq'] >= viewer_member['read_start_seq']]}
+                 for a in room['artifacts'].values() if any(v['seq'] >= viewer_member['read_start_seq'] for v in a['versions'])]
+    visible_versions={(artifact['id'],version['id']) for artifact in artifacts for version in artifact['versions']}
+    for msg in messages:
+        target=msg.get('review_target')
+        if target and (target.get('artifact_id'),target.get('version_id')) not in visible_versions:
+            msg.pop('review_target')
+            msg['review_target_unavailable']=True
+    tasks = [project_task(task, messages, artifacts) for task in tasks]
+    for artifact in artifacts:
+        for version in artifact['versions']:
+            refs = (version.get('input_references') or {}).get('sources', [])
+            allowed_files = filter_refs(actor, room, viewer_member, [ref['ref'] for ref in refs if ref['kind'] == 'file_excerpt'])
+            if 'input_references' in version:
+                version['input_references'] = project_manifest(version['input_references'], messages, artifacts, allowed_files)
+                version['sources'] = [source['source_id'] for source in version['input_references']['sources']]
     return {k: copy.deepcopy(room[k]) for k in ("id", "topic", "mode", "state", "generation", "room_revision", "limits", "last_seq")} | {"members": members,
         "messages": messages, "tasks": tasks,
-        "artifacts": [{**a, "versions": [v for v in a["versions"] if v["seq"] >= viewer_member["read_start_seq"]]}
-                      for a in room["artifacts"].values() if any(v["seq"] >= viewer_member["read_start_seq"] for v in a["versions"])],
+        "artifacts": artifacts,
         "membership_revision": viewer_member["revision"],
         "mode_status": room.get("mode_status", "running"), "mode_progress": copy.deepcopy(room.get("mode_progress", {})),
         "dispatch_held": room.get("dispatch_held", False),
@@ -193,7 +210,11 @@ class Core(Participation):
     def read(self, token, room_id):
         actor, rooms, principals = self.store.snapshot(token)
         require(room_id in rooms, "not_found", 404)
-        return public_room(rooms[room_id], actor, principals)
+        result = public_room(rooms[room_id], actor, principals)
+        error = getattr(self.store, 'scheduler_errors', {}).get(room_id)
+        if error and result['state'] == 'active':
+            result['scheduler_error'] = error
+        return result
 
     def tick(self, token, room_id):
         _, _, principals = self.store.snapshot(token)
@@ -208,7 +229,7 @@ class Core(Participation):
             target = bits[1] if len(bits) > 1 else None
             verb = bits[-1]
             if bits[0] == "tasks":
-                permission = "task:" + verb
+                permission = "task:claim" if verb == 'start' else "task:" + verb
             elif bits[0] == "messages":
                 require(body.get("kind") in {"question", "advice"}, "invalid_kind", 422)
                 permission = "room:" + body["kind"]
@@ -230,8 +251,15 @@ class Core(Participation):
                 bound_session(token, body, room, member)
             if bits[0] == "tasks" and verb == "complete":
                 authorize(actor, room, "room:speak")
+            if bits[0]=='tasks' and verb!='claim':
+                candidate=room['tasks'].get(target)
+                if candidate and candidate['assignee']==actor['id']:
+                    bound_task_session(token,body,room,member,candidate)
             previous, lookup, fingerprint = replay(room, actor, operation, key, body)
             if previous is not None:
+                if bits[0] == 'tasks' and verb == 'start':
+                    # A response replay cannot grant a second external execution.
+                    return {**previous, 'execute': False}
                 if self.text_files and bits[0]=='tasks' and verb=='claim' and 'lease_id' in previous:
                     return {**previous,'lease_proof':claim_proof(token,room_id,previous,key)}
                 return previous
@@ -241,7 +269,7 @@ class Core(Participation):
                 require(actor["kind"] == "agent" and room["mode"] == "free_discussion", "unsupported_turn_request", 422)
                 require(set(body) == {"generation", "membership_revision"} and body["generation"] == room["generation"] and body["membership_revision"] == member["revision"], "stale_context")
                 requests = room.setdefault("turn_requests", [])
-                require(actor["id"] not in requests and not any(t["assignee"] == actor["id"] and t["state"] in {"queued", "leased"} for t in room["tasks"].values()), "turn_already_pending")
+                require(actor["id"] not in requests and not any(t["state"] == 'uncertain' or (t["assignee"] == actor["id"] and t["state"] in {"queued", "leased"}) for t in room["tasks"].values()), "turn_already_pending")
                 require(len(requests) < 16 and room.get("request_count", 0) < 64, "turn_request_capacity", 429)
                 requests.append(actor["id"])
                 room["request_count"] = room.get("request_count", 0) + 1
@@ -266,7 +294,18 @@ class Core(Participation):
                     require(not room.get('dispatch_held'), 'dispatch_held')
                     require(task["state"] == "queued" and now < task["deadline"], "task_unavailable")
                     require(body.get("generation") == task["generation"] == room["generation"] and body.get("membership_revision") == task["membership_revision"] == member["revision"], "stale_attempt")
+                    protocol = body.get('execution_protocol')
+                    require(protocol is None or (isinstance(protocol, str) and protocol == 'server_start_v1'), 'invalid_execution_protocol', 422)
+                    if task.get('execution_protocol'):
+                        require(protocol == task['execution_protocol'], 'execution_protocol_required')
+                    if protocol:
+                        task['execution_protocol'] = protocol
+                    # An expired session-aware lease may bind a new current session,
+                    # but must never silently return to the optional legacy contract.
+                    if task.get('participation_session_id') is not None:
+                        require('session_id' in body,'session_required')
                     task["attempt"] += 1
+                    if 'session_id' in body:task['participation_session_id']=body['session_id']
                     task["state"] = "leased"
                     task["lease_expires_at"] = min(task["deadline"], now + room["limits"]["lease"])
                     if self.text_files:
@@ -279,15 +318,42 @@ class Core(Participation):
                     emit(room, "task.claimed", task_id=target, attempt=task["attempt"])
                     response = copy.deepcopy(task)
                 else:
-                    require(verb in {"complete", "heartbeat", "skip"}, "not_found", 404)
+                    require(verb in {"start", "complete", "heartbeat", "skip"}, "not_found", 404)
                     fencing(room, member, task, actor, body, now)
-                    if verb == "heartbeat":
+                    if verb == 'start':
+                        require(all(type(body.get(k)) is int for k in ('attempt', 'generation', 'membership_revision')), 'invalid_execution_fence', 422)
+                        require(not room.get('dispatch_held'), 'dispatch_held')
+                        require(task.get('execution_protocol') == 'server_start_v1', 'execution_protocol_required')
+                        require(not task.get('execution'), 'execution_already_started')
+                        reads = [read for read in task.get('_file_reads', {}).values()
+                                 if read.get('attempt', task['attempt']) == task['attempt']]
+                        if reads:
+                            # Serialize consent with the one-shot permission. A worker's
+                            # preceding GET cannot close a revoke/delete race on its own.
+                            refs = ([read['ref'] for read in reads] if all('ref' in read for read in reads)
+                                    else task.get('attachment_refs', []))
+                            allowed = filter_refs(actor, room, member, refs)
+                            require(all(ref in allowed for ref in refs), 'task_input_revoked', 403)
+                        task['execution'] = {'state': 'started', 'attempt': task['attempt'],
+                            'generation': task['generation'], 'membership_revision': task['membership_revision'],
+                            'actor_id': actor['id'], 'started_at': now}
+                        emit(room, 'task.execution_started', task_id=target, attempt=task['attempt'])
+                        response = {'execute': True, 'task_id': target, 'attempt': task['attempt']}
+                    elif verb == "heartbeat":
                         task["lease_expires_at"] = min(task["deadline"], now + room["limits"]["lease"])
                         response = copy.deepcopy(task)
                     elif verb == "complete":
+                        if task.get('execution_protocol') == 'server_start_v1':
+                            require((task.get('execution') or {}).get('state') == 'started', 'execution_not_started')
                         if room["mode"] == "co_creation" and task["purpose"] == "creator":
                             authorize(actor, room, "room:contribute")
+                        inputs = validate_manifest(body.get('input_manifest'), public_room(room, actor), task)
                         msg = message(room, actor, body, now, task, fingerprint)
+                        task['input_manifest'] = inputs
+                        msg['input_evidence'] = inputs['evidence']
+                        if task.get('review_target') and body.get('input_manifest') is not None:
+                            msg['review_target'] = copy.deepcopy(task['review_target'])
+                            msg['review_evidence'] = 'target_in_worker_input_not_model_read_receipt'
                         principal=principals[actor['id']];connection=principal.get('connection') or {}
                         same_credential=connection.get('_credential_binding')==token_hash(token)
                         verified=same_credential and connection.get('runtime')!='synthetic' and self._worker_ready(principal,room_id,now)
@@ -305,18 +371,27 @@ class Core(Participation):
                                 room["artifacts"][aid] = {"id": aid, "revision": 0, "versions": [], "adopted": None}
                             artifact = room["artifacts"][aid]
                             require(len(artifact["versions"]) < 16, "version_capacity", 429)
-                            artifact["versions"].append({"id": ident(), "seq": room["last_seq"] + 1, "text": msg["text"], "actor_id": actor["id"], "sources": [], "ai_generated": True})
+                            artifact["versions"].append({"id": ident(), "seq": room["last_seq"] + 1, "text": msg["text"], "actor_id": actor["id"],
+                                "sources": [source['source_id'] for source in inputs['sources']],
+                                "input_references": copy.deepcopy(inputs), "ai_generated": True})
                             artifact["revision"] += 1
                             emit(room, "artifact.changed", artifact_id=aid, actor_id=actor["id"])
                             proposal = copy.deepcopy(artifact)
                             proposal["versions"] = [v for v in proposal["versions"] if v["seq"] >= member["read_start_seq"]]
                         task["state"] = "completed"
+                        if task.get('execution'):
+                            task['execution'].update(state='completed', completed_at=now)
+                        task['result_message_id'] = msg['id']
                         member["greeted"] = True
                         emit(room, "task.completed", task_id=target)
                         response = {"message": msg, "task": copy.deepcopy(task)}
                         if proposal:
                             response["artifact"] = proposal
                     else:
+                        require(not task.get('execution'), 'execution_already_started')
+                        failure_code=body.get('failure_code')
+                        require(failure_code is None or (isinstance(failure_code,str) and failure_code in {'invalid_runtime_context','invalid_runtime_budget'}), 'invalid_failure_code',422)
+                        if failure_code is not None:task['failure_code']=failure_code
                         task["state"] = "skipped"
                         emit(room, "task.skipped", task_id=target, actor_id=actor["id"])
                         response = copy.deepcopy(task)
@@ -442,7 +517,7 @@ class Core(Participation):
                     require(all(isinstance(s, str) and len(s) <= 2048 for s in body.get("sources", [])), "invalid_sources", 422)
                     require(isinstance(body.get("caption", ""), str) and len(body.get("caption", "")) <= 2000, "invalid_caption", 422)
                     require(len(artifact["versions"]) < 16, "version_capacity", 429)
-                    artifact["versions"].append({"id": ident(), "seq": room["last_seq"] + 1, "text": text, "actor_id": actor["id"], "sources": body.get("sources", []), "ai_generated": actor["kind"] == "agent"})
+                    artifact["versions"].append({"id": ident(), "seq": room["last_seq"] + 1, "text": text, "actor_id": actor["id"], "sources": body.get("sources", []), "ai_generated": actor["kind"] == "agent", **({'caption':body['caption']} if 'caption' in body else {})})
                 artifact["revision"] += 1
                 emit(room, "artifact.changed", artifact_id=artifact["id"], actor_id=actor["id"])
                 if verb == "adoptions" and room["mode"] == "co_creation" and room.get("mode_status") == "awaiting_adoption" and artifact["id"] == room.get("creation_artifact_id"):
@@ -549,10 +624,11 @@ class Core(Participation):
                 require(self.scope(latest_actor, latest_rooms)[1] == revision, "cursor_scope_changed")
                 if events or time.monotonic() >= end or rebase:
                     payload = {"principal": actor["id"], "scope": revision, "view": target_room or "inbox", "offsets": offsets,
-                               "epochs": {r: m["epoch"] for r, m in members.items()}, "rotation": rotation + 1}
+                               "epochs": {r: m["epoch"] for r, m in members.items()}, "rotation": rotation + (1 if events else 0)}
                     if session_id is not None:
                         payload.update(participation_session=session_id, _credential_binding=token_hash(token))
-                    next_cursor = ident()
+                    unchanged = old and {k:v for k,v in old.items() if k!='expires_at'} == payload
+                    next_cursor = cursor if unchanged and not rebase else ident()
                     self.store.save_cursor(next_cursor, payload)
                     return {"events": events, "next_cursor": next_cursor, "membership_set_revision": revision, "gaps": gaps,
                             "rooms": [public_room(rooms[r], actor) for r in members] if rebase else []}

@@ -1,12 +1,20 @@
-## Final feature checkpoint — 2026-10-13
+## 현재 상태 · 2026-10-23
+
+운영 배포 기준은 `ae6a9812a8dbf75a28aa11fc31166f629a786046`입니다. 아래 2026-10-13 이후 날짜별 기록은 당시 commit과 실행 범위의 역사이며, 현재 공개/배포 상태나 실행 승인을 대신하지 않습니다. 진행 중인 작업 브랜치의 미커밋 변경은 미배포입니다. 현재 지원·미완료 범위는 [기능표](FEATURE_MATRIX.md)를 확인합니다.
+
+이번 개발 검토의 선별 결과는 실제 Chrome→loopback API→합성 MemoryStore 8건(KO 1400px / EN 390px), 새 격리 PostgreSQL 18.6 저장·회귀 7건입니다. PostgreSQL은 Store 객체 재생성이며 DB 서버 재시작은 아닙니다. cursor 전체 quota는 MemoryStore, 일부 만료 경쟁은 fake connection 검사입니다. 전체 회귀·실제 provider 검증 결과로 합산하지 않습니다. 이번 실제 provider 호출은 0회이며 과거 원본 증거와 불확실 호출·예산은 유지합니다.
+
+최초 PC 연결 후 방별 선택→초대→실제 참여는 개발 중이며 실사용 성공으로 제공하지 않습니다. 기존 일반 worker 재연결과 Codex native 세션 복원도 구분합니다. `--persist-provider-sessions`는 검증된 계정 식별자가 없어 모델 연결시험 전에 차단됩니다.
+
+## Historical feature checkpoint — 2026-10-13
 
 ### Git delivery and deployment preparation update
 
-Current local verification does not authorize push/PR/merge or deployment. These remain blocked or incomplete; earlier delivery/approval statements below are dated checkpoints. The [predeployment consistency record](validation/predeployment-consistency-review-2026-10-20.json) links the current selected checks and separate PostgreSQL follow-up. The [deployment runbook](DEPLOYMENT_RUNBOOK.md) records the remaining target and operating acceptance requirements.
+At this historical checkpoint, push/PR/merge and deployment were blocked or incomplete. The later [2026-10-20 consistency record](validation/predeployment-consistency-review-2026-10-20.json) is also a dated selected-run record. Neither replaces the current status above. See the [deployment runbook](DEPLOYMENT_RUNBOOK.md) for operating and rollback requirements.
 
 Added read-only CLI preflight, sanitized loopback DB configuration validation, bounded connection timeout, PostgreSQL/schema/scheduler readiness, foreground concurrency/shutdown limits and wheel packaging validation. The updated local aggregate passed 95 Python cases including 11 real isolated PostgreSQL cases and the stdio MCP process; UI logic passed 5. A real synthetic loopback HTTP server returned health/ready and rejected unauthenticated room access, then shut down. This is a private smoke test, not a deployed user service. Browser/AI/product MCP remain NOTRUN. Build resources, pip check, local links and syntax/diff checks passed.
 
-LOCAL PROTOTYPE / NOT DEPLOYED. [Final feature matrix](FEATURE_MATRIX.md) is the current requirement-level status. [Owner handover and mode contract](MODE_HANDOVER.md) supersedes older entries saying handover/modes are unimplemented or only round-robin labels. [Retry/retention bounds](RETENTION_BOUNDS.md) still defines the previous safety bundle.
+Historical status: LOCAL PROTOTYPE / NOT DEPLOYED. The [feature matrix](FEATURE_MATRIX.md) now records current requirement-level status. [Owner handover and mode contract](MODE_HANDOVER.md) supersedes older entries saying handover/modes are unimplemented or only round-robin labels. [Retry/retention bounds](RETENTION_BOUNDS.md) defines that earlier safety bundle.
 
 The final code aggregate passed 86 Python tests, including 10 real isolated PostgreSQL cases and a separate local stdio MCP client/process test. Node UI state logic passed 5 cases; Python/JavaScript syntax, local document links and git diff --check passed. The same complete aggregate is rerun at the final committed head for the final report and review manifest. These are synthetic local tests, not operating AI/browser verification. One existing Starlette/httpx deprecation warning remains.
 
@@ -153,3 +161,8 @@ de80a40에서는 PostgreSQL 서비스 부재로 DB 시험을 실행하지 못했
 ```
 
 serve는 loopback 127.0.0.1:8080만 사용합니다. 원격 host 설정 옵션은 제공하지 않습니다. worker config는 gitignored *.local.json에 base_url, allowed_origin, journal_path, token_env를 넣는 제안이며 token 원문은 넣지 않습니다. HTTP는 loopback 예외만, 외부는 HTTPS입니다. 아직 실제 운영용 provisioning 안내가 완성되지 않았으므로 테스트 fixture를 실사용 계정으로 재사용하지 않습니다.
+### 후속 개발본 구분 — 2026-10-23
+
+아래 기존 검증 수치는 이전 단계의 기록입니다. 후속 미커밋 개발본에는 공유 입력의 출처·버전·생략 정보와 `server_start_v1` task 호출 시작 예약이 추가됐습니다. 미확정 예약은 journal 교체·lease 만료·방 제어로 자동 재실행되지 않으며, 모델 실행 증거와 구분합니다. 상세 호환 계약은 [API 초안](API_DRAFT.md)의 서버 호출 시작 예약 절을 따릅니다. 합성 runtime, 격리 PostgreSQL, Chrome의 확인 범위와 실제 provider 미검증을 구별해야 합니다.
+
+PC 연결기 백엔드는 미구현입니다. 독립 client/bridge 모듈은 API·CLI·UI에 연결되지 않았으며, 방의 버튼으로 실제 에이전트를 초대할 수 있는 완성 기능이 아닙니다. 현재 운영 버전과 데이터는 변경하지 않았습니다.

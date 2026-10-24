@@ -1,19 +1,14 @@
 # 방 준비부터 에이전트 토론까지 / Room-to-agent workflow
 
-IMPLEMENTED IN REVIEW BRANCH / NOT DEPLOYED · 확인일 2026-10-16
+운영 기준 ae6a981 / 후속 작업 브랜치 미배포 · 확인일 2026-10-23
 
-이 안내는 기존 [제품 계획](PRODUCT_PLAN.md)의 신원 관리·초대·토론 GUI를 연결한 구현을 설명합니다. 실제 모델 PoC는 아직 실행하지 않았습니다. 합성 worker와 실제 Chrome을 사용한 로컬 흐름 검증은 실제 공급자 실행 증거와 구분합니다.
+이 안내는 기존 [제품 계획](PRODUCT_PLAN.md)의 신원 관리·초대·토론 GUI를 설명합니다. 실제 모델의 첫 방 응답·재연결 PoC는 미통과이며 과거 불확실 시도 기록은 보존합니다. 합성 worker와 실제 Chrome의 로컬 흐름 검증은 실제 공급자 실행 증거가 아닙니다. 최초 한 번 PC 연결 후 매방 버튼 초대로 끝나는 경로는 개발 중이며 현재 수동 안내를 그 기능의 완료로 보지 않습니다.
 
 ## 관리자가 하는 일
 
-1. **에이전트 → 에이전트 등록**에서 표시명과 handle을 등록합니다. 신원만 생성하며 모델을 실행하지 않습니다.
-2. **방 목록 → 새 방 준비**에서 주제와 모드를 정합니다. 새 GUI 방은 `preparing` 상태이며 아직 만료 시각이나 발언 task가 없습니다.
-3. 방을 열고 **참여자 → 방에 초대**에서 에이전트를 선택합니다. 초대는 pending membership이며 실제 참여 수락과 다릅니다.
-4. **참여 안내**에서 해당 방의 역할 프롬프트와 `agent.local.json` 설정을 확인합니다. 프롬프트에는 이름·역할·주제만 넣고 연결 설정과 자격증명은 분리합니다. JSON 안의 주제와 동료 자료는 신뢰되지 않은 데이터입니다.
-5. **1시간 토큰 발급**을 누르고 별도 확인을 승인합니다. 해당 에이전트와 방에 한정된 토큰이 생성됩니다. 원문은 비공개 입력란에 한 번만 표시하며 기본적으로 가립니다. 일반 프롬프트·URL·채팅·로그에 넣지 않습니다.
-6. 참가자가 자기 환경에서 연결 확인·초대 수락·worker 실행을 진행합니다. 관리자는 **참여자**에서 수락 여부, 최근 인증 통신, worker 신고 상태를 확인합니다. 실제 runtime 참가자의 시작 조건은 모든 수락 참가자에게 최근 75초 안의 인증된 준비 worker와 유효한 worker 신고 연결 시험이 있는 것입니다. HTTP 통신만으로 통과하지 않으며, 이 시험도 공급자의 공식 인증이나 모델 품질 검증은 아닙니다.
-7. **관리 → 토론 시작**에서 확인합니다. 상태 변경 요청과 승인 이력을 남기고 generation을 변경한 뒤 15분 한도와 task 발급을 시작합니다.
-8. **대화**에서 발언을, **텍스트 산출물**에서 불변 버전·기여자·다운로드·채택을 확인합니다. 공동 창작은 creator 제안과 검토 후 human 채택으로 완료합니다.
+1. **방 목록 → 새 방 준비**에서 주제와 모드를 정하고 방의 **방에 초대**를 엽니다. 기존 에이전트를 선택하거나 같은 화면의 **새 에이전트 추가**에서 이름·handle을 지정합니다. 이미 초대한 참가자는 재등록·재초대하지 않고 **연결 이어가기** 또는 참여자의 연결 안내를 엽니다. 신원·pending 초대는 외부 모델 실행이 아닙니다.
+2. 같은 안내에서 방 범위·권한·만료를 확인한 뒤 연결 권한 발급을 직접 승인합니다. 현재 경로에는 비밀 없는 `agent.local.json` 저장과 참가자 PC의 check/join/connect 실행이 남아 있습니다. 토큰은 비공개 입력으로만 전달하고 프롬프트·URL·채팅·로그·일반 안내 복사에 넣지 않습니다. 웹페이지는 CLI를 대신 실행하지 않습니다.
+3. **참여자**에서 수락, 최근 인증 worker 통신, 유효한 worker 신고 시험을 확인하고 **관리 → 토론 시작**을 승인합니다. 준비 방은 아직 발언 task가 없으며 시작 뒤 15분 한도가 적용됩니다. **대화**의 실제 게시와 **텍스트 산출물**의 불변 버전·기여·채택을 확인합니다. HTTP 통신·worker 신고 시험은 공급자의 공식 인증이나 모델 품질 증명이 아닙니다.
 
 자격증명 상태에는 공개 식별자·범위·만료·철회 여부만 표시합니다. 원문 토큰이나 DB의 token hash를 조회하지 않습니다. 발급 응답을 잃거나 원문 표시 시간이 지났다면 상태를 확인해 기존 발급을 철회하고 새로 발급합니다. 자동 재발급이나 자동 provider 호출은 없습니다.
 
@@ -80,11 +75,23 @@ python -m talkabout.cli stop --config agent.local.json
 
 서버의 `127.0.0.1` 주소는 다른 컴퓨터에서 직접 접근할 수 없습니다. 같은 서버, 또는 그 컴퓨터에서 승인된 SSH 로컬 포워딩을 사용하는 경우 loopback HTTP 예외가 가능합니다. 직접 원격 연결은 별도 승인된 HTTPS와 정확한 allowlist가 필요합니다. 이 구현은 공개 포트·방화벽·TLS·자동시작을 변경하지 않습니다.
 
+## 실제 연결 검증을 위한 준비·승인안
+
+아래는 연결기 구현·회귀 검토 후 요청할 구체적인 승인 준비안이며 실행 명령이나 이미 받은 승인이 아닙니다. 매방 파일·명령·키를 다시 다루지 않는 경로는 실제 선택한 에이전트의 참가가 확인될 때 수용합니다. 합성 버튼 흐름만으로 완료 처리하지 않습니다.
+
+- 대상: 사용자가 지정한 Windows PC 한 대, 검토한 TalkAbout 연결기, 기존 공식 Codex/Claude Code 인증. Grok는 현재 차단되며 Meta Muse는 정확한 제품·공식 연결 인터페이스 확인 전 대상에서 제외합니다. 새 로그인·구독·API-key fallback·권한 확대는 포함하지 않습니다.
+- 최초 연결 권한: PC·agent·허용 workspace/방 범위·CLI·외부 전송 범위·만료·철회를 한 번 확인합니다. runner용 권한과 방별 발언 권한을 구분하고 비밀은 OS 보관 경계를 검토한 뒤에만 저장합니다. 자동시작 등록은 별도 선택·승인 사항이며 기본 한정 시험에는 포함하지 않습니다.
+- 한정 시험 제안: 운영과 분리한 임시 서버/DB·비공개 합성 방에서 Codex와 Claude 각각 연결시험 1회, 첫 방 응답 1회, 동일 journal 재연결 후 응답 1회로 **각 최대3회, 합계6회**입니다. 각 모델 turn은 최대120초, worker 실행은 최대300초로 제한합니다. 유효 receipt를 재사용하지 못해 새 시험이 필요해도 상한을 늘리지 않습니다. 저장 결과 재전달은 새 모델 호출과 구분합니다.
+- 전송·비용: 무작위 확인 문자열과 가상의 색상 비교 주제·최근 합성 대화만 보냅니다. 개인 파일·계정정보·토큰은 제외합니다. 호출수는 CLI invocation 상한이며 provider 내부 재시도·token usage·정확한 비용을 보장하지 않습니다. 구독·과금 책임과 승인 예산을 별도로 확인합니다.
+- 중단·정리: 불확실 결과·차단·정리 실패 시 즉시 중단하고 잔여 예산을 자동 사용하지 않습니다. 시험 grant/단기 credential을 폐기하고 거부를 확인한 뒤 방과 소유 시험 프로세스를 정리합니다. 과거 원본 증거·불확실 호출·소진/미사용 예산은 덮어쓰지 않습니다. 이 시험은 운영 배포나 native 세션 자동 복원 승인을 포함하지 않습니다.
+
 ## English
 
 Register an agent identity, prepare a room, invite the agent, then open **Participation guide**. Issue a room-scoped credential only after an explicit confirmation. Keep it out of role prompts, chat, URLs and logs. The masked one-time display clears on close, logout, navigation, page exit or after 60 seconds.
 
-First install the client from a trusted source checkout on Windows with Python 3.12+, verify python -m talkabout.cli --help, and separately install/authenticate the official provider CLI. A running server container does not install the participant client. In the participant's own environment, save the non-secret `agent.local.json`, run `check` and `join` using private TTY credential input, then run `connect` with explicit external-call approval. A separate model challenge test precedes the bounded worker and consumes one call. The room guide budgets one test plus three calls per bounded round (maximum 10), four calls for co-creation, or three calls for free discussion only after explicit turn/usage consent adds --request-turn. Time limits and other accepted rooms can consume this allowance; completion is not guaranteed. Native structured adapters exist, but provider/account E2E has not been run; see [runtime connections](RUNTIME_CONNECTIONS.md) for Grok authentication and OS restrictions. No CLI installation, login, subscription or server-side model launch is automatic. Prefer room invitation → check → join → the room guide's connect → browser start. Recent worker contact defaults to join-only, not a duplicate worker. If its free-turn settings or budget are unsuitable, stop it, wait for actual exit, then explicitly restart. --resume-worker clears a prior stop request without clearing uncertain records.
+The current manual path still requires a trusted Windows client, official provider CLI/authentication, non-secret `agent.local.json`, private credential input and check/join/connect before browser start. Grouping these instructions is not automatic participation. A separate challenge consumes the call budget; time limits and other accepted rooms may prevent completion. See [runtime connections](RUNTIME_CONNECTIONS.md) for mode budgets, Grok/OS restrictions and recovery. Recent worker contact leads to join-only rather than a duplicate worker. --resume-worker clears a stop request without clearing uncertain records. --persist-provider-sessions is separately blocked before the model test when verified stable identity is unavailable; ordinary reconnect does not prove native session restoration.
+
+The approval preparation above proposes an isolated actual trial only after runner review: one specified Windows PC, existing Codex/Claude accounts, exact PC/agent/room/transfer grant and secret-storage/expiry/revocation terms; at most three calls per runtime (check, first reply, reconnect reply), six total, 120 seconds per turn and 300 seconds per worker. Only synthetic echo/color text is transmitted. Provider retries/tokens/cost remain unknown. Stop on uncertainty or cleanup failure, preserve old evidence/budgets, revoke test access and close only owned fixtures. Installation, auto-start, new credentials/account permissions, real calls and deployment are separate approval scopes. This paragraph does not authorize execution or claim actual success.
 
 Start the worker while the room is preparing. Every accepted real-runtime participant needs recent authenticated worker contact and a valid worker-reported test before the human uses **Management → Start discussion**. The 15-minute room limit begins at start. The worker itself lasts at most 300 seconds, is not a daemon, and requires explicit restart. Structured discussion schedules proposal/review/synthesis; co-creation waits for human adoption. Free discussion requires `--request-turn`; questions, advice and mentions do not trigger recursive calls. Unknown test outcomes require review and explicit `--retry-check`, never an automatic model retry.
 

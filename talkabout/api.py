@@ -23,14 +23,16 @@ def create_app(store, start_scheduler=True, allow_fixture_bearer=False, allowed_
     identity = IdentityService(store)
     human_auth = HumanAuth(store)
     stop = threading.Event()
-    state = {"scheduler": "stopped"}
+    state = {"scheduler": "stopped", "blocked_rooms": 0}
 
     def scheduler():
         state["scheduler"] = "running"
         while not stop.wait(0.5):
             try:
                 if not store.setup_required():
-                    store.tick_all()
+                    errors = store.tick_all() or {}
+                    state['blocked_rooms'] = len(errors)
+                    state['scheduler'] = 'degraded' if errors else 'running'
             except Exception:
                 # Never log a database DSN, credentials, or external payload.
                 state["scheduler"] = "failed"
@@ -94,13 +96,16 @@ def create_app(store, start_scheduler=True, allow_fixture_bearer=False, allowed_
         if request.state.setup_locked:
             return {"status": "alive"}
         return {"status": "development", "scheduler": state["scheduler"], "binary_uploads": False,
+                **({'blocked_rooms':state['blocked_rooms']} if state['blocked_rooms'] else {}),
                 **({'text_attachments':True} if text_files else {})}
 
     @app.get("/ready")
     async def ready():
         from starlette.concurrency import run_in_threadpool
-        available = state["scheduler"] == "running" and await run_in_threadpool(store.ready)
-        return JSONResponse({"status": "ready" if available else "not_ready", "deployment": "prototype"}, status_code=200 if available else 503)
+        available = state["scheduler"] in {'running','degraded'} and await run_in_threadpool(store.ready)
+        # A bounded room failure does not withdraw healthy rooms from service.
+        return JSONResponse({"status": "ready" if available else "not_ready", "deployment": "prototype",
+                             **({'scheduler':'degraded','blocked_rooms':state['blocked_rooms']} if state['scheduler']=='degraded' else {})}, status_code=200 if available else 503)
 
     @app.get("/")
     def index():
@@ -340,7 +345,7 @@ def create_app(store, start_scheduler=True, allow_fixture_bearer=False, allowed_
                 return core.accept(credential, room_id, key, body)
             permitted = operation and (
                 operation in {"messages", "memberships", "controls", "artifacts", "turn-requests"}
-                or re.fullmatch(r"tasks/[^/]+/(claim|heartbeat|complete|skip)", operation)
+                or re.fullmatch(r"tasks/[^/]+/(claim|start|heartbeat|complete|skip)", operation)
                 or re.fullmatch(r"controls/[^/]+/approve", operation)
                 or re.fullmatch(r"artifacts/[^/]+/(versions|adoptions)", operation)
                 or (method == "PATCH" and re.fullmatch(r"memberships/[^/]+", operation)))

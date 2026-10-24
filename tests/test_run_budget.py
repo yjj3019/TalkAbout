@@ -94,35 +94,34 @@ def test_runtime_rejects_expired_budget_before_spawn():
 
 
 @pytest.mark.parametrize('preflight_exhausted', [False, True])
-def test_cli_run_includes_preflight_in_one_second_budget(fixture, tmp_path, monkeypatch, capsys, preflight_exhausted):
+def test_cli_run_includes_preflight_in_one_second_budget(fixture, tmp_path, monkeypatch, capsys, preflight_exhausted, request):
     import json
     from types import SimpleNamespace
     from talkabout import cli
     from talkabout import runtime as runtime_module, worker as worker_module
     store, _, _ = fixture
     class BudgetClock:
-        # Freeze incidental fixture setup cost, then use real elapsed time for
-        # the runtime timeout. The independent wall-clock assertion stays real.
-        now = time.monotonic()
-        running_at = None
+        # Include every real API/preflight cost in the same clock as the CLI.
+        # Only the exhausted case advances an additional deterministic offset.
+        offset = 0
         def monotonic(self):
-            return self.now + (time.monotonic()-self.running_at if self.running_at is not None else 0)
+            return time.monotonic()+self.offset
     clock = BudgetClock()
-    class TimedRuntime(DelayedRuntime):
-        def run(self, context, cancel):
-            clock.running_at = time.monotonic()
-            return super().run(context, cancel)
-    client, runtime = LocalClient(store), TimedRuntime()
+    client, runtime = LocalClient(store), DelayedRuntime()
+    # A real worker talks to an already running API. Reuse one fixture lifespan
+    # instead of starting a new portal/event loop for every HTTP request.
+    client.http.__enter__()
+    request.addfinalizer(lambda:client.http.__exit__(None,None,None))
     controlled_time = SimpleNamespace(monotonic=clock.monotonic, time=time.time, sleep=time.sleep)
     for module in (cli, runtime_module, worker_module):
         monkeypatch.setattr(module, 'time', controlled_time)
     original = client.request
-    def request(method, path, *args, **kwargs):
+    def preflight_request(method, path, *args, **kwargs):
         if path == 'agents/me/capabilities':
             time.sleep(.4)
-            clock.now += 1 if preflight_exhausted else .4
+            if preflight_exhausted:clock.offset += .6
         return original(method, path, *args, **kwargs)
-    client.request = request
+    client.request = preflight_request
     client.close = client.http.close
     config = tmp_path/'agent.local.json'
     config.write_text(json.dumps({'base_url':'https://fixture.invalid', 'allowed_origin':'https://fixture.invalid',

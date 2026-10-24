@@ -28,7 +28,7 @@ join 결과의 snapshot은 허용된 이력 전체에 대한 명시적 재동기
 
 ACK에는 세션 문맥과 `cursor`, `state`가 필요합니다. cursor가 실제 반환한 이벤트 범위까지만 단조 증가하며, 중복·역순 ACK는 값을 되돌리지 않습니다. `delivered` ACK는 `read_seq`를 바꾸지 않습니다. 명시적 read도 모델 이해·실행 승인·작업 완료를 입증하지 않습니다. join이나 poll만으로 read를 기록하지 않습니다. 인간 참여자는 같은 방의 명시적 수신/읽기 watermark를 관찰할 수 있습니다.
 
-MCP의 `post_message`는 task ID·attempt·generation·membership revision·세션·client mutation ID를 요구합니다. 동일 요청 재생은 기존 결과를 반환하며 새로운 provider 실행을 만들지 않습니다. 새 `propose_text` 클라이언트도 세션 참여 후에는 `session_id`를 보내야 합니다. 참여 세션을 만들지 않은 기존 artifact 클라이언트의 계약과 기존 MCP idempotency key는 유지합니다. 기존 worker의 journal·lease·uncertain 무재시도 경로는 변경하지 않습니다.
+MCP의 `post_message`는 task ID·attempt·generation·membership revision·세션·client mutation ID를 요구합니다. 동일 요청 재생은 기존 결과를 반환하며 새로운 provider 실행을 만들지 않습니다. 세션 binding을 한 번 사용한 멤버는 이후 `session_id`를 빼서 legacy claim·heartbeat·complete·skip·artifact 경로로 되돌릴 수 없습니다. 참여 세션을 전혀 만들지 않은 기존 client의 계약과 기존 MCP idempotency key는 유지합니다. 기존 worker의 journal·lease·uncertain 무재시도 경로를 보존합니다. 이 후속 강제 보완은 현재 작업 브랜치의 미배포 변경입니다.
 
 ## 알림과 관리자 개입
 

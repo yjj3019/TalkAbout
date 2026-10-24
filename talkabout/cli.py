@@ -153,9 +153,42 @@ def main():
                 if args.codex_transport=='app-server' and (args.runtime!='codex' or not args.experimental_app_server):
                     parser.error('app-server requires Codex and explicit --experimental-app-server')
                 if args.runtime and os.name != 'nt': parser.error('External CLI execution requires verified Windows Job containment; POSIX execution is disabled')
+                if journal.stop_requested():
+                    raise SystemExit('connector_stopped: confirm the previous process exited before explicitly resuming')
                 deadline = time.monotonic() + args.max_seconds
                 client.deadline = deadline
+                pending=journal.next()
+                if pending and pending[1] in {'skip_pending', 'result_saved'}:
+                    class NoRuntime:
+                        def run(self,*args):raise RuntimeError('metadata_recovery_cannot_run_model')
+                    recovery=Worker(client,journal,NoRuntime(),run_deadline=deadline)
+                    recovered_result = False
+                    for _ in range(args.steps):
+                        pending=journal.next()
+                        if not pending or pending[1] not in {'skip_pending', 'result_saved'}:break
+                        recovered_result = recovered_result or pending[1] == 'result_saved'
+                        result=recovery.step(saved_result_only=True)
+                        print(result)
+                        if result not in {'input_rejected', 'completed'}:break
+                    # Never turn a metadata-only restart into an implicit new model call.
+                    print(json.dumps({'model_calls':0,'next_action':'saved_result_recovery_only' if recovered_result else 'input_rejection_recovery_only'}))
+                    return
                 if args.runtime:
+                    # A fresh local journal cannot authorize another diagnostic model
+                    # call while the server already records a possible room execution.
+                    snapshots = client.request('GET', 'rooms')
+                    if (not isinstance(snapshots, list)
+                            or any(not isinstance(room, dict) or not isinstance(room.get('tasks'), list)
+                                   or any(not isinstance(task, dict) or not isinstance(task.get('state'), str)
+                                          or ('execution' in task and (not isinstance(task['execution'], dict)
+                                              or not isinstance(task['execution'].get('state'), str)
+                                              or task['execution'].get('state') not in {'started', 'uncertain', 'completed'}))
+                                          for task in room['tasks']) for room in snapshots)):
+                        raise SystemExit('server_execution_state_unavailable: no connection model call was made')
+                    if any(task.get('state') == 'uncertain'
+                           or (isinstance(task.get('execution'), dict) and task['execution'].get('state') in {'started', 'uncertain'})
+                           for room in snapshots for task in room['tasks']):
+                        raise SystemExit('server_execution_unresolved: inspect the existing task; no connection model call was made')
                     from .agent_runtime import StructuredRuntime
                     from .connector import verify_runtime, ConnectionCheckError, RoomRuntimePool
                     runtime_options={'credential_env':config.get('token_env','TALKABOUT_TOKEN'),'platform_credential':token,'run_deadline':deadline,'auth_mode':args.auth_mode}
@@ -168,11 +201,18 @@ def main():
                     try:
                         if journal.stop_requested(): raise ConnectionCheckError('connector_stopped')
                         test_runtime.preflight()
+                        if args.persist_provider_sessions and not (isinstance(getattr(test_runtime,'_verified_account_subject',None),str) and test_runtime._verified_account_subject):
+                            raise ConnectionCheckError('provider_session_identity_unavailable')
                         receipt, check_calls = verify_runtime(client, journal, test_runtime, args.runtime, token, deadline, args.retry_check)
                     except Exception as error:
                         test_runtime.shutdown()
                         from .adapters import AdapterError
                         code = error.code if isinstance(error, AdapterError) else str(error) if isinstance(error, ConnectionCheckError) else 'runtime_check_failed'
+                        if code=='provider_session_identity_unavailable':
+                            from .codex_sessions import recovery_guidance
+                            with journal.db:journal.set_setting('provider_session_last_error',code)
+                            print(json.dumps({'provider_session_recovery':recovery_guidance(code)},ensure_ascii=False))
+                            raise SystemExit(code+': current adapter cannot safely resume a persisted native session; no connection model call was made') from None
                         raise SystemExit(code + ': inspect connection state; use --retry-check only to explicitly authorize another test; additional provider usage may occur') from None
                     print(json.dumps({'runtime': args.runtime, 'check': receipt.get('status'), 'evidence': 'worker_reported_test'}))
                     session_journal=None
@@ -183,7 +223,7 @@ def main():
                     total_remaining=max(0,args.max_model_calls-check_calls)
                     room_remaining=min(total_remaining,args.max_room_calls if args.max_room_calls is not None else total_remaining)
                     pending=journal.next() if room_remaining==0 else None
-                    next_action='room_worker_ready' if room_remaining else 'saved_result_recovery_only' if pending and pending[1]=='result_saved' else 'connection_check_only_review_explicit_room_budget'
+                    next_action='room_worker_ready' if room_remaining else 'saved_result_recovery_only' if pending and pending[1]=='result_saved' else 'input_rejection_recovery_only' if pending and pending[1]=='skip_pending' else 'connection_check_only_review_explicit_room_budget'
                     print(json.dumps({'connection_check_calls':check_calls,'total_calls_remaining':total_remaining,'room_calls_remaining':room_remaining,
                                       'next_action':next_action}))
                 else:
@@ -214,7 +254,7 @@ def main():
                     budget_exhausted=bool(args.runtime and (runtime.calls + check_calls >= args.max_model_calls or
                                          args.max_room_calls is not None and runtime.calls >= args.max_room_calls))
                     pending=journal.next() if budget_exhausted else None
-                    saved_result_only=bool(budget_exhausted and pending and pending[1]=='result_saved')
+                    saved_result_only=bool(budget_exhausted and pending and pending[1] in {'result_saved','skip_pending'})
                     if budget_exhausted and not saved_result_only:
                         print('model_call_budget_exhausted')
                         break

@@ -1,8 +1,8 @@
 # Final local feature and verification matrix
 
-**LOCAL PROTOTYPE / NOT DEPLOYED — Reviewed: 2026-10-13**
+**운영 기준 ae6a981 / 후속 작업 브랜치 미배포 · 확인일: 2026-10-23**
 
-구현 완료는 아래 명시된 로컬 범위와 합성 검증을 뜻합니다. 서비스 전체 또는 실제 AI 연결 완료를 뜻하지 않습니다. 구체적인 계약은 [mode/handover](MODE_HANDOVER.md), [retry/retention](RETENTION_BOUNDS.md), [implementation evidence](IMPLEMENTATION_STATUS.md)를 따릅니다.
+구현과 합성 검증은 실제 AI 연결 완료를 뜻하지 않습니다. 운영 배포는 ae6a981이며 현재 미커밋 수정의 새 기능·회귀 결과는 아직 운영에 반영되지 않았습니다. 최초 PC 연결 후 매방 선택→초대→실제 참여 경로는 개발 중입니다. 구체적인 기존 계약은 [mode/handover](MODE_HANDOVER.md), [retry/retention](RETENTION_BOUNDS.md), [세션 참여](SESSION_PARTICIPATION.md)를 따릅니다.
 
 | 요구사항 | 상태 | 근거 / 남은 범위 |
 |---|---|---|
@@ -16,19 +16,20 @@
 | 최소 입력·조회 용량 상한 | 로컬 구현 | stream body 제한, workspace query sentinel, 명시적 capacity 오류 |
 | 운영 paging·archival·총 disk byte quota | 미구현 | 개발 상한만 적용. 장기 운영 이전 정책/기능 필요 |
 | text artifact 버전·기여자·다운로드·채택 | 로컬 구현 | immutable versions, 현재 ACL 다운로드, human 채택 |
-| binary/image/file upload·검사·별도 origin | 미구현 / 거절 | 초기 upload 비활성. P2 quarantine·malware·형식/해상도 검사 필요 |
+| 텍스트 첨부 / binary·image·일반 파일 | 텍스트 opt-in 구현, 운영 비활성 | `.txt`/`.md` 64 KiB·비공개 저장·동의/lease 기반 읽기. 악성검사 NOTRUN. 이미지/PDF/Office·일반 binary·검사 origin 미구현 |
 | private 격리·token hash/revoke/expiry | 로컬 구현 | 객체별 ACL·현재 token/session 검사. 시험은 합성 credential만 사용 |
-| 실제 운영계정·MFA·분산 rate limit·복구 | 미구현 | bootstrap/session 코드만 존재. 운영계정 생성 안 함 |
+| 사람 로그인·최초 설정 / MFA·복구 | 기본 경로 구현 / 운영 보강 미완료 | session/CSRF·최초 소유자 설정과 별도 운영 배포 존재. MFA·비밀번호 복구·분산 rate limit 미완료 |
 | 모델 자기신고·검증 표시 | 로컬 구현 | self_reported label. 실제 모델 검증은 NOTRUN |
-| provider usage·비용·구독 | 미구현 | 실제 외부 호출 없음. unknown이며 사용자 책임 |
-| KO/EN GUI·human 관리 기본 경로 | 코드·UI 로직 구현 | 실제 browser DOM/history/accessibility/SSE 검증 NOTRUN |
-| REST pull worker·stdio MCP 최소 계약 | 로컬 구현 | 실제 별도 local process 시험. MCP는 persistent runner 아님 |
+| provider usage·비용·구독 | 측정 미완료 | 과거 실제 시도의 결과·과금은 불확실 기록 보존. 이번 합성 검증은 실제 호출 0회. 미제공 수치는 unknown이며 구독/과금은 사용자 책임 |
+| KO/EN GUI·human 관리 기본 경로 | 구현·선별 Chrome 검증 | 실제 loopback 서버와 합성 MemoryStore의 KO/EN·모바일/데스크톱 검증. 실제 provider·사용자 계정 연결 검증과 구분 |
+| REST pull worker·stdio MCP | API/인프로세스 계약 구현 | 참여·cursor·ACK·claim/결과 도구는 [세션 참여](SESSION_PARTICIPATION.md). 차단된 subprocess E2E와 외부 제품 client는 미검증. MCP는 persistent runner 아님 |
 | 외부 MCP 제품·HTTP MCP·A2A adapter | NOTRUN / 미구현 | 초기 의존성으로 추가하지 않음 |
-| 서로 다른 실제 runtime 2~3개 PoC | NOTRUN | P0 gate 미통과. external AI/tool/credential 연결 안 함 |
+| 서로 다른 실제 runtime 2~3개 PoC | 미통과 | 과거 실제 시도는 실패/불확실. 첫 실제 응답·재연결·다중 runtime 성공은 미확인 |
+| 최초 한 번 PC 연결 후 방별 버튼 초대 | 개발 중 / 실사용 미검증 | 기존 수동 wizard가 자동 실행을 제공하지 않음. 연결기·위임권한·영속 예산의 새 계약은 검토 중이며 완료로 표시하지 않음 |
 | 요약/쟁점/출처 panel·요약 event range | 미구현 | 최근 message·가시 text proposal만 context 제공. 요약 모델 없음 |
 | 신고·회수 휴지통·운영 보존 정책 | 미구현 | 운영 데이터 삭제 안 함 |
 | 선택 공개·publish 권한 | 미구현 / 거절 | private prototype. P3 별도 검증 필요 |
-| Git push/PR/merge | 현재 로컬 검증 범위에서 차단 | 과거 승인 기록은 재사용하지 않음. 현재 로컬 커밋의 공개·병합·운영 배포는 미완료 |
-| 배포·license | 운영 미실행 / MIT 지정 | preflight/readiness/wheel/runbook과 합성 loopback 검증만 준비. [배포 runbook](DEPLOYMENT_RUNBOOK.md), MIT 지정 완료; 제3자 고지 보존 |
+| Git push/PR/merge | ae6a981 완료 / 후속 변경 미반영 | 현재 작업 브랜치의 미커밋 수정은 별도 검토·회귀·공개 절차 필요 |
+| 배포·license | ae6a981 운영 / MIT | 후속 작업 브랜치는 미배포. 실제 AI gate와 운영 배포는 별도. [배포·롤백 조건](DEPLOYMENT_RUNBOOK.md), 제3자 고지 보존 |
 
 공식 외부 제품 문서와 설계 제안은 [SOURCES](SOURCES.md)에 구분했습니다. API endpoint와 token만으로 agent runtime을 시작할 수 없습니다. agent 수·투표·LLM 점수는 진실을 보장하지 않으며 이번 구현에 judge/추천 기능을 추가하지 않았습니다.

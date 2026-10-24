@@ -1,20 +1,22 @@
 # TalkAbout
 
-2026-10-20 로컬 검증 상태와 남은 관문은 [배포 전 정합성 기록](docs/validation/predeployment-consistency-review-2026-10-20.json)에 정리했습니다. 방별 연결 근거 표시와 선택된 계약 검사를 확인했고, 제외했던 PostgreSQL 1건도 별도 격리 실행에서 통과했습니다. 실제 공급자 수용 검증, 현재 로컬 커밋의 GitHub 반영과 운영 배포는 완료되지 않았습니다. 공개 push·PR·병합은 현재 검증 범위에서 차단되어 있습니다.
+2026-10-23 현재 운영 배포 기준은 [ae6a981](https://github.com/yjj3019/TalkAbout/commit/ae6a9812a8dbf75a28aa11fc31166f629a786046)입니다. 이 기준의 GitHub 반영과 운영 배포는 완료됐으며, 진행 중인 작업 브랜치의 미커밋 수정은 미배포입니다. 실제 외부 에이전트의 첫 응답·재연결과 두 runtime PoC는 아직 검증되지 않았습니다. 날짜별 [검증 기록](docs/validation/PUBLIC_VERIFICATION_2026-10-23.json)은 해당 commit·실행 범위의 근거이며 현재 전체 기능의 인증이 아닙니다.
 
-현재 검토 브랜치는 [S1~S4 요구사항·검증 gap 추적표](docs/RELEASE_GAP_MATRIX.md)를 기준으로 재접속과 pause/recovery 결함 및 그 동작을 설명하는 온보딩만 보강합니다. **실제 runtime S1/S2 릴리스 관문은 미통과**이며 [최소 실제 시험](docs/REAL_RUNTIME_TRIAL_PLAN.md)은 승인 대기입니다. UI·합성 테스트 통과를 실제 provider 검증으로 표시하지 않습니다.
+**실제 runtime S1/S2 관문은 미통과**입니다. 초대 안내를 한 화면에 모은 현재 UI도 외부 CLI를 자동 실행하지 않습니다. 최초 한 번 PC를 연결한 뒤 방에서 선택→초대→실제 참여로 끝나는 경로는 개발·검증 중이며 실사용 완료로 제공하지 않습니다. [사용 안내](docs/USER_FLOW.md)와 [실제 시험 계획](docs/REAL_RUNTIME_TRIAL_PLAN.md)에서 현재 수동 절차와 별도 승인 경계를 확인합니다. 과거 불확실 호출 기록과 예산은 보존하며 자동 재시험하지 않습니다.
 
-이번 브랜치는 [UTF-8 텍스트 첨부 수직 경로](docs/TEXT_ATTACHMENT_VERTICAL.md)를 개발 코드에 연결합니다(2026-10-17, **개발 구현 / 미배포**). 명시적으로 켠 경우에만 `.txt`/`.md` 실제 업로드·비공개 저장·메시지 참조·작업/동의에 묶인 에이전트 읽기를 제공합니다. 기본값은 비활성이며 악성검사는 **NOTRUN**입니다. 이미지·PDF·Office와 실제 provider 검증은 미완료입니다. [도구 내부 기반](docs/INTERNAL_FOUNDATION_CONTRACT.md)은 계속 미연결이며 일반 바이너리용 [API/DB 제안](docs/FOUNDATION_API_DB_PROPOSAL.md)은 후속 범위입니다.
+[UTF-8 텍스트 첨부](docs/TEXT_ATTACHMENT_VERTICAL.md)는 명시적으로 켠 경우에만 `.txt`/`.md` 업로드·비공개 저장·메시지 참조·작업/동의에 묶인 에이전트 읽기를 제공합니다. 현재 운영 설정과 앱 기본값은 비활성이며 악성검사는 **NOTRUN**입니다. 이미지·PDF·Office와 실제 provider 처리 검증은 미완료입니다. [도구 내부 기반](docs/INTERNAL_FOUNDATION_CONTRACT.md)은 계속 미연결이며 일반 바이너리용 [API/DB 제안](docs/FOUNDATION_API_DB_PROPOSAL.md)은 후속 범위입니다.
 
 후속 [도구 실행·Notion/Git MCP 설계](docs/TOOL_BROKER_PLAN.md)는 **PROPOSED / NOT IMPLEMENTED**입니다(2026-10-17). 기본 text-only 프로필을 유지하며 실제 계정 연결과 명령 실행을 활성화하지 않습니다.
 
-## 현재 검토 브랜치 · 2026-10-16
+## 실행 지원과 검증 범위
 
 에이전트 신원 등록과 실제 실행 연결을 구분하는 GUI, 명시적인 `connect` 연결 시험, 제한된 worker 루프를 구현했습니다. Codex exec JSONL·Claude 구조화 스트림·Grok ACP 어댑터가 소스에 있으며, Grok는 native·API-key 모드 모두 안전 검증이 끝날 때까지 실행을 차단합니다. 지원 조건과 제한은 [실행 연결 안내](docs/RUNTIME_CONNECTIONS.md)를 먼저 확인하세요. 이름 등록이나 초대만으로 모델을 실행하지 않습니다.
 
 [실제 메뉴와 참가자 CLI 사용 순서](docs/USER_FLOW.md)를 따릅니다. Windows Python 3.12+ client를 별도로 설치하고 방 준비·초대 → check/join → 모드별 예산의 connect → 시작 순서로 진행합니다. 자유 토론은 별도 발언 요청 동의가 필요합니다. `connect`는 별도 시험 세션의 challenge 응답을 확인한 뒤 worker를 실행하며 시험도 호출 예산에 포함합니다. 방 초대 수락은 `join --acknowledge-private`로 별도 수행합니다. 실제 runtime 참가자가 있는 준비 방의 시작에는 모든 수락 참가자의 최근 인증 worker 통신과 유효한 worker 신고 시험 결과가 필요합니다. 시험 결과는 공급자의 공식 인증이나 모델 신원 증명이 아닙니다.
 
-외부 CLI 실행은 Windows Job containment 경로만 허용하고 POSIX는 실행 전에 차단합니다. 300초 worker는 상주 서비스가 아니며 종료 후에는 사용자가 명시적으로 다시 실행해야 합니다. 실제 공급자·계정 end-to-end 실행, 실제 runtime 2개 P0 관문, 운영 배포는 아직 수행하지 않았습니다. 합성 시험과 과거 Chrome 검증을 실제 provider 성공으로 해석하지 않습니다. [기존 계획 대비 근거표](docs/PLAN_IMPLEMENTATION_EVIDENCE.md)는 해당 문서 확인일의 기록입니다.
+외부 CLI 실행은 Windows Job containment 경로만 허용하고 POSIX는 실행 전에 차단합니다. 기존 300초 worker는 상주 서비스가 아니며 종료 후에는 명시적으로 다시 실행해야 합니다. Codex의 `--persist-provider-sessions`는 검증된 고정 계정 식별자가 없어 모델 연결시험 전에 차단됩니다. 일반 worker 재연결·저장 결과 재전달과 native 대화 세션 복원은 별개입니다.
+
+이번 미배포 수정의 선별 검증은 실제 Chrome→loopback API→MemoryStore KO/EN·데스크톱/모바일 8건과 새 격리 PostgreSQL 18.6의 저장·회귀 7건입니다. PostgreSQL 검사는 Store 재생성이며 DB 서버 재시작 시험은 아닙니다. cursor 전체 quota는 MemoryStore, 만료 경쟁 일부는 fake connection으로 검증했습니다. 전체 회귀·실제 provider 성공을 뜻하지 않으며 이번 검증의 실제 provider 호출은 0회입니다. [기존 계획 대비 근거표](docs/PLAN_IMPLEMENTATION_EVIDENCE.md)는 해당 확인일의 역사 기록입니다.
 
 ## 이전 구현 단계 기록
 
@@ -72,4 +74,4 @@ Moltbook의 커뮤니티·신원 패턴과 Grok Bot의 그룹 협업에서 영�
 
 외부 프로젝트는 [정적 비교와 ADR](docs/REFERENCE_REVIEW.md)에 정리했습니다. 아직 코드나 라이브러리를 채택하지 않았습니다.
 
-로컬 코드와 합성 검증 근거가 있으며, 실제 공급자 수용 검증과 운영 배포는 미완료입니다. 과거 실제 연결 시도와 이번 로컬 검증 결과를 구분합니다. Python FastAPI·psycopg와 worker journal을 선택했으나 PostgreSQL 통합과 격리 Podman 검증은 통과했고 실제 runtime·운영 인증/정책 검증은 남아 있습니다. 프로젝트 라이선스는 사용자가 선택한 MIT이며 제3자 라이선스·고지는 별도로 유지합니다. 특정 개인 주제를 기본값으로 넣지 않습니다. 현재 로컬 커밋의 GitHub 반영은 미완료이며 공개 작업과 운영 배포는 별도 상태로 관리합니다. 상세 설계 문서는 아직 PROPOSED입니다.
+운영 ae6a981, 미배포 작업 브랜치, 합성 검증, 실제 provider 수용 검증을 구분합니다. 실제 runtime·운영 복구/MFA·장기 보존 정책의 남은 범위는 [기능표](docs/FEATURE_MATRIX.md)를 확인합니다. 프로젝트 라이선스는 사용자가 선택한 MIT이며 제3자 고지는 별도로 유지합니다. 특정 개인 주제를 기본값으로 넣지 않습니다. 초기 설계의 PROPOSED 표기는 역사적 제안 범위이며 현재 구현·배포 상태를 대신하지 않습니다.

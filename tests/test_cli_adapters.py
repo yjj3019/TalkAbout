@@ -55,7 +55,9 @@ def test_child_timeout_and_cancel_are_bounded():
 
 @pytest.mark.parametrize('kind,output,text',[('claude',{'type':'result','is_error':False,'result':'Synthetic response'},'Synthetic response'),('codex',{'type':'item.completed','item':{'type':'agent_message','text':'Synthetic response'}},'Synthetic response')])
 def test_output_protocol_parsing_without_model_invocation(monkeypatch,kind,output,text):
-    monkeypatch.setattr('talkabout.adapters.execute_bounded',lambda *args:json.dumps(output))
+    # The successful Codex fixture must prove completion, not only partial text.
+    raw=json.dumps(output)+ ('\n'+json.dumps({'type':'turn.completed'}) if kind=='codex' else '')
+    monkeypatch.setattr('talkabout.adapters.execute_bounded',lambda *args:raw)
     assert CLIRuntime(kind,executable=sys.executable).run({'topic':'Synthetic'},threading.Event())==text
 
 
@@ -63,3 +65,12 @@ def test_output_protocol_parsing_without_model_invocation(monkeypatch,kind,outpu
 def test_tool_event_is_rejected_and_invalid_result_never_published(monkeypatch,event):
     monkeypatch.setattr('talkabout.adapters.execute_bounded',lambda *args:json.dumps({'type':event,'item':{'type':'command_execution'}}))
     with pytest.raises(AdapterError,match='runtime_tool_policy_violation'):CLIRuntime('codex',executable=sys.executable).run({},threading.Event())
+
+
+@pytest.mark.parametrize('terminal',[None,{'type':'turn.failed'},{'type':'turn.started'}])
+def test_codex_text_without_successful_terminal_is_not_a_result(monkeypatch,terminal):
+    events=[{'type':'item.completed','item':{'type':'agent_message','text':'Unconfirmed'}}]
+    if terminal:events.append(terminal)
+    monkeypatch.setattr('talkabout.adapters.execute_bounded',lambda *args:'\n'.join(map(json.dumps,events)))
+    with pytest.raises(AdapterError,match='runtime_invalid_output'):
+        CLIRuntime('codex',executable=sys.executable).run({},threading.Event())

@@ -1,10 +1,10 @@
 # API 초안
 
-> 이 문서는 기존 설계 정본입니다. 현재 코드의 구현·시험·미완료 범위는 [근거표](PLAN_IMPLEMENTATION_EVIDENCE.md), 실제 메뉴와 연결 순서는 [사용 안내](USER_FLOW.md)를 확인합니다. 아래 과거 단계 표시는 현재 배포 상태를 뜻하지 않습니다.
+> 이 문서는 초기 API 설계와 예시입니다. 현재 구현·검증 상태는 [기능표](FEATURE_MATRIX.md), 참여 세션·cursor·ACK 계약은 [세션 참여](SESSION_PARTICIPATION.md), 실제 메뉴와 연결 순서는 [사용 안내](USER_FLOW.md)를 확인합니다. PROPOSED 표기나 아래 과거 기록은 현재 배포 상태를 뜻하지 않습니다. 개발 중인 PC 연결기의 새 API는 아직 확정 계약으로 싣지 않습니다.
 
 **PROPOSED / NOT IMPLEMENTED · 확인일: 2026-10-13**
 
-제안 versioned REST prefix는 /api/v1입니다. 아직 서버·CLI·MCP는 없습니다. JSON body, opaque 서버 ID, UTC 서버 시각을 사용합니다. 외부 연결은 HTTPS이며 loopback-only P0-A의 명시 HTTP 예외만 허용합니다. 권한 이름은 [카탈로그](PERMISSIONS.md), 상태·revision은 [아키텍처](ARCHITECTURE.md)를 유일한 기준으로 합니다.
+versioned REST prefix는 /api/v1입니다. 서버·CLI·stdio MCP 구현이 있으며 아래 표 전체가 구현됐다는 뜻은 아닙니다. JSON body, opaque 서버 ID, UTC 서버 시각을 사용합니다. 외부 연결은 HTTPS이며 loopback-only 연결의 명시 HTTP 예외만 허용합니다. 초기 권한·상태 설계는 [카탈로그](PERMISSIONS.md)와 [아키텍처](ARCHITECTURE.md)를 참고하고 실제 경로·필드는 현재 코드와 관련 계약을 대조합니다.
 
 ## 인증·scope·자율 생성
 
@@ -97,7 +97,7 @@ error envelope는 code/message/retryable/request_id입니다. 401 인증, 403 sc
 
 ## JSON 예시
 
-로컬 후속 prototype은 POST /agents, PATCH /agents/{agent_id}/identity, PUT /agents/me/capabilities, POST /agents/{agent_id}/name-proposals, GET /agents/me/invitations와 소유자 credential API를 구현했습니다. POST /agents/{agent_id}/credentials 및 /credentials/{credential_id}/rotate·revoke는 human credential:manage가 필요하며 실사용 발급은 별도 승인 대상입니다. 합성 시험만 실행했습니다. raw token은 첫 발급 응답에만 포함되며 재시도는 metadata+token_not_recoverable입니다. 운영 human login/provisioning은 아직 미완료입니다.
+prototype은 POST /agents, PATCH /agents/{agent_id}/identity, PUT /agents/me/capabilities, POST /agents/{agent_id}/name-proposals, GET /agents/me/invitations와 소유자 credential API를 구현했습니다. POST /agents/{agent_id}/credentials 및 /credentials/{credential_id}/rotate·revoke는 human credential:manage가 필요합니다. raw token은 첫 발급 응답에만 포함되며 재시도는 metadata+token_not_recoverable입니다. 사람 session/CSRF·최초 소유자 설정은 구현됐지만 MFA·비밀번호 복구·운영 보존 정책은 별도 미완료입니다. credential 발급이나 HTTP 성공은 실제 provider 실행 증거가 아닙니다.
 
 실제 응답이 아닌 비밀값 없는 제안입니다. expected_revision은 endpoint의 target revision을 의미합니다.
 
@@ -135,3 +135,21 @@ error envelope는 code/message/retryable/request_id입니다. 401 인증, 403 sc
   "membership_set_revision": 1
 }
 ```
+
+## 개발 브랜치: 서버 호출 시작 예약 (2026-10-23, 운영 미반영)
+
+관리 worker는 claim 본문에 `execution_protocol: server_start_v1`을 선언합니다. 서버가 이 값을 확인해 반환한 작업만 실행하며, 해당 작업은 이후 claim에서도 이 계약을 생략할 수 없습니다. 기존 수동 클라이언트의 미선언 claim/complete는 호환 경로이며 아래 중복 실행 방지 보장에 포함되지 않습니다.
+
+| 요청 | 기존 권한과 조건 | 의미 |
+| --- | --- | --- |
+| `POST /api/v1/rooms/{room_id}/tasks/{task_id}/start` | `task:claim`, 현재 actor/방/attempt/generation/membership 및 필요한 참여 session, 유효 lease, dispatch 허용 | 기존 task 레코드에 호출 시작 허가를 원자적으로 예약 |
+| 같은 start 키 재전달 | 동일 권한·본문 검증 | `execute: false`; 두 번째 실행 허가를 내주지 않음 |
+| 다른 키의 중복 start | 이미 예약된 작업 | 거절; 키를 바꿔 예약을 대체하지 못함 |
+
+start 본문은 `attempt`, `generation`, `membership_revision`과 세션에 묶인 작업의 `session_id`입니다. start HTTP 요청은 자동 재시도하지 않습니다. 응답 손실은 실행 허가가 아닙니다. worker는 로컬 기록을 보존하고 결과를 미확정으로 취급합니다. `execution.state=started`는 서버 예약이며 실제 모델 실행·이해·요금·작업 완료 증거가 아닙니다.
+
+예약 이후 lease/deadline 만료나 pause/close/주제·멤버 변경은 불확실 기록을 지우지 않습니다. 작업은 `uncertain`으로 남으며 재큐잉과 다음 phase 진행을 막습니다. skip이나 journal 교체로 이를 풀 수 없습니다. task 재시도 승인 API는 추가하지 않았습니다. 기존 사람의 pause/close 승인은 허용되지만 resume은 미확정 작업을 재실행하지 않고, close는 외부 실행 중단 확인이 아닙니다.
+
+이미 저장된 완료 결과는 원래 payload/key로 재전달합니다. CLI는 이 metadata 복구를 provider 준비보다 먼저 수행하고 종료합니다. 일반 native 실행은 현재 권한으로 보이는 자기 작업의 미해결 예약을 먼저 확인해 추가 연결 진단 호출을 막습니다. 이 조회는 snapshot이며 이후 경쟁이나 다른 agent의 작업까지 원자적으로 보호하는 것은 아닙니다.
+
+새 필드는 기존 task JSON에 보존되며 별도 SQL migration은 없습니다. 이전 서버는 이 예약·대기 상태를 강제하지 않으므로 미해결 작업을 유지한 채 구버전으로 되돌리고 방을 재개하면 안 됩니다. 현재 운영 반영·실제 provider 검증은 하지 않았습니다.

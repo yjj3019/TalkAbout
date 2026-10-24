@@ -42,6 +42,25 @@ def test_session_cookie_secret_storage_and_csrf(session_fixture):
     assert post(client, "rooms", {"topic": "fixture"}, csrf).status_code == 200
 
 
+def test_message_retry_namespace_is_stable_per_login_and_has_no_authority(session_fixture):
+    import re
+    _,client,_,_,response=session_fixture
+    namespace=response.json().get('retry_namespace')
+    assert isinstance(namespace,str) and re.fullmatch('[0-9a-f]{64}',namespace)
+    first=client.get('/api/v1/session').json()
+    second=client.get('/api/v1/session').json()
+    assert first['retry_namespace']==second['retry_namespace']==namespace
+    assert first['csrf_token']!=second['csrf_token']
+    assert namespace not in (client.cookies.get(COOKIE),first['csrf_token'],second['csrf_token'])
+    assert post(client,'rooms',{'topic':'Synthetic denied'},namespace).status_code==403
+    unauthenticated=TestClient(client.app)
+    unauthenticated.cookies.set(COOKIE,namespace)
+    assert unauthenticated.get('/api/v1/session').status_code==401
+    assert unauthenticated.get('/api/v1/rooms',headers={'Authorization':'Bearer '+namespace}).status_code==401
+    fresh=client.post('/api/v1/session',json={'workspace_id':'fixture-workspace','username':'owner','password':'fixture-password-not-real'},headers={'Origin':'http://testserver'})
+    assert fresh.status_code==200 and fresh.json()['retry_namespace']!=namespace
+
+
 def test_origin_host_and_login_body_impersonation(session_fixture):
     _, client, _, _, _ = session_fixture
     fresh = TestClient(client.app)

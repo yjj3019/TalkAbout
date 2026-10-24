@@ -1,14 +1,14 @@
 # Codex session checkpoints / Codex 세션 체크포인트
 
-Status: IMPLEMENTED LOCALLY, SYNTHETICALLY TESTED; REAL PROVIDER RESUME UNVERIFIED. Reviewed 2026-10-19. This is an opt-in implementation increment on the proposed TalkAbout product, not a deployment or completed multi-runtime PoC.
+Status: SYNTHETIC CHECKPOINTS IMPLEMENTED; ACTUAL PERSISTENT NATIVE RESUME BLOCKED. Updated 2026-10-23. Operating ae6a981 and the undeployed follow-up differ: the follow-up CLI rejects opt-in persistence before the model connection test when verified stable account identity is unavailable. Dated validation below remains historical, not a new deployment or completed multi-runtime PoC.
 
 ## 사용 범위 / Scope
 
 `run` and `connect` accept `--persist-provider-sessions` for Codex only. The default remains `exec-json`, persistence off, and `--max-model-calls=1`. The existing app-server adapter is selectable only with both `--codex-transport=app-server` and `--experimental-app-server`; this does not verify a real connection or enable additional tools.
 
-현재 실제 어댑터는 검증된 고정 provider 계정 식별자를 제공하지 않습니다. 이메일, 로그인 방식, 홈 디렉터리로 계정을 추정하지 않습니다. 새 세션의 첫 완료는 저장할 수 있지만, 같은 범위의 후속 자동 재개는 `provider_session_identity_unavailable`로 차단됩니다. 재시작 전후 모두 이 제한이 적용됩니다. 합성 테스트의 고정 계정 식별자는 실제 계정 검증 근거가 아닙니다.
+현재 실제 어댑터는 검증된 고정 provider 계정 식별자를 제공하지 않습니다. 이메일, 로그인 방식, 홈 디렉터리로 계정을 추정하지 않습니다. 미배포 후속 CLI는 `--persist-provider-sessions`를 선택하면 모델 연결시험 전에 `provider_session_identity_unavailable`로 거절해 이 경로의 모델 호출을 시작하지 않습니다. fake verified subject를 주입한 내부 checkpoint 시험에서 첫 완료·재개를 저장한 결과는 실제 계정 증거가 아닙니다. 일반 worker 재연결·저장 결과 재전달은 native 세션 자동 복원과 별개입니다.
 
-The actual adapter currently supplies no verified stable provider account subject. A fresh turn can be checkpointed, but subsequent automatic resume in that scope is blocked, including within the same worker. Email, auth mode and home paths never substitute for identity. There is no manual account-label override. The [official app-server documentation](https://learn.chatgpt.com/docs/app-server) describes account metadata and thread/turn operations; that metadata is not treated as proof of a stable account subject.
+The actual adapter supplies no verified stable provider account subject. The undeployed follow-up CLI refuses opt-in persistence before the model connection test, with zero model calls on that rejected path. Fresh-turn/resume checkpoint behavior is tested with fake verified identity only. Ordinary worker reconnect and saved-result replay are separate. Email, auth mode and home paths never substitute for identity, and there is no manual account-label override. The [official app-server documentation](https://learn.chatgpt.com/docs/app-server) describes account metadata and thread/turn operations; metadata is not proof of a stable account subject.
 
 ## Budgets / 호출 한도
 

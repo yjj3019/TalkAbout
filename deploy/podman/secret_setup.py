@@ -38,6 +38,8 @@ def create_user_secrets(runner=subprocess.run):
     print('User input only. Secret values are not logged. The default Podman file store is read-protected; encryption is not guaranteed.')
     owner = password('New dedicated database owner password')
     app = password('New dedicated runtime database password')
+    if owner == app:
+        raise ValueError('distinct_database_passwords_required')
     values = (owner, dsn('talkabout_owner', owner), dsn('talkabout_app', app))
     created = []
     for name, value in zip(NAMES, values):

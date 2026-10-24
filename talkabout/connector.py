@@ -5,7 +5,7 @@ import threading
 import time
 import uuid
 
-from .runtime import bounded_call, check_deadline
+from .runtime import bounded_call, check_deadline, runtime_prompt
 
 
 class ConnectionCheckError(Exception):
@@ -132,6 +132,7 @@ class RoomRuntimePool:
         self.active = set()
 
     def run(self, context, cancel):
+        runtime_prompt(context)
         with self.lock:
             if self.closed or cancel.is_set():
                 raise ConnectionCheckError('connector_stopped')

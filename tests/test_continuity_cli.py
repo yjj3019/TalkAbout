@@ -74,25 +74,27 @@ def test_explicit_experimental_transport_is_passed_without_switching_exec_defaul
     assert made[0].options['codex_transport']=='app-server' and sum(runtime.calls for runtime in made)==1
 
 
-def test_canonical_opt_in_restart_reports_missing_identity_without_second_room_call(fixture,tmp_path,monkeypatch,capsys):
+def test_canonical_opt_in_reports_missing_identity_before_any_model_call(fixture,tmp_path,monkeypatch,capsys):
     config,made=configured(fixture,tmp_path,monkeypatch)
     args=['talkabout','connect','--config',str(config),'--runtime','codex','--approve-external','--persist-provider-sessions',
           '--max-model-calls','2','--max-room-calls','1','--steps','1','--max-seconds','10']
-    monkeypatch.setattr(sys,'argv',args);cli.main()
-    first=sum(runtime.calls for runtime in made);assert first==2
-    with pytest.raises(SystemExit,match='worker_failed: provider_session_identity_unavailable') as failure:cli.main()
-    assert 'stable provider account identity' in str(failure.value) and '계정' in str(failure.value)
-    assert sum(runtime.calls for runtime in made)==first
+    monkeypatch.setattr(sys,'argv',args)
+    for _ in range(2):
+        with pytest.raises(SystemExit,match='provider_session_identity_unavailable'):
+            cli.main()
+    assert sum(runtime.calls for runtime in made)==0
+    assert all(runtime.closed for runtime in made)
     monkeypatch.setattr(sys,'argv',['talkabout','status','--config',str(config)]);cli.main()
     rows=[json.loads(line) for line in capsys.readouterr().out.splitlines() if line.startswith('{')]
     status=next(row['provider_sessions'] for row in rows if 'provider_sessions' in row)
-    assert status['identity_unavailable']==1 and status['last_error']=='provider_session_identity_unavailable'
+    assert status['records']==0 and status['identity_unavailable']==0
+    assert status['last_error']=='provider_session_identity_unavailable'
     recovery=status['recovery']
     assert recovery['code']=='provider_session_identity_unavailable' and recovery['automatic_retry'] is False
     assert all(recovery[key][language] for key in ('reason','next_action') for language in ('ko','en'))
     assert '--retry-check' in recovery['next_action']['en'] and 'preserve the journal' in recovery['next_action']['en']
     emitted=[row['provider_session_recovery'] for row in rows if 'provider_session_recovery' in row]
-    assert emitted==[recovery]
+    assert emitted==[recovery,recovery]
     assert recovery['inspect_command']['example']=='python -m talkabout.cli status --config agent.local.json'
     assert 'same config' in recovery['inspect_command']['en']
 
@@ -148,8 +150,107 @@ def test_saved_completion_drains_at_total_or_room_cap_without_new_work(fixture,t
     try:
         assert journal.status()=={'done':1} and journal.setting('cursor')==cursor
     finally:journal.close()
-    assert sum(runtime.calls for runtime in made)==1  # Only the explicitly allowed fake connection check.
+    assert made==[]  # Delivering a saved result does not even prepare a provider.
     assert [key for method,resource,key in calls if resource.startswith('rooms/') and resource.endswith('/complete')]==[complete_key]
     assert not any(resource.endswith(('/claim','/turn-requests','/events','/snapshot')) for _,resource,_ in calls)
     messages=core.read('fixture-human',rid)['messages']
     assert len(messages)==1 and messages[0]['execution_evidence']!='worker_reported_runtime'
+
+
+@pytest.mark.parametrize('state', ['started', 'uncertain'])
+def test_fresh_journal_refuses_connection_check_while_server_execution_is_unresolved(fixture,tmp_path,monkeypatch,state):
+    store, core, rid = fixture
+    task = next(task for task in core.read('fixture-a', rid)['tasks'] if task['state'] == 'queued')
+    claimed = core.mutation('fixture-a', rid, 'tasks/' + task['id'] + '/claim', 'server-claim',
+        {k: task[k] for k in ('generation', 'membership_revision')} | {'execution_protocol': 'server_start_v1'})
+    core.mutation('fixture-a', rid, 'tasks/' + task['id'] + '/start', 'server-start',
+        {k: claimed[k] for k in ('attempt', 'generation', 'membership_revision')})
+    if state == 'uncertain':
+        with store.transaction(rid, 'fixture-human') as (_, room):
+            room['tasks'][task['id']]['lease_expires_at'] = __import__('time').time() - 1
+        core.tick('fixture-human', rid)
+    config, made = configured(fixture, tmp_path, monkeypatch)
+    monkeypatch.setattr(sys, 'argv', ['talkabout', 'connect', '--config', str(config), '--runtime', 'codex', '--approve-external'])
+    with pytest.raises(SystemExit, match='server_execution_unresolved'):
+        cli.main()
+    assert made == []
+
+
+@pytest.mark.parametrize('bad', [None, {}, [{'tasks': None}], [{'tasks': [None]}],
+    [{'tasks': [{'state': 'leased', 'execution': []}]}], [{'tasks': [{'state': 'leased', 'execution': {'state': []}}]}]],
+    ids=['null', 'object', 'tasks-null', 'task-null', 'execution-list', 'execution-state-list'])
+def test_malformed_execution_snapshot_blocks_provider_preparation(fixture,tmp_path,monkeypatch,bad):
+    config, made = configured(fixture, tmp_path, monkeypatch)
+    factory = cli.APIClient
+    def client(*args):
+        value = factory(*args)
+        original = value.request
+        value.request = lambda method, path, *a, **kw: bad if path == 'rooms' else original(method, path, *a, **kw)
+        return value
+    monkeypatch.setattr(cli, 'APIClient', client)
+    monkeypatch.setattr(sys, 'argv', ['talkabout', 'connect', '--config', str(config), '--runtime', 'codex', '--approve-external'])
+    with pytest.raises(SystemExit, match='server_execution_state_unavailable'):
+        cli.main()
+    assert made == []
+
+
+def test_unavailable_execution_snapshot_never_falls_back_to_provider(fixture,tmp_path,monkeypatch):
+    import httpx
+    config, made = configured(fixture, tmp_path, monkeypatch)
+    factory = cli.APIClient
+    def client(*args):
+        value = factory(*args)
+        original = value.request
+        def request(method, path, *a, **kw):
+            if path == 'rooms': raise httpx.ReadTimeout('synthetic state read failed')
+            return original(method, path, *a, **kw)
+        value.request = request
+        return value
+    monkeypatch.setattr(cli, 'APIClient', client)
+    monkeypatch.setattr(sys, 'argv', ['talkabout', 'connect', '--config', str(config), '--runtime', 'codex', '--approve-external'])
+    with pytest.raises(httpx.ReadTimeout): cli.main()
+    assert made == []
+
+
+def test_input_rejection_recovery_never_constructs_or_checks_a_provider(fixture,tmp_path,monkeypatch,capsys):
+    """Recovery contract after explicit pre-call rejection, independent of excerpt policy."""
+    from talkabout.worker import Journal,SyntheticRuntime,Worker
+    from talkabout.runtime import RuntimeInputError
+    import talkabout.worker as worker_module
+    store,core,rid=fixture
+    path=tmp_path/'worker.sqlite';journal=Journal(path);client=LocalClient(store)
+    request=client.request
+    def unavailable(method,path,body=None,key=None,params=None):
+        if path.endswith('/skip'):raise __import__('httpx').ReadTimeout('synthetic before skip dispatch')
+        return request(method,path,body,key,params)
+    client.request=unavailable
+    try:
+        def rejected_input(context):raise RuntimeInputError('invalid_runtime_budget')
+        with monkeypatch.context() as preparation:
+            preparation.setattr(worker_module,'runtime_prompt',rejected_input)
+            with pytest.raises(__import__('httpx').ReadTimeout):Worker(client,journal,SyntheticRuntime()).step()
+        assert journal.status()=={'skip_pending':1}
+        cursor=journal.setting('cursor')
+    finally:journal.close();client.http.close()
+    config,made=configured(fixture,tmp_path,monkeypatch)
+    monkeypatch.setattr(cli,'Worker',Worker)
+    monkeypatch.setattr(sys,'argv',['talkabout','connect','--config',str(config),'--runtime','codex','--approve-external',
+                                   '--max-model-calls','1','--max-room-calls','0','--steps','3'])
+    cli.main()
+    assert made==[]
+    output=capsys.readouterr().out
+    assert 'input_rejected' in output and '"model_calls": 0' in output
+    journal=Journal(path)
+    try:assert journal.status()=={'failed':1} and journal.setting('cursor')==cursor
+    finally:journal.close()
+    assert core.read('fixture-human',rid)['messages']==[]
+
+
+def test_unsupported_persistent_native_identity_fails_before_connection_model_call(fixture,tmp_path,monkeypatch):
+    config,made=configured(fixture,tmp_path,monkeypatch)
+    monkeypatch.setattr(sys,'argv',['talkabout','connect','--config',str(config),'--runtime','codex','--approve-external',
+                                   '--persist-provider-sessions','--max-model-calls','2','--steps','1'])
+    with pytest.raises(SystemExit,match='provider_session_identity_unavailable'):
+        cli.main()
+    assert len(made)==1 and made[0].calls==0
+    assert fixture[0].principals['a'].get('runtime_check') is None

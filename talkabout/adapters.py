@@ -112,16 +112,20 @@ class CLIRuntime:
                 text = result['result']
             else:
                 text = None
+                terminal = False
                 for line in raw.splitlines():
                     item = json.loads(line)
+                    if terminal: raise ValueError()
                     if item.get('type') in {'error', 'turn.failed'}: raise ValueError()
                     if item.get('type') not in {'thread.started','turn.started','turn.completed','item.started','item.updated','item.completed'}:
                         raise ValueError()
+                    if item['type'] == 'turn.completed': terminal = True
                     if item.get('type') in {'item.started','item.updated','item.completed'}:
                         completed = item.get('item', {})
                         if completed.get('type') not in {'agent_message', 'reasoning', 'plan'}:
                             raise AdapterError('runtime_tool_policy_violation')
                         if item['type'] == 'item.completed' and completed.get('type') == 'agent_message': text = completed['text']
+                if not terminal: raise ValueError()
             if not isinstance(text, str) or not 1 <= len(text) <= 16000: raise ValueError()
             return text
         except (ValueError, KeyError, TypeError):

@@ -1,6 +1,6 @@
 # Podman package / 배포 패키지
 
-**IMAGE BUILD + SYNTHETIC SMOKE VERIFIED / OPERATING DEPLOYMENT NOTRUN — 2026-10-13**
+**운영 기준 ae6a981 / 후속 작업 브랜치 미배포 · 확인일: 2026-10-23**
 
 이 패키지는 두 개의 rootless container와 전용 internal network를 제안합니다. app은 UID/GID 10001, PostgreSQL은 공식 Bookworm image의 postgres UID/GID 999로 실행합니다. host에는 app의 127.0.0.1:8080만 publish하고 DB port는 publish하지 않습니다. image 내부 app bind는 0.0.0.0이며 host namespace/공개 bind가 아닙니다. 앱 non-root·read-only filesystem, cap-drop all, no-new-privileges, PID/CPU/memory/tmpfs/log 상한을 적용합니다. rootless cgroup v2 지원을 실제 target에서 확인해야 하며 제한이 거절되면 flag를 제거하지 말고 중단합니다. 전역 설치/기존 container·volume·network 변경은 하지 않습니다.
 
@@ -8,7 +8,7 @@
 
 [images.lock.json](images.lock.json)은 공식 registry manifest bytes와 Docker-Content-Digest를 SHA-256으로 대조한 결과입니다. Python 3.14.8-slim-bookworm과 PostgreSQL 18.6-bookworm의 multi-platform index digest를 기록했습니다. 이는 image pull/build/run 성공이나 vulnerability 검사를 뜻하지 않습니다. source/reference는 [Python Official Image](https://hub.docker.com/_/python), [Postgres Official Image](https://hub.docker.com/_/postgres), [Podman run](https://docs.podman.io/en/latest/markdown/podman-run.1.html), [Quadlet](https://docs.podman.io/en/latest/markdown/podman-systemd.unit.5.html)입니다. tag 대신 기록된 digest를 유지하고 아키텍처를 target와 대조합니다.
 
-local Podman은 미설치이지만 승인된 rootless target에서 정확한 source의 Docker-format image build와 일회성 합성 smoke를 실행했습니다. non-root/read-only/resource limits, mounted secret, app/DB readiness, DB outage의 readiness 실패, restart persistence, logical backup/restore와 fixture cleanup이 통과했습니다. 자세한 source/image 근거와 범위는 [VERIFICATION](VERIFICATION.md)에 기록합니다. Quadlet generation/서비스 enable, 운영 데이터의 disaster recovery, 실제 browser/AI/product MCP는 NOTRUN입니다. 운영 credential과 공개 서비스는 만들지 않았습니다.
+2026-10-13의 image build·합성 smoke는 non-root/read-only/resource limits, mounted secret, app/DB readiness, DB outage, restart persistence, logical backup/restore와 fixture cleanup을 검증한 역사 기록입니다. 자세한 범위는 [VERIFICATION](VERIFICATION.md)을 확인합니다. 이후 ae6a981이 운영에 배포됐으며 현재 작업 브랜치 수정은 미배포입니다. Quadlet 자동기동·운영 disaster recovery·실제 AI/product MCP 검증이 배포 성공에 자동 포함되지는 않습니다.
 
 ## Before deployment
 
@@ -94,10 +94,10 @@ sha256sum "$BACKUP_FILE"
 
 이 dump는 role/password를 포함하는 globals backup이 아니므로 owner/runtime role·grants·secrets를 별도 승인 절차로 복구해야 합니다. 운영 restore drill은 새 TalkAbout 전용 이름·새 volume과 승인된 임시 credentials에서 `pg_restore --exit-on-error --no-owner`를 사용하고 원본 volume을 덮어쓰지 않습니다. 현재 smoke는 같은 격리 fixture cluster의 별도 DB로 logical restore한 최소 검증이며 새 volume의 운영 disaster recovery를 검증한 것은 아닙니다. DB major는 18로 유지하며 major upgrade에 기존 volume을 바로 연결하지 않습니다. restore 성공·ACL/readiness·데이터 검증 후에만 cutover합니다.
 
-upgrade는 이전 app image/manifest와 검증된 backup을 보존하고 TalkAbout app만 교체합니다. rollback은 이전 immutable app image를 같은 승인 DB 계약에 다시 실행하며 데이터·schema를 역삭제하지 않습니다. schema migration rollback 가능성이 없으면 사전 restore/cutover 계획이 필요합니다. 이전 image/container/volume cleanup은 자동화하지 않습니다.
+upgrade는 이전 app image/manifest와 검증된 backup을 보존합니다. rollback은 이전 이미지가 현재 데이터뿐 아니라 세션 binding·dispatch hold·권한·예산 정책도 강제하는지 확인한 뒤 수행합니다. [세션 참여의 downgrade 제한](../../docs/SESSION_PARTICIPATION.md)과 [배포·롤백 조건](../../docs/DEPLOYMENT_RUNBOOK.md)을 따릅니다. 이미 binding을 사용한 멤버의 세션 필드를 생략하거나 새 필드를 무시하는 구버전으로 바꾸는 방식은 안전한 복구가 아닙니다. 필요한 pause와 실행 상태 확인을 별도 검토하며 불확실 외부 호출을 다시 실행하지 않습니다. 데이터·schema 역삭제나 이전 image/container/volume 자동 cleanup은 하지 않습니다. schema 호환성이 없으면 사전 restore/cutover 계획이 필요합니다.
 
 ## Quadlet / English scope
 
 [quadlet](quadlet) files end in .example and do not activate automatically. They contain no Install/WantedBy section and use Restart=no. Before any copy to the user's Quadlet directory, approve persistent configuration, verify source-tag substitution, installed Podman/Quadlet syntax, labels, secrets and resource names, then dry-run the target generator. Do not enable services or login linger without approval. Dependencies order startup only; they do not prove database schema health.
 
-This package provides pinned official bases, a non-root secret-file entrypoint, separate app/PostgreSQL resources, private networking, named persistence, limits and manual bootstrap/backup/rollback contracts. Exact-source image build and an isolated no-port synthetic smoke passed, including readiness/outage, restart persistence, logical restore and fixture cleanup. This is not an operating deployment. Quadlet generation/activation, production disaster recovery, browser/product MCP and real AI remain NOTRUN. See [verification](VERIFICATION.md), [deployment runbook](../../docs/DEPLOYMENT_RUNBOOK.md) and [feature matrix](../../docs/FEATURE_MATRIX.md).
+This package provides pinned official bases, a non-root secret-file entrypoint, separate app/PostgreSQL resources, private networking, named persistence and limits. The 2026-10-13 smoke record is historical; operating ae6a981 and undeployed development changes are distinct. Rollback must preserve session/hold/authorization/budget enforcement, not merely SQL compatibility. Never delete data or replay uncertain calls to make an older image work. Quadlet activation, production disaster recovery, external product MCP and real AI acceptance remain separate gates. See [verification](VERIFICATION.md), [deployment runbook](../../docs/DEPLOYMENT_RUNBOOK.md) and [feature matrix](../../docs/FEATURE_MATRIX.md).

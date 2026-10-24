@@ -134,7 +134,7 @@ class IdentityService:
         require(isinstance(key, str) and 1 <= len(key) <= 128 and isinstance(body, dict), "idempotency_key_required", 422)
         require(not ({"actor_id", "role", "badge", "owner", "kind"} & body.keys()), "actor_field_forbidden", 422)
         parts = operation.split("/")
-        with self.store.identity_transaction(token) as (actor, principals, credentials):
+        with self.store.identity_transaction(token, credential_id=parts[2] if parts[0] == 'credentials' and len(parts) > 2 else None) as (actor, principals, credentials):
             own = parts[0] in {"capabilities", "connection", "name-proposals"}
             permission = "agent:capabilities_write" if parts[0] in {"capabilities", "connection"} else "agent:name_propose" if parts[0] == "name-proposals" else "credential:manage" if parts[0] == "credentials" else "agent:manage"
             require(permission in actor["scopes"] and actor["kind"] == ("agent" if own else "human"), "forbidden", 403)

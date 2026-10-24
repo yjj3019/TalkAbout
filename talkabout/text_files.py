@@ -1,5 +1,6 @@
 """Opt-in, inert UTF-8 attachments; no malware scanner, parser or provider calls."""
 import copy
+from .participation import bound_task_session
 import hashlib
 import hmac
 import os
@@ -178,7 +179,7 @@ class TextAttachments:
                 require(body['media_type'] in {'','text/plain','text/markdown'},'media_type_mismatch',415)
                 require(body['ack_unscanned'] is True,'unscanned_acknowledgement_required',422)
                 readers,consent=self._sharing(room,body)
-                require(len(room['text_files'])<16,'room_file_capacity',429)
+                require(sum(f['state'] != 'deleted' for f in room['text_files'].values())<16,'room_file_capacity',429)
                 fid=digest([actor['id'],rid,'text-file',key])[:32]
                 file={'file_id':fid,'version_id':digest([fid,'version-one'])[:32],
                     'name':body['name'],'size':body['size'],'sha256':body['sha256'],
@@ -239,11 +240,14 @@ class TextAttachments:
                     'untrusted_data':True,'malware_scan':'not_run'}
 
     def agent_read(self,token,rid,tid,fid,key,body):
-        require(set(body)=={'generation','membership_revision','attempt','lease_proof','start','end'},'invalid_file_read_fields',422)
+        fields={'generation','membership_revision','attempt','lease_proof','start','end'}
+        require(fields<=set(body)<=fields|{'session_id'},'invalid_file_read_fields',422)
         with self.store.transaction(rid,token) as (actor,room):
             member=authorize(actor,room,'room:read');authorize(actor,room,'task:claim')
             require(actor['kind']=='agent','agent_required',403)
-            task=room['tasks'].get(tid);fencing(room,member,task,actor,body,time.time())
+            task=room['tasks'].get(tid)
+            bound_task_session(token,body,room,member,task)
+            fencing(room,member,task,actor,body,time.time())
             proof=body.get('lease_proof')
             require(isinstance(proof,str) and len(proof)==64 and task.get('_file_credential_binding')==token_hash(token)
                     and hmac.compare_digest(task.get('_file_lease_hash',''),token_hash(proof)),'lease_owner_required',403)
@@ -267,7 +271,8 @@ class TextAttachments:
             require(start<len(text),'invalid_text_range',422);end=min(end,len(text))
             if key not in reads:
                 task['_file_chars']=task.get('_file_chars',0)+end-start
-                reads[key]={'fingerprint':fingerprint,'range':[start,end]}
+                reads[key]={'fingerprint':fingerprint,'range':[start,end],
+                            'ref':ref_of(file),'attempt':task['attempt']}
                 emit(room,'file.read',file_id=fid,actor_id=actor['id'],task_id=tid,chars=end-start,
                      delivery='agent_context_not_provider_receipt')
             return {'ref':ref_of(file),'name':file['name'],'text':text[start:end],'start':start,'end':end,

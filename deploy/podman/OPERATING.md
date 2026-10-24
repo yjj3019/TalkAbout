@@ -1,6 +1,8 @@
 # Automatic installation / 자동 설치
 
-LOCAL IMPLEMENTATION / OPERATING NOT DEPLOYED — 2026-10-14
+운영 기준 ae6a981 / 후속 작업 브랜치 미배포 · 확인일: 2026-10-23
+
+아래는 설치·복구 계약입니다. 기존 운영 서비스의 업데이트를 신규 설치로 처리하지 않습니다. 현재 이미지·설정·볼륨과 데이터를 먼저 확인하고 [배포·롤백 조건](../../docs/DEPLOYMENT_RUNBOOK.md)을 따릅니다. 날짜별 설치 시험은 당시 합성 검증이며 실제 외부 에이전트 참여 증거가 아닙니다.
 
 ## 한국어
 

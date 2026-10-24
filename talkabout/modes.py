@@ -19,7 +19,8 @@ def next_turn(room, eligible):
     while True:
         if progress["phase"] >= len(phases):
             if room["mode"] == "co_creation":
-                room["mode_status"] = "awaiting_adoption"
+                artifact = room.get('artifacts', {}).get(room.get('creation_artifact_id'), {})
+                room["mode_status"] = "awaiting_adoption" if artifact.get('versions') else 'no_artifact'
                 return None
             if progress["round"] >= room["limits"].get("rounds", 1):
                 room["mode_status"] = "round_limit"

@@ -188,5 +188,23 @@ Object.assign(labels.en,{
  deliveredThrough:'Delivery acknowledged through event',readThrough:'Read acknowledged through event',approvalPending:'Management approval pending',storedMessage:'Message stored by server',
  attemptLabel:'Attempt',generationLabel:'Room generation',storedCompletion:'Server completion record · not provider execution attestation'
 });
+Object.assign(labels.ko,{
+ uncertain:'실행 여부 미확정 · 자동 재실행 차단',
+ uncertainTaskHelp:'응답을 잃었을 수 있어 다음 작업도 보류합니다. 방 종료는 외부 실행 중단 확인이 아닙니다.',
+ receiptMeaning:'수신·읽음은 클라이언트의 명시적 확인이며 모델 이해·실행 승인·완료를 뜻하지 않습니다. 서버 호출 시작 기록을 사용하는 worker의 미확정 작업은 새 journal에서도 자동 재실행하지 않습니다. 이전 외부 클라이언트는 별도 확인이 필요합니다.'
+});
+Object.assign(labels.en,{
+ uncertain:'Execution uncertain · automatic retry blocked',
+ uncertainTaskHelp:'A response may have been lost. Following work is also held. Closing the room does not confirm the external execution stopped.',
+ receiptMeaning:'Delivered/read are client receipts, not model understanding, execution approval or completion. Managed workers using server call-start recording do not automatically replay uncertain tasks, even with a new journal. Legacy external clients require separate review.'
+});
 labels.ko.pendingParticipationGuide=labels.ko.inviteContinue;
 labels.en.pendingParticipationGuide=labels.en.inviteContinue;
+Object.assign(labels.ko,{no_artifact:'산출물 없이 종료',creationFailed:'공동 창작 실패',creationFailedHelp:'창작 단계에서 산출물이 만들어지지 않았습니다. 작업별 건너뛰기·실패·만료 기록을 확인하세요.',dispatchBlocked:'방의 작업 처리가 차단됨',dispatchBlockedHelp:'이 방의 저장 한도 때문에 새 작업 처리를 진행할 수 없습니다. 기존 기록은 보존됩니다. 관리자가 원인과 복구 방법을 확인해야 합니다.'});
+Object.assign(labels.en,{no_artifact:'Ended without an artifact',creationFailed:'Co-creation failed',creationFailedHelp:'The creator phase produced no artifact. Inspect skipped, failed and expired tasks.',dispatchBlocked:'Room scheduling blocked',dispatchBlockedHelp:'A storage limit blocks scheduling in this room. Existing records are preserved. An administrator must inspect the cause and recovery options.'});
+labels.ko.messageRetryStorageRequired='전송 확인 기록을 보관할 수 없어 전송하지 않았습니다. 이 탭의 브라우저 저장소를 허용한 뒤 다시 시도하세요.';
+labels.en.messageRetryStorageRequired='Not sent: this tab cannot retain delivery confirmation metadata. Allow browser storage for this tab and retry.';
+labels.ko.messageSendInProgress='앞서 보낸 글의 전송을 확인 중입니다. 새 초안은 유지했으니 확인이 끝난 뒤 보내세요.';
+labels.en.messageSendInProgress='The previous send is awaiting confirmation. Your new draft is retained; send it after confirmation finishes.';
+labels.ko.messageConfirmedStorageBlocked='서버가 글을 저장했습니다. 브라우저의 확인 기록을 정리하지 못해 초안을 유지했습니다. 저장소 접근을 복구한 뒤 다시 누르면 같은 글의 저장 확인만 재시도합니다.';
+labels.en.messageConfirmedStorageBlocked='The server stored this message. Its draft is retained because local confirmation metadata could not be retired. Restore browser storage and submit again to confirm the same message.';

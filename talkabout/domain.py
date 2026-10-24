@@ -96,9 +96,23 @@ def new_room(actor, room_id, topic, mode="bounded_rounds", now=None, preparing=F
     return room
 
 
+def uncertain_execution(room, task):
+    """A possible external call is never evidence of a safely cancelled call."""
+    execution = task.get('execution')
+    if not execution or execution['state'] not in {'started', 'uncertain'}:
+        return False
+    task['state'] = 'uncertain'
+    if execution['state'] != 'uncertain':
+        execution.update(state='uncertain', uncertain_at=time.time())
+        emit(room, 'task.uncertain', task_id=task['id'], attempt=task['attempt'])
+    return True
+
+
 def cancel_tasks(room, principal=None):
     for task in room["tasks"].values():
         if task["state"] in {"queued", "leased"} and (principal is None or task["assignee"] == principal):
+            if uncertain_execution(room, task):
+                continue
             task["state"] = "cancelled"
             emit(room, "task.cancelled", task_id=task["id"])
 
@@ -117,13 +131,16 @@ def schedule(room, principals, now=None):
     for task in room["tasks"].values():
         if task["state"] not in {"queued", "leased"}:
             continue
+        if task['state'] == 'leased' and (now >= task['deadline'] or now >= task['lease_expires_at']):
+            if uncertain_execution(room, task):
+                continue
         if now >= task["deadline"] or (task["state"] == "leased" and now >= task["lease_expires_at"] and task["attempt"] >= room["limits"]["attempts"]):
             task["state"] = "expired"
             emit(room, "task.expired", task_id=task["id"])
         elif task["state"] == "leased" and now >= task["lease_expires_at"]:
             task["state"] = "queued"
             emit(room, "task.queued", task_id=task["id"], assignee=task["assignee"], attempt=task["attempt"], generation=task["generation"], membership_revision=task["membership_revision"])
-    if room.get('dispatch_held') or any(t["state"] in {"queued", "leased"} for t in room["tasks"].values()):
+    if room.get('dispatch_held') or any(t["state"] in {"queued", "leased", "uncertain"} for t in room["tasks"].values()):
         return
     eligible = sorted(pid for pid, m in room["members"].items() if m["status"] == "active"
                       and principals[pid]["kind"] == "agent" and participant_permissions(room['mode']) <= set(m["permissions"]))
@@ -131,11 +148,11 @@ def schedule(room, principals, now=None):
         return
     turn = next_turn(room, eligible)
     if turn is None:
-        if room.get("mode_status") == "round_limit":
+        if room.get("mode_status") in {"round_limit", "no_artifact"}:
             room["state"] = "closed"
             room["generation"] += 1
             room["room_revision"] += 1
-            emit(room, "room.closed", actor_id="system", reason="round_limit")
+            emit(room, "room.closed", actor_id="system", reason=room['mode_status'])
         return
     require(len(room["tasks"]) < 256, "task_capacity", 429)
     pid, purpose, phase, round_number = turn
@@ -146,6 +163,21 @@ def schedule(room, principals, now=None):
             "purpose": purpose, "phase": phase, "round": round_number, "role": purpose, "state": "queued", "attempt": 0,
             "generation": room["generation"], "membership_revision": member["revision"],
             "deadline": min(room["deadline"], now + room["limits"]["task_seconds"]), "lease_expires_at": 0}
+    previous = max(room['tasks'].values(), key=lambda t: t['slot'], default=None)
+    if previous:
+        prior_message = room['messages'].get(previous.get('result_message_id'))
+        task['handoff'] = {'result_available': False}
+        if prior_message and prior_message['seq'] >= member['read_start_seq']:
+            task['handoff'] = {'task_id': previous['id'], 'assignee': previous['assignee'],
+                           'phase': previous['phase'], 'state': previous['state'],
+                           'result_available': True}
+        if task['handoff']['result_available']:
+            task['handoff']['message_id'] = prior_message['id']
+    artifact = room['artifacts'].get(room.get('creation_artifact_id'))
+    if purpose == 'reviewer' and artifact:
+        visible = [version for version in artifact['versions'] if version['seq'] >= member['read_start_seq']]
+        if visible:
+            task['review_target'] = {'artifact_id': artifact['id'], 'version_id': visible[-1]['id'], 'revision': artifact['revision']}
     room["tasks"][task_id] = task
     emit(room, "task.queued", task_id=task_id, assignee=pid, attempt=0, generation=task["generation"], membership_revision=task["membership_revision"])
 

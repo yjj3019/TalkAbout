@@ -213,7 +213,7 @@ def test_async_request_errors_sanitized(monkeypatch, kind):
 
 
 @pytest.mark.parametrize('kind', ['codex', 'claude', 'grok'])
-def test_timeout_closes_transport_and_sends_cancel_where_supported(monkeypatch, kind):
+def test_injected_timeout_error_closes_transport_and_sends_cancel(monkeypatch, kind):
     adapter, peer = runtime(monkeypatch, kind, 'hold')
     # Expire while the fake provider holds a submitted turn. A 30 ms wall clock
     # can instead expire during startup, when there is no session to cancel.
@@ -235,6 +235,42 @@ def test_timeout_closes_transport_and_sends_cancel_where_supported(monkeypatch, 
     methods = [e.get('method') for e in peer.transports[0].sent]
     if kind != 'claude':
         assert ('turn/interrupt' if kind == 'codex' else 'session/cancel') in methods
+    adapter.shutdown()
+
+
+@pytest.mark.parametrize('kind', ['codex', 'claude', 'grok'])
+def test_real_transport_deadline_boundary_after_submitted_turn(monkeypatch, kind):
+    from types import SimpleNamespace
+    from talkabout import agent_runtime
+    adapter,peer=runtime(monkeypatch,kind,'hold')
+    clock=[time.monotonic()]
+    observed=[]
+    monkeypatch.setattr(agent_runtime,'time',SimpleNamespace(monotonic=lambda:clock[0]))
+    factory=peer.factory
+    def deadline_transport(*args):
+        transport=factory(*args)
+        transport.failure=None
+        receive=transport.receive
+        def receive_until_deadline(cancel,deadline):
+            if peer.turns and transport.events.empty():
+                clock[0]=deadline-0.001
+                _JSONLTransport.check(transport,cancel,deadline)
+                observed.append('before_deadline_passed')
+                clock[0]=deadline
+                observed.append('exact_deadline_checked')
+                _JSONLTransport.check(transport,cancel,deadline)
+                pytest.fail('actual deadline check did not reject its exact boundary')
+            return receive(cancel,deadline)
+        transport.receive=receive_until_deadline
+        return transport
+    monkeypatch.setattr(agent_runtime,'_JSONLTransport',deadline_transport)
+    with pytest.raises(AdapterError,match='^runtime_timeout$'):
+        adapter.run({'room_id':'room-one'},threading.Event())
+    assert peer.turns==1 and peer.transports[0].closed
+    assert observed==['before_deadline_passed','exact_deadline_checked']
+    assert adapter.last_outcome=='unknown'
+    if kind!='claude':
+        assert ('turn/interrupt' if kind=='codex' else 'session/cancel') in [event.get('method') for event in peer.transports[0].sent]
     adapter.shutdown()
 
 

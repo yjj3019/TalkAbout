@@ -1,10 +1,10 @@
-# TalkAbout deployment preparation
+# TalkAbout deployment and rollback
 
 The [Podman package](../deploy/podman/README.md) defines a separate private-container contract: non-root app, mounted DB URL secret, fixed private DB alias, separated PostgreSQL persistence, and host loopback-only publish. It does not enable services or issue operating credentials. The original host CLI below remains loopback-only.
 
-**LOCAL P0 PROTOTYPE / NOT DEPLOYED — Reviewed: 2026-10-13**
+**운영 기준 ae6a981 / 후속 작업 브랜치 미배포 · 확인일: 2026-10-23**
 
-This runbook grants no authorization to push, create a PR, merge or deploy. These actions remain blocked in the current local verification scope; earlier approval statements are not reusable execution permission. A merged repository is separate from a running service. The deployment target is selected privately; its unique existing connection, host key, dedicated path, runtime and DB must be verified before copying or starting anything. Do not use another application's directory/server/database as a fallback.
+The operating release is ae6a981; uncommitted working-branch changes are not deployed. This runbook does not execute or authorize a new deployment, account change or provider call. Verify the approved existing target, host key, dedicated path, image, runtime and DB before any change. Do not use another application's directory/server/database as a fallback. Repository delivery, deployment and actual-agent acceptance are separate results.
 
 ## 한국어
 
@@ -42,9 +42,11 @@ serve는 foreground에서 127.0.0.1:8080에 bind하고 concurrency 16, graceful 
 
 ## Private verification and rollback
 
-현재 검증은 합성 임시 DB/schema·임시 loopback port·합성 ephemeral credential만 사용합니다. 실제 HTTP /health·/ready·미인증 API 401을 확인한 뒤 process와 DB를 정지합니다. 이는 검증 실행이며 실제 사용자 서비스 배포 완료가 아닙니다. static demo로 실제 배포를 대체하지 않습니다.
+개발 검증은 합성 임시 DB/schema·임시 loopback port·합성 credential만 사용합니다. 실제 Chrome→loopback API→MemoryStore 검사와 격리 PostgreSQL 저장 검사는 서로 다른 근거입니다. Store 객체 재생성을 PostgreSQL 서버 재시작으로 표시하지 않습니다. ae6a981의 기존 운영 배포와 이번 미배포 수정의 검증을 구분하며 static demo나 합성 결과로 실제 provider 검증을 대신하지 않습니다.
 
-후속 배포는 승인된 전용 경로의 release manifest와 이전 release를 보존합니다. rollback은 TalkAbout process만 정지해 이전 검증 release로 교체하고 DB migration을 역실행하거나 데이터를 삭제하지 않습니다. schema 변경에는 별도 backup/restore 검증이 필요합니다. 기존 앱·DB·서비스를 수정/재시작하지 않습니다. 새/변경 host key 경고는 우회하지 않습니다.
+후속 배포는 현재 이미지·release manifest·백업과 기존 DB/사용자/방/산출물/승인·감사·불확실 호출 기록을 보존합니다. rollback 후보는 schema뿐 아니라 세션·권한·hold·예산 정책을 강제하는지 확인해야 합니다. [세션 참여](SESSION_PARTICIPATION.md)의 binding을 사용한 멤버는 세션 필드를 빼서 legacy 경로로 되돌릴 수 없습니다. 구버전은 새 필드를 강제하지 못하므로 활성 hold/세션이 있는 상태에서 이미지 교체만 하는 rollback은 안전하지 않습니다.
+
+필요한 경우 관리자의 기존 pause 절차와 진행 중 실행의 실제 상태를 확인한 뒤 별도 복구 계획을 검토합니다. 작업을 강제 취소하거나 불확실 외부 호출을 다시 실행하지 않습니다. 데이터 삭제·DB 역마이그레이션으로 호환성을 맞추지 않으며 schema 변경에는 별도 backup/restore 검증이 필요합니다. 직전 9bbe 이미지의 과거 복구 호환성 확인이 이후 모든 변경의 rollback을 보장하지 않습니다. 새/변경 host key 경고는 우회하지 않습니다.
 
 ## English
 
@@ -52,4 +54,4 @@ This is deployment preparation for a private prototype. Verify the approved priv
 
 Build the wheel in isolation and use an app-private venv. Record source SHA and wheel hash. The Windows dependency snapshot is not a Linux compatibility claim. CLI validates loopback PostgreSQL settings with a bounded connect timeout; preflight is read-only and serve never initializes schema/accounts automatically. /ready checks scheduler and PostgreSQL schema; /health reports process state. Fixture readiness cannot be mistaken for a production DB.
 
-Synthetic Chrome/DOM/SSE and isolated PostgreSQL results are recorded separately from production acceptance. External MCP product clients and the real-runtime PoC remain unverified. No public address or running service is promised until target compatibility, allocation and required approvals are resolved. Repository merge, synthetic HTTP smoke tests and deployment are separate outcomes. See the [remaining verification procedure](REMAINING_VALIDATION.md) and [current continuity readiness](CODEX_CONTINUITY_REVIEW.md); the original 2026-10-13 checklist below is not a current test result.
+Synthetic Chrome/DOM/SSE and isolated PostgreSQL results remain separate from operating acceptance. External MCP product clients and actual-runtime PoC remain unverified. Before rollback, check behavioral compatibility for session binding, dispatch hold, authorization and call budgets even when SQL schema is unchanged; an older image may ignore those fields. Preserve data and uncertain-call records, and review pause/recovery conditions before switching. Operating ae6a981 and undeployed development changes are separate. See the [remaining verification procedure](REMAINING_VALIDATION.md) and [continuity limitations](CODEX_CONTINUITY_REVIEW.md); dated results are not a new test run.

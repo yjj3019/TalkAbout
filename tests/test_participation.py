@@ -11,6 +11,63 @@ SESSION = '00000000-0000-4000-8000-000000000001'
 OTHER = '00000000-0000-4000-8000-000000000002'
 
 
+@pytest.mark.parametrize('verb',['heartbeat','skip','complete'])
+def test_session_claim_cannot_drop_its_binding_on_later_requests(fixture,verb):
+    store,core,rid=fixture;join(core,rid)
+    task=next(t for t in core.read('fixture-a',rid)['tasks'] if t['state']=='queued' and t['assignee']=='a')
+    claimed=core.mutation('fixture-a',rid,'tasks/'+task['id']+'/claim','bound-claim',
+                         {'generation':1,'membership_revision':2,'session_id':SESSION})
+    body=result(claimed) if verb=='complete' else {k:claimed[k] for k in ('generation','membership_revision','attempt')}
+    before=copy.deepcopy(store.rooms[rid])
+    with pytest.raises(Problem,match='session_required'):
+        core.mutation('fixture-a',rid,'tasks/'+task['id']+'/'+verb,'omitted-session',body)
+    assert store.rooms[rid]==before
+
+
+def test_reconnected_session_cannot_inherit_another_sessions_lease(fixture):
+    store,core,rid=fixture;join(core,rid)
+    task=next(t for t in core.read('fixture-a',rid)['tasks'] if t['state']=='queued' and t['assignee']=='a')
+    claimed=core.mutation('fixture-a',rid,'tasks/'+task['id']+'/claim','bound-claim',
+                         {'generation':1,'membership_revision':2,'session_id':SESSION})
+    join(core,rid,OTHER)
+    before=copy.deepcopy(store.rooms[rid])
+    with pytest.raises(Problem,match='stale_task_session'):
+        core.mutation('fixture-a',rid,'tasks/'+task['id']+'/complete','new-session-old-lease',{**result(claimed),'session_id':OTHER})
+    with pytest.raises(Problem,match='stale_session'):
+        core.mutation('fixture-a',rid,'tasks/'+task['id']+'/complete','old-session-result',{**result(claimed),'session_id':SESSION})
+    assert store.rooms[rid]==before
+
+
+def test_legacy_claim_remains_legacy_even_when_a_client_session_exists(fixture):
+    _,core,rid=fixture;join(core,rid)
+    task=leased(core,rid)
+    assert core.mutation('fixture-a',rid,'tasks/'+task['id']+'/complete','legacy-result',result(task))['task']['state']=='completed'
+
+
+def test_expired_session_claim_cannot_reenter_through_legacy_contract(fixture):
+    import time
+    store,core,rid=fixture
+    join(core,rid)
+    task=next(t for t in core.read('fixture-a',rid)['tasks'] if t['state']=='queued' and t['assignee']=='a')
+    claimed=core.mutation('fixture-a',rid,'tasks/'+task['id']+'/claim','first-bound',
+                         {'generation':1,'membership_revision':2,'session_id':SESSION})
+    with store.transaction(rid,'fixture-a') as (_,room):
+        room['tasks'][task['id']]['lease_expires_at']=time.time()-1
+    core.tick('fixture-a',rid)
+    join(core,rid,OTHER)
+    before=copy.deepcopy(store.rooms[rid])
+    with pytest.raises(Problem,match='session_required'):
+        core.mutation('fixture-a',rid,'tasks/'+task['id']+'/claim','downgrade',
+                      {'generation':1,'membership_revision':2})
+    assert store.rooms[rid]==before
+    reclaimed=core.mutation('fixture-a',rid,'tasks/'+task['id']+'/claim','fresh-bound',
+                           {'generation':1,'membership_revision':2,'session_id':OTHER})
+    assert reclaimed['attempt']==claimed['attempt']+1
+    assert reclaimed['participation_session_id']==OTHER
+    with pytest.raises(Problem,match='session_required'):
+        core.mutation('fixture-a',rid,'tasks/'+task['id']+'/complete','missing-after-reclaim',result(reclaimed))
+
+
 def test_reusing_retired_uuid_cannot_revive_delayed_receipts(fixture):
     _, core, rid = fixture
     first = join(core, rid)

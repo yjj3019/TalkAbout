@@ -63,7 +63,14 @@ class HumanAuth:
         actor = self.store.auth("session:" + raw)
         with self.lock:
             self.failures.pop(key, None)
-        return raw, {"user": self.public_user(actor), "csrf_token": csrf, "expires_at": time.time() + self.ttl}
+        return raw, {"user": self.public_user(actor), "csrf_token": csrf, "expires_at": time.time() + self.ttl,
+                     "retry_namespace": self.retry_namespace(raw)}
+
+    @staticmethod
+    def retry_namespace(raw):
+        # Public correlation only: never accepted as a cookie, bearer or CSRF proof.
+        # Domain separation keeps it distinct from the stored session-token hash.
+        return token_hash('talkabout-message-retry-v1:'+raw)
 
     @staticmethod
     def public_user(actor):
@@ -73,7 +80,7 @@ class HumanAuth:
         actor = self.store.auth("session:" + raw)
         csrf = secrets.token_urlsafe(32)
         self.store.rotate_csrf(token_hash(raw), token_hash(csrf))
-        return {"user": self.public_user(actor), "csrf_token": csrf}
+        return {"user": self.public_user(actor), "csrf_token": csrf, "retry_namespace": self.retry_namespace(raw)}
 
     def check_csrf(self, raw, supplied):
         require(isinstance(supplied, str) and len(supplied) <= 128, "csrf_required", 403)

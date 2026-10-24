@@ -3,6 +3,7 @@ import hashlib
 import json
 import time
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -122,6 +123,99 @@ def test_worker_rechecks_after_file_read_before_runtime(text_api,tmp_path,change
     assert runtime.calls==0
 
 
+def test_consent_revoked_at_call_start_never_reaches_runtime(text_api,tmp_path):
+    store,_,rid,_,http=text_api
+    file=upload(text_api);publish(text_api,file)
+    class Runtime(SyntheticRuntime):
+        calls=0
+        def run(self,context,cancel):
+            self.calls+=1
+            return super().run(context,cancel)
+    class RevokingClient(LocalClient):
+        revoked=False
+        start_status=None
+        def request(self,method,path,body=None,key=None,params=None):
+            if method=='POST' and path.endswith('/start') and not self.revoked:
+                self.revoked=True
+                current=store.rooms[rid]['text_files'][file['file_id']]
+                response=request(http,'PATCH',f"rooms/{rid}/files/{file['file_id']}/consent",
+                    {'expected_revision':current['revision'],'readers':[],
+                     'allow_agent_processing':False},key='revoke-before-call-start')
+                assert response.status_code==200
+            try:
+                result=super().request(method,path,body,key,params)
+            except httpx.HTTPStatusError as error:
+                if method=='POST' and path.endswith('/start'):
+                    self.start_status=error.response.status_code
+                raise
+            if method=='POST' and path.endswith('/start'):
+                self.start_status=200
+            return result
+    client=RevokingClient(store);client.http.close();client.http=http
+    runtime=Runtime();journal=Journal(tmp_path/'worker.sqlite')
+    try:
+        try:
+            Worker(client,journal,runtime).step()
+        except httpx.HTTPStatusError as error:
+            # Inspect call delivery even if the old implementation only rejects
+            # the later completion. The start-status assertion remains strict.
+            assert error.response.status_code in {403,422}
+    finally:
+        journal.close()
+    assert client.revoked
+    assert runtime.calls==0
+    assert client.start_status==403
+    task=next(t for t in store.rooms[rid]['tasks'].values() if t['assignee']=='a')
+    assert not task.get('execution')
+    assert task['state']=='leased' and 'result_message_id' not in task
+
+
+@pytest.mark.parametrize('legacy_read_record',[False,True])
+def test_call_start_revalidates_read_ref_independently_of_read_key(text_api,legacy_read_record):
+    store,core,rid,_,http=text_api
+    file=upload(text_api);publish(text_api,file)
+    queued=next(t for t in core.read('fixture-a',rid)['tasks'] if t['assignee']=='a' and t['state']=='queued')
+    body={k:queued[k] for k in ('generation','membership_revision')}
+    response=request(http,'POST',f"rooms/{rid}/tasks/{queued['id']}/claim",
+                     {**body,'execution_protocol':'server_start_v1'},'fixture-a','modern-claim')
+    assert response.status_code==200
+    task=response.json()
+    assert read(text_api,task,file,key='arbitrary-reader-key').status_code==200
+    stored=store.rooms[rid]['tasks'][task['id']]
+    if legacy_read_record:
+        stored['_file_reads']['arbitrary-reader-key'].pop('ref')
+        stored['_file_reads']['arbitrary-reader-key'].pop('attempt')
+    current=store.rooms[rid]['text_files'][file['file_id']]
+    assert request(http,'PATCH',f"rooms/{rid}/files/{file['file_id']}/consent",
+                   {'expected_revision':current['revision'],'readers':[],
+                    'allow_agent_processing':False},key='revoke-read-ref').status_code==200
+    fence={k:task[k] for k in ('generation','membership_revision','attempt')}
+    response=request(http,'POST',f"rooms/{rid}/tasks/{task['id']}/start",fence,'fixture-a','start-read-ref')
+    assert response.status_code==403 and response.json()['code']=='task_input_revoked'
+    assert not store.rooms[rid]['tasks'][task['id']].get('execution')
+
+
+def test_call_start_ignores_unread_attachment_consent(text_api):
+    store,core,rid,_,http=text_api
+    first=upload(text_api,key='first');publish(text_api,first,key='first-message')
+    second=upload(text_api,key='second');publish(text_api,second,key='second-message')
+    queued=next(t for t in core.read('fixture-a',rid)['tasks'] if t['assignee']=='a' and t['state']=='queued')
+    response=request(http,'POST',f"rooms/{rid}/tasks/{queued['id']}/claim",
+        {**{k:queued[k] for k in ('generation','membership_revision')},
+         'execution_protocol':'server_start_v1'},'fixture-a','read-one-claim')
+    assert response.status_code==200
+    task=response.json()
+    assert read(text_api,task,first,key='read-first-only').status_code==200
+    current=store.rooms[rid]['text_files'][second['file_id']]
+    assert request(http,'PATCH',f"rooms/{rid}/files/{second['file_id']}/consent",
+        {'expected_revision':current['revision'],'readers':[],
+         'allow_agent_processing':False},key='revoke-unread-ref').status_code==200
+    fence={k:task[k] for k in ('generation','membership_revision','attempt')}
+    response=request(http,'POST',f"rooms/{rid}/tasks/{task['id']}/start",fence,'fixture-a','start-read-one')
+    assert response.status_code==200 and response.json()['execute'] is True
+    assert '_file_reads' not in json.dumps(core.read('fixture-a',rid))
+
+
 def test_claim_proof_only_in_claim_reply_and_replay_not_database_or_snapshots(text_api):
     store,core,rid,_,http=text_api
     file=upload(text_api);publish(text_api,file);task=claim(text_api)
@@ -191,6 +285,55 @@ def test_idempotency_read_budget_and_storage_integrity(text_api):
     assert read(text_api,task,file,key='read-four',start=24000,end=30000).status_code==429
     (storage.root/(file['version_id']+'.blob')).write_bytes(b'corrupt')
     assert request(http,'GET',f"rooms/{rid}/files/{file['file_id']}/download").status_code==503
+
+
+def test_deleted_attachments_keep_history_without_consuming_active_slots(text_api):
+    store,_,rid,storage,http=text_api
+    first=upload(text_api,key='historical-file')
+    current=store.rooms[rid]['text_files'][first['file_id']]
+    for index in range(16):
+        store.rooms[rid]['text_files']['deleted-'+str(index)]={**current,'file_id':'deleted-'+str(index),'state':'deleted'}
+    assert request(http,'DELETE',f"rooms/{rid}/files/{first['file_id']}",{'expected_revision':current['revision']},key='remove-file').status_code==200
+    second=upload(text_api,b'Another permitted attachment.',key='replacement-file')
+    assert second['file_id']!=first['file_id']
+    assert len(store.rooms[rid]['text_files'])==18
+    assert store.rooms[rid]['text_files'][first['file_id']]['state']=='deleted'
+    assert request(http,'GET',f"rooms/{rid}/files/{first['file_id']}/download").status_code==404
+    assert len(list(storage.root.glob('*.blob')))==2
+
+
+def test_legacy_file_lease_validates_an_explicit_session(text_api):
+    from tests.test_participation import SESSION,OTHER
+    store,core,rid,_,_=text_api
+    file=upload(text_api);publish(text_api,file)
+    task=claim(text_api)
+    core.participation('fixture-a',rid,'join',{'generation':1,'membership_revision':2,'session_id':SESSION})
+    core.participation('fixture-a',rid,'join',{'generation':1,'membership_revision':2,'session_id':OTHER,'previous_session_id':SESSION})
+    assert read(text_api,task,file,key='legacy-omitted').status_code==200
+    before=store.rooms[rid]['tasks'][task['id']]['_file_chars']
+    response=read(text_api,task,file,key='legacy-retired',session_id=SESSION)
+    assert response.status_code==409 and response.json()['code']=='stale_session'
+    assert store.rooms[rid]['tasks'][task['id']]['_file_chars']==before
+    assert read(text_api,task,file,key='legacy-current',session_id=OTHER).status_code==200
+
+
+def test_session_bound_file_lease_cannot_drop_or_replace_its_session(text_api):
+    from tests.test_participation import SESSION,OTHER
+    store,core,rid,_,http=text_api
+    file=upload(text_api);publish(text_api,file)
+    core.participation('fixture-a',rid,'join',{'generation':1,'membership_revision':2,'session_id':SESSION})
+    task=next(t for t in core.read('fixture-a',rid)['tasks'] if t['state']=='queued' and t['assignee']=='a')
+    response=request(http,'POST',f"rooms/{rid}/tasks/{task['id']}/claim",
+                     {'generation':1,'membership_revision':2,'session_id':SESSION},'fixture-a','session-bound-claim')
+    assert response.status_code==200
+    task=response.json()
+    assert read(text_api,task,file,session_id=SESSION).status_code==200
+    before=store.rooms[rid]['tasks'][task['id']]['_file_chars']
+    assert read(text_api,task,file,key='missing-session').json()['code']=='session_required'
+    core.participation('fixture-a',rid,'join',{'generation':1,'membership_revision':2,'session_id':OTHER,'previous_session_id':SESSION})
+    assert read(text_api,task,file,key='old-session',session_id=SESSION).json()['code']=='stale_session'
+    assert read(text_api,task,file,key='new-session',session_id=OTHER).json()['code']=='stale_task_session'
+    assert store.rooms[rid]['tasks'][task['id']]['_file_chars']==before
 
 
 @pytest.mark.parametrize('name,data,mime',[
@@ -273,3 +416,19 @@ def test_postgres_attachment_round_trip_and_migration(postgres_fixture,tmp_path)
         restored=PostgresStore(store.dsn,store.schema)
         with TestClient(create_app(restored,start_scheduler=False,allow_fixture_bearer=True,text_storage=storage)) as again:
             assert request(again,'GET',f"rooms/{rid}/files/{file['file_id']}/download").status_code==200
+
+
+@pytest.mark.parametrize('scenario',['worker_race','read_key','unread'])
+def test_postgres_call_start_attachment_consent(postgres_fixture,tmp_path,scenario):
+    store,_,rid=postgres_fixture
+    storage=PrivateTextStorage(tmp_path/'private-text',create=True)
+    app=create_app(store,start_scheduler=False,allow_fixture_bearer=True,text_storage=storage)
+    migrate_selected_rooms(store,'fixture-human',[rid])
+    with TestClient(app) as http:
+        api=(store,app.state.core,rid,storage,http)
+        if scenario=='worker_race':
+            test_consent_revoked_at_call_start_never_reaches_runtime(api,tmp_path)
+        elif scenario=='read_key':
+            test_call_start_revalidates_read_ref_independently_of_read_key(api,False)
+        else:
+            test_call_start_ignores_unread_attachment_consent(api)
