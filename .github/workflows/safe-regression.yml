@@ -23,7 +23,7 @@
   "jobs": {
     "safe-regression": {
       "runs-on": "windows-latest",
-      "timeout-minutes": 15,
+      "timeout-minutes": 30,
       "steps": [
         {
           "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
@@ -42,8 +42,24 @@
           "run": "python -m pip install -c .github/ci-constraints.txt -e \".[test]\""
         },
         {
-          "name": "Run guarded Python and synthetic UI contracts",
-          "run": "python -B tools/run_safe_regression.py"
+          "name": "Fetch pinned PostgreSQL test binaries",
+          "shell": "pwsh",
+          "run": "Invoke-WebRequest -Uri 'https://get.enterprisedb.com/postgresql/postgresql-18.6-1-windows-x64-binaries.zip' -OutFile \"$env:RUNNER_TEMP\\pg.zip\"; Expand-Archive -Path \"$env:RUNNER_TEMP\\pg.zip\" -DestinationPath \"$env:RUNNER_TEMP\\pg\" -Force"
+        },
+        {
+          "name": "Create an owned ephemeral PostgreSQL fixture",
+          "shell": "pwsh",
+          "run": "& \"$env:GITHUB_WORKSPACE\\tools\\ci_postgres_fixture.ps1\" -Action create -BinDir \"$env:RUNNER_TEMP\\pg\\pgsql\\bin\" -DataDir \"$env:RUNNER_TEMP\\pgdata\" -ConfigOut \"$env:RUNNER_TEMP\\pg-fixture.json\" -Port 55432; \"PG_FIXTURE_CONFIG=$env:RUNNER_TEMP\\pg-fixture.json\" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8"
+        },
+        {
+          "name": "Run guarded Python, PostgreSQL and synthetic UI contracts",
+          "run": "python -B tools/run_safe_regression.py --postgres-config \"$env:PG_FIXTURE_CONFIG\""
+        },
+        {
+          "name": "Stop the owned PostgreSQL fixture",
+          "if": "always()",
+          "shell": "pwsh",
+          "run": "& \"$env:GITHUB_WORKSPACE\\tools\\ci_postgres_fixture.ps1\" -Action stop -BinDir \"$env:RUNNER_TEMP\\pg\\pgsql\\bin\" -DataDir \"$env:RUNNER_TEMP\\pgdata\" -ConfigOut \"$env:RUNNER_TEMP\\pg-fixture.json\" -Port 55432"
         }
       ]
     }
