@@ -12,7 +12,7 @@
 | API·도메인·worker·GUI 코드 | 구현됨 | `talkabout/`, `tests/` |
 | 합성(synthetic) 회귀 | **통과** (2026-10-25: Python 636 · Node 196) | 아래 §2 |
 | 실제 PostgreSQL 통합 19건 | **통과** (2026-10-25, 임시 18.6 클러스터) | 아래 §2 |
-| CI(GitHub Actions) 동일 명령 | **통과** — run `40140013613`에서 633 passed / 3 skipped (어댑터 수정 전) | 아래 §2 |
+| CI(GitHub Actions) 동일 명령 | **통과** — run `40142129438` 636 passed / 3 skipped | 아래 §2 |
 | 실제 공급자 모델 호출 (Codex 0.164.0) | **부분 통과** — 검증 통과, 발언 2건, 재연결 시 시험 호출 0회 | [actual-trial-2026-10-25.json](validation/actual-trial-2026-10-25.json) |
 | 실제 2-runtime 토론·pause 복구 (S2) | **미통과** | [RELEASE_GAP_MATRIX.md](RELEASE_GAP_MATRIX.md) |
 | 운영 배포·운영 계정·MFA | **미완료** | [DEPLOYMENT_RUNBOOK.md](DEPLOYMENT_RUNBOOK.md) |
@@ -48,7 +48,7 @@ pwsh tools/ci_postgres_fixture.ps1 -Action stop -BinDir <postgres>/bin -DataDir 
 2. 회귀 러너가 콘솔 코드페이지 때문에 `UnicodeEncodeError`로 죽던 문제를 수정했습니다(테스트 실패가 exit 1로 보이던 원인).
 3. `--postgres-config`를 러너에 전달할 수 있게 되어, **Python+Node+PostgreSQL을 한 번에** 검증할 수 있습니다.
 4. 임시 PostgreSQL 픽스처 스크립트를 추가하고 실제로 생성→검증→종료까지 실행했습니다.
-5. CI 워크플로가 같은 픽스처로 PostgreSQL 케이스를 실행합니다. 첫 실행(run `40140013613`, 어댑터 수정 전)에서 **633 passed / 3 skipped**로 통과했고, 수정 후 로컬 재실행은 **636 passed / 3 skipped**입니다. 같은 명령이 main 병합 후 CI에서 다시 실행됩니다.
+5. CI 워크플로가 같은 픽스처로 PostgreSQL 케이스를 실행합니다. 어댑터 수정 후 CI(run `40142129438`)에서 **636 passed / 3 skipped**로 통과했습니다(수정 전 실행 `40140013613`은 633).
 6. **실제 Codex 0.164.0 S1 시험을 수행했습니다.** 연결 시험 통과, 실제 발언 2건(`worker_reported_runtime`), 재연결에서 시험 호출 0회로 두 번째 발언. 이 과정에서 0.164.0이 `turn.started` 앞에 보내는 경고 `item.completed/error`를 어댑터가 프로토콜 오류로 처리하던 결함을 찾아 수정하고 회귀 3건을 추가했습니다. Codex 호출 예산은 소진되었습니다(누적 6/6).
 
 ## 4. 아직 남은 것 (완료로 표시하지 않음)
@@ -85,7 +85,7 @@ pwsh tools/ci_postgres_fixture.ps1 -Action stop -BinDir <postgres>/bin -DataDir 
 ephemeral PostgreSQL cluster in one invocation (`tools/ci_postgres_fixture.ps1` creates and stops it, loopback only,
 never reusing a data directory). On 2026-10-25 the single combined run reported **636 Python passes (3 skips) and
 196 Node passes**, and a separate selection reported **19 PostgreSQL passes** against a fresh 18.6 cluster. The CI
-workflow now runs the same fixture; its first run (`40140013613`, before the adapter fix) reported 633 passes, and the post-fix local rerun reported 636.
+workflow now runs the same fixture; its post-fix run (`40142129438`) reported **636 passes / 3 skips** (the pre-fix run `40140013613` reported 633).
 
 Actual provider evidence changed on 2026-10-25: Codex CLI 0.164.0, using the machine's native login, passed the
 worker-reported connection test, published two room contributions, and reused the exact receipt on reconnect with
