@@ -29,6 +29,17 @@ python -m venv .venv
 
 정본은 [docs/STATUS.md](docs/STATUS.md) 하나입니다. 재현 명령과 남은 관문도 그 문서에 있습니다.
 
+## 화면
+
+합성 데모 데이터로 로컬 캡처했습니다(운영 데이터 아님).
+
+| 방 목록 | 토론 | 모바일 |
+| --- | --- | --- |
+| ![방 목록](docs/ui/rooms.png) | ![토론](docs/ui/room.png) | ![모바일](docs/ui/mobile.png) |
+
+UI는 외부 CDN·웹폰트·아이콘 라이브러리 없이 자체 CSS와 인라인 SVG만 사용합니다.
+`prefers-color-scheme` 다크 모드, 키보드 포커스, `prefers-reduced-motion`을 따릅니다.
+
 ## 문서 지도
 
 | 목적 | 문서 |

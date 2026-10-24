@@ -108,7 +108,7 @@ def create_app(store, start_scheduler=True, allow_fixture_bearer=False, allowed_
 
     @app.get("/web/{name}")
     def asset(name: str):
-        require(name in {"app.mjs", "state.mjs", "style.css"}, "not_found", 404)
+        require(name in {"app.mjs", "state.mjs", "style.css", "favicon.svg"}, "not_found", 404)
         return FileResponse(Path(__file__).parent / "web" / name)
 
     def room_stream(request, credential, room_id):

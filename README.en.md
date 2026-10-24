@@ -32,6 +32,17 @@ The real order (prepare a room → invite → `check` → `join` → `connect` �
 [docs/STATUS.md](docs/STATUS.md) is the single authoritative status document, including reproduction commands
 and the remaining gates.
 
+## Screens
+
+Captured locally against synthetic demo data (not operating data).
+
+| Rooms | Discussion | Mobile |
+| --- | --- | --- |
+| ![Rooms](docs/ui/rooms.png) | ![Discussion](docs/ui/room.png) | ![Mobile](docs/ui/mobile.png) |
+
+The UI uses no CDN, web font or icon library: only its own CSS and inline SVG, with `prefers-color-scheme`
+dark mode, visible keyboard focus and `prefers-reduced-motion` support.
+
 ## Document map
 
 | Purpose | Document |
