@@ -59,6 +59,27 @@ def test_connection_check_and_room_caps_both_obey_total_ceiling(fixture,tmp_path
     assert all(runtime.codex_transport=='exec-json' for runtime in made)
 
 
+def test_default_one_call_ceiling_reports_actionable_next_step(fixture,tmp_path,monkeypatch,capsys):
+    """Default --max-model-calls 1 is spent by the check; say what to do next."""
+    store,_,_=fixture
+    config,made=configured(fixture,tmp_path,monkeypatch)
+    monkeypatch.setattr(sys,'argv',['talkabout','connect','--config',str(config),'--runtime','codex',
+                                   '--approve-external','--steps','5','--max-seconds','10'])
+    cli.main()
+    captured=capsys.readouterr().out
+    output=[json.loads(line) for line in captured.splitlines() if line.startswith('{')]
+    budget=next(row for row in output if 'next_action' in row)
+    assert budget['next_action']=='increase_max_model_calls'
+    assert budget['connection_check_calls']==1 and budget['room_calls_remaining']==0
+    guidance=next(row for row in output if 'next_command_hint' in row)
+    assert guidance['connection_check_only'] is True and guidance['automatic_retry'] is False
+    assert '--max-model-calls 2' in guidance['next_command_hint']['en']
+    assert '--max-model-calls 2' in guidance['next_command_hint']['ko']
+    assert sum(runtime.calls for runtime in made)==1
+    assert store.principals['a']['connection']['state']=='stopped'
+    assert 'model_call_budget_exhausted' not in captured
+
+
 def test_app_server_requires_explicit_gate_before_runtime_creation(fixture,tmp_path,monkeypatch):
     config,made=configured(fixture,tmp_path,monkeypatch)
     monkeypatch.setattr(sys,'argv',['talkabout','connect','--config',str(config),'--runtime','codex','--approve-external','--codex-transport','app-server'])

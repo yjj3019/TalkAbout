@@ -13,6 +13,14 @@ from .worker import APIClient, Journal, SyntheticRuntime, Worker
 from .runtime import RunBudgetExceeded, check_deadline
 
 
+def emit_json(value):
+    """Print one JSON line even on a legacy console that cannot encode KO/EN text."""
+    try:
+        print(json.dumps(value, ensure_ascii=False))
+    except UnicodeEncodeError:
+        print(json.dumps(value, ensure_ascii=True))
+
+
 def main():
     parser = argparse.ArgumentParser(description="TalkAbout private text-only prototype; no external model calls by default")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -183,12 +191,30 @@ def main():
                     total_remaining=max(0,args.max_model_calls-check_calls)
                     room_remaining=min(total_remaining,args.max_room_calls if args.max_room_calls is not None else total_remaining)
                     pending=journal.next() if room_remaining==0 else None
-                    next_action='room_worker_ready' if room_remaining else 'saved_result_recovery_only' if pending and pending[1]=='result_saved' else 'connection_check_only_review_explicit_room_budget'
+                    next_action=('room_worker_ready' if room_remaining else
+                                 'saved_result_recovery_only' if pending and pending[1]=='result_saved' else
+                                 'increase_max_model_calls')
                     print(json.dumps({'connection_check_calls':check_calls,'total_calls_remaining':total_remaining,'room_calls_remaining':room_remaining,
                                       'next_action':next_action}))
+                    if next_action=='increase_max_model_calls':
+                        # The default ceiling of one call is spent by the connection
+                        # test. Say so plainly instead of looping into a silent
+                        # 'model_call_budget_exhausted' with no way forward.
+                        required=min(10,check_calls+1)
+                        emit_json({'connection_check_only':True,'room_calls_remaining':0,
+                                   'next_command_hint':{
+                                       'ko':'연결 시험이 --max-model-calls '+str(args.max_model_calls)+' 한도를 모두 사용해 이번 실행에서는 발언 호출이 0회입니다. '
+                                            '발언까지 허용하려면 --max-model-calls '+str(required)+' 이상으로 다시 실행하세요'
+                                            '(제한 라운드 1회 = 시험 1 + 제안/검토/정리 3). 연결 시험은 다시 수행되며 '
+                                            '공급자 사용량이 추가로 발생할 수 있습니다.',
+                                       'en':'The connection test used the whole --max-model-calls '+str(args.max_model_calls)+' ceiling, so this run allows 0 speaking calls. '
+                                            'Re-run with --max-model-calls '+str(required)+' or more (one bounded round = 1 check + 3 turns). '
+                                            'The check runs again and may consume additional provider usage.'},
+                                   'automatic_retry':False})
                 else:
                     runtime = SyntheticRuntime()
                     check_calls = 0
+                    next_action = 'room_worker_ready'
                 runtime_kind = args.runtime or 'synthetic'
                 final_state = 'failed'
                 def report(state, error_code=None):
@@ -208,6 +234,13 @@ def main():
                 client.request('PUT', 'agents/me/capabilities', {'http': True, 'persistent_worker': True, 'text': True,
                     'image': False, 'file': False, 'model_label': runtime_kind+' (worker reported)'}, str(uuid.uuid4()))
                 report('idle')
+                if next_action == 'increase_max_model_calls':
+                    # Nothing can be spoken under this ceiling and no saved result
+                    # is waiting, so do not start a worker that can only report an
+                    # exhausted budget.
+                    final_state = 'stopped'
+                    report('stopped')
+                    return
                 worker = Worker(client, journal, ReportedRuntime(), adapter_policy={'external': bool(args.runtime), 'tool_limits_verified': bool(args.runtime), 'allowed_tools': []}, run_deadline=deadline)
                 final_state = 'stopped'
                 for _ in range(args.steps):
