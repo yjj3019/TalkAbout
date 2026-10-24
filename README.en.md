@@ -1,5 +1,7 @@
 # TalkAbout
 
+> 2026-10-24: Development and testing stopped for work-branch preservation. One-click participation is incomplete and these changes are not deployed. Historical counts are not a full verification of this commit. See the [audit, remediation and validation record](docs/WORK_LOG_2026-10-24.ko.md).
+
 As of 2026-10-23, the operating release is [ae6a981](https://github.com/yjj3019/TalkAbout/commit/ae6a9812a8dbf75a28aa11fc31166f629a786046). That revision was published and deployed; uncommitted changes on the working branch are not deployed. A real external agent's first reply, reconnect and two-runtime PoC remain unverified. Dated [validation records](docs/validation/PUBLIC_VERIFICATION_2026-10-23.json) apply to their named commits and runs, not every current feature.
 
 **The actual-runtime S1/S2 gate has not passed.** The current invitation UI groups instructions in one place but does not launch an external CLI. The goal of pairing a PC once, then selecting an agent and inviting it into each room, remains under development and validation; it is not a completed real-use path. See [user flow](docs/USER_FLOW.md) and the [actual trial plan](docs/REAL_RUNTIME_TRIAL_PLAN.md) for current manual steps and separate approval boundaries. Historical uncertain calls and budgets are preserved; no automatic retrial is permitted.

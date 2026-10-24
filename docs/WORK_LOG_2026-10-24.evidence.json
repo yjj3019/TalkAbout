@@ -1,0 +1,330 @@
+{
+  "recorded_date": "2026-10-24",
+  "status": "WIP_NOT_DEPLOYED_BUTTON_INVITE_INCOMPLETE",
+  "baseline": "ae6a9812a8dbf75a28aa11fc31166f629a786046",
+  "branch": "feat/paired-local-runner",
+  "archive_only_no_new_tests": true,
+  "scope": {
+    "tracked_baseline_count": 192,
+    "method": "static functional tracing with separate synthetic reproductions; not complete execution coverage",
+    "later_untracked_sources_not_retroactively_audited": true
+  },
+  "preserved_changed_files": [
+    "README.en.md",
+    "README.md",
+    "deploy/podman/OPERATING.md",
+    "deploy/podman/README.md",
+    "deploy/podman/secret_setup.py",
+    "docs/AGENT_GUIDE.md",
+    "docs/API_DRAFT.md",
+    "docs/CODEX_SESSION_CONTINUITY.md",
+    "docs/DEPLOYMENT_RUNBOOK.md",
+    "docs/FEATURE_MATRIX.md",
+    "docs/IMPLEMENTATION_STATUS.md",
+    "docs/ROADMAP.md",
+    "docs/RUNTIME_CONNECTIONS.md",
+    "docs/SESSION_PARTICIPATION.md",
+    "docs/USER_FLOW.md",
+    "talkabout/adapters.py",
+    "talkabout/agent_runtime.py",
+    "talkabout/api.py",
+    "talkabout/auth.py",
+    "talkabout/cli.py",
+    "talkabout/collaboration.py",
+    "talkabout/connector.py",
+    "talkabout/core.py",
+    "talkabout/domain.py",
+    "talkabout/identity.py",
+    "talkabout/modes.py",
+    "talkabout/participation.py",
+    "talkabout/runner_bridge.py",
+    "talkabout/runner_client.py",
+    "talkabout/runtime.py",
+    "talkabout/store.py",
+    "talkabout/text_files.py",
+    "talkabout/web/app.mjs",
+    "talkabout/web/state.mjs",
+    "talkabout/worker.py",
+    "tests/test_agent_runtime.py",
+    "tests/test_cli_adapters.py",
+    "tests/test_collaboration.py",
+    "tests/test_continuity_cli.py",
+    "tests/test_execution_fencing.py",
+    "tests/test_participation.py",
+    "tests/test_remediation_storage.py",
+    "tests/test_room_invite_flow.mjs",
+    "tests/test_run_budget.py",
+    "tests/test_runner_bridge.py",
+    "tests/test_runner_client.py",
+    "tests/test_sessions.py",
+    "tests/test_text_files_api.py",
+    "tests/test_user_secret_setup.py",
+    "tests/test_worker_api.py",
+    "tests/ui-review.test.mjs"
+  ],
+  "findings": [
+    {
+      "id": "F03",
+      "issue": "draft room and account isolation",
+      "stage": 1,
+      "status": "ACTUAL_CHROME_KO_EN_PASS_SYNTHETIC_BACKEND"
+    },
+    {
+      "id": "F04",
+      "issue": "stable message retry identity",
+      "stage": 1,
+      "status": "SYNTHETIC_LOGIN_STORAGE_RACES_PASS_ACTUAL_CHROME_RELOAD_PASS"
+    },
+    {
+      "id": "F02",
+      "issue": "restore explicit runtime preference",
+      "stage": 1,
+      "status": "ACTUAL_CHROME_KO_EN_PASS_SYNTHETIC_BACKEND"
+    },
+    {
+      "id": "F05",
+      "issue": "expired cursor lifecycle and capacity",
+      "stage": 2,
+      "status": "MEMORY_AND_ISOLATED_POSTGRES_PASS"
+    },
+    {
+      "id": "F06",
+      "issue": "room-local scheduler failure isolation",
+      "stage": 2,
+      "status": "MEMORY_HTTP_AND_ISOLATED_POSTGRES_PASS"
+    },
+    {
+      "id": "F16",
+      "issue": "no adoption wait without artifact",
+      "stage": 2,
+      "status": "MEMORY_UI_AND_ISOLATED_POSTGRES_PASS"
+    },
+    {
+      "id": "F15",
+      "issue": "input budget before durable call start",
+      "stage": 2,
+      "status": "INPUT_PREFLIGHT_AND_SAVED_RESULT_RECOVERY_SYNTHETIC_PASS_FINAL_SAFE_SELECTION_PASS"
+    },
+    {
+      "id": "F07",
+      "issue": "active quota versus retained history",
+      "stage": 2,
+      "status": "MEMORY_PASS_FINAL_SAFE_SELECTION_PASS_SEPARATE_POSTGRES_EVIDENCE_RETAINED"
+    },
+    {
+      "id": "F11",
+      "issue": "persist artifact caption",
+      "stage": 2,
+      "status": "MEMORY_PASS_FINAL_SAFE_SELECTION_PASS_SEPARATE_POSTGRES_EVIDENCE_RETAINED"
+    },
+    {
+      "id": "F08",
+      "issue": "legacy task versus participation fencing contract",
+      "stage": 2,
+      "status": "SESSION_BOUND_TASK_AND_FILE_SYNTHETIC_PASS_LEGACY_PRESERVED"
+    },
+    {
+      "id": "F09",
+      "issue": "native checkpoint identity fail-closed support",
+      "stage": 2,
+      "status": "FAIL_CLOSED_LIMITATION_NOW_REJECTED_BEFORE_MODEL_TEST_SYNTHETIC_PASS"
+    },
+    {
+      "id": "F12",
+      "issue": "legacy adapter terminal completion",
+      "stage": 2,
+      "status": "SYNTHETIC_PASS_FINAL_SAFE_SELECTION_PASS"
+    },
+    {
+      "id": "F13",
+      "issue": "manual database secret separation",
+      "stage": 2,
+      "status": "SYNTHETIC_PASS_FINAL_SAFE_SELECTION_PASS"
+    },
+    {
+      "id": "T01",
+      "issue": "separate injected timeout handling and real deadline tests",
+      "stage": 2,
+      "status": "INJECTED_HANDLER_RENAMED_ACTUAL_DEADLINE_CHECK_PASS"
+    },
+    {
+      "id": "F01",
+      "issue": "approved paired PC runner invitation dispatch",
+      "stage": 3,
+      "status": "BACKEND_SOURCE_DENIED_AGAIN_AFTER_2224_APPROVAL_NOT_EXECUTED_CLIENT_BRIDGE_UNWIRED_NOT_USABLE"
+    },
+    {
+      "id": "F14",
+      "issue": "shared context provenance revision omission and review binding",
+      "stage": 4,
+      "status": "SHARED_CONTEXT_SYNTHETIC_CHROME_AND_ISOLATED_POSTGRES_PASS_NO_REAL_PROVIDER_VALIDATION"
+    },
+    {
+      "id": "F10",
+      "issue": "synchronize current support and operational documentation",
+      "stage": 4,
+      "status": "SUPPORT_AND_DEVELOPMENT_BOUNDARIES_CORRECTED_NOT_OPERATING_DEPLOYMENT"
+    },
+    {
+      "id": "F17",
+      "issue": "journal loss after uncertain provider start must not reauthorize execution",
+      "stage": 4,
+      "status": "REPRODUCED_TWO_CALLS_FIXED_ONE_SHOT_SERVER_RESERVATION_ISOLATED_POSTGRES_RESTART_ZERO_RECALLS_FINAL_SAFE_SELECTION_PASS_LEGACY_BOUNDARY_DOCUMENTED"
+    },
+    {
+      "id": "T02",
+      "issue": "expired worker budget must bound cleanup waits and local stop precede all preparation",
+      "stage": 4,
+      "status": "DETERMINISTIC_CLEANUP_FAILURE_AND_AGGREGATE_ORDERING_REGRESSIONS_FIXED_UNCHANGED_ASSERTIONS_FINAL_SAFE_SELECTION_PASS"
+    },
+    {
+      "id": "F18",
+      "issue": "attachment consent revoked after the worker preflight but before server call-start permission",
+      "stage": 4,
+      "status": "REPRODUCED_ONE_RUNTIME_CALL_FIXED_ATOMIC_CURRENT_READ_CONSENT_GATE_MEMORY_141_PASS_FOCUSED_4_PASS_POSTGRES_UNEXECUTED_INIT_TIMEOUT_TWICE_OWNED_CLEANUP_CONFIRMED"
+    },
+    {
+      "id": "F19",
+      "issue": "untrusted standalone bridge cli/expiry JSON types escape as TypeError/OverflowError",
+      "stage": 3,
+      "status": "REPRODUCED_FOUR_FAILED_CASES_FIXED_MINIMAL_TYPE_RANGE_CHECKS_42_PASS_3_PG_SKIP_LISTENER_AND_BACKEND_UNWIRED_NOT_BUTTON_INVITATION_SUCCESS"
+    }
+  ],
+  "historical_snapshots": [
+    {
+      "scope": "before_final_shared_context",
+      "python_passed": 652,
+      "python_skipped": 26,
+      "excluded": 7,
+      "node_passed": 227
+    },
+    {
+      "scope": "cutoff_then_separate_remainder_not_one_clean_run",
+      "python_passed_before_cutoff": 671,
+      "python_failed": 2,
+      "separate_remainder_passed": 24
+    },
+    {
+      "scope": "before_cli_stop_order_fix",
+      "python_passed": 721,
+      "python_failed": 4,
+      "python_skipped": 29,
+      "excluded": 7
+    },
+    {
+      "scope": "pre_F18_F19_safe_selection",
+      "python_passed": 725,
+      "python_failed": 0,
+      "python_skipped": 29,
+      "excluded": 7,
+      "selected_unexecuted": 0,
+      "node_passed": 227,
+      "not_current_complete_commit_result": true
+    },
+    {
+      "scope": "F17_final_isolated_postgres",
+      "passed": 3,
+      "owned_database_process_restarted": true,
+      "fresh_journal_additional_runtime_calls": 0
+    },
+    {
+      "scope": "F14_F17_actual_chrome_loopback_memory_store",
+      "passed": 4,
+      "real_provider_validation": false
+    },
+    {
+      "scope": "F18_related_memory_http",
+      "passed": 141,
+      "postgres_skipped": 6,
+      "node_synthetic_ui_passed": 76
+    },
+    {
+      "scope": "F18_strengthened_new_regression",
+      "passed": 4,
+      "postgres_skipped": 3,
+      "deselected": 30
+    },
+    {
+      "scope": "F18_postgres_preparation",
+      "attempts": [
+        {
+          "init_limit_seconds": 45,
+          "last_phase": "disk_sync",
+          "tests_started": false,
+          "owned_cleanup": true
+        },
+        {
+          "init_limit_seconds": 45,
+          "last_phase": "post_bootstrap",
+          "tests_started": false,
+          "owned_cleanup": true
+        }
+      ],
+      "current_patch_postgres_verified": false
+    },
+    {
+      "scope": "F19_pure_bridge_regression",
+      "before_failed": 4,
+      "before_passed": 14,
+      "after_related_passed": 42,
+      "postgres_skipped": 3,
+      "listener_started": false,
+      "real_provider_calls": 0
+    }
+  ],
+  "excluded_cases": [
+    {
+      "nodeid": "tests/test_browser_community.py::test_browser_register_invite_setup_start_and_text_artifact",
+      "classification": "separate_browser_fixture"
+    },
+    {
+      "nodeid": "tests/test_browser_text_files.py::test_browser_upload_read_reply_view_download_revoke_delete[ko-1400]",
+      "classification": "separate_browser_fixture"
+    },
+    {
+      "nodeid": "tests/test_browser_text_files.py::test_browser_upload_read_reply_view_download_revoke_delete[en-390]",
+      "classification": "separate_browser_fixture"
+    },
+    {
+      "nodeid": "tests/test_browser_readiness.py::test_beginner_register_invite_acceptance_guide_reload[ko-1400]",
+      "classification": "separate_browser_fixture"
+    },
+    {
+      "nodeid": "tests/test_browser_readiness.py::test_beginner_register_invite_acceptance_guide_reload[en-390]",
+      "classification": "separate_browser_fixture"
+    },
+    {
+      "nodeid": "tests/test_deployment_readiness.py::test_postgres_real_loopback_health_readiness_and_shutdown",
+      "classification": "blocked_prebound_sockets"
+    },
+    {
+      "nodeid": "tests/test_mcp_process.py::test_mcp_stdio_process_interoperability",
+      "classification": "blocked_prebound_sockets"
+    }
+  ],
+  "unresolved_real_trial": {
+    "uncertain_attempts": 1,
+    "unused_historical_budget": 2,
+    "provider_response_or_reconnection_proven": false,
+    "automatic_retry": false
+  },
+  "current_execution_authorization": {
+    "git_work_branch_preservation": true,
+    "new_development_or_testing": false,
+    "real_credential_issuance_or_storage": false,
+    "real_account_linkage": false,
+    "real_provider_call": false,
+    "main_merge": false,
+    "operating_deployment": false
+  },
+  "publication_exclusions": [
+    "raw databases and journals",
+    "raw operational logs and recovery images",
+    "secrets and authentication caches",
+    "personal account identifiers and local absolute paths",
+    "other projects",
+    "internal agent instructions and private scratch notes",
+    "external checkouts and generated artifacts"
+  ],
+  "preserved_development_commit": "86b3828b9eca46f84bb9abfbe862fc38d16fc339"
+}
