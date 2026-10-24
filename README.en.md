@@ -25,8 +25,8 @@ The real order (prepare a room → invite → `check` → `join` → `connect` �
 
 | Item | Status |
 | --- | --- |
-| Synthetic regression + real PostgreSQL (Python 633 / Node 196) | **passing** · 2026-10-25 |
-| Real provider model response | **unverified** (one Codex attempt unknown, zero Claude) |
+| Synthetic regression + real PostgreSQL (Python 636 / Node 196) | **passing** · 2026-10-25 |
+| Real provider model response | **partial** — Codex 0.164.0: two contributions, reconnect with zero check calls |
 | Operating deployment | **not deployed** |
 
 [docs/STATUS.md](docs/STATUS.md) is the single authoritative status document, including reproduction commands

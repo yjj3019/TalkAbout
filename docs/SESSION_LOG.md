@@ -83,3 +83,39 @@ Confirmed unchanged application HEAD 9f68f602cc70b80224991c9c18c846b6ed8c434f an
 POSIX remains NOTRUN: WSL launchers and distribution names exist, but there is no verified approved disposable POSIX test workspace with offline dependencies. No distro startup, host mount, personal Linux data inspection or remote access was performed. No installation, existing DB use, actual model call, actual credential issuance, push/PR retry, merge or deployment occurred.
 
 Documentation changes only: added a narrow [reproduction and release-gate procedure](REMAINING_VALIDATION.md), recorded [PG evidence](validation/remaining-postgres-review-2026-10-19.json), clarified continuity readiness and corrected stale deployment text claiming push/merge authorization and omitting synthetic Chrome evidence. The original historical validation records remain intact. A follow-up documentation commit preserves the tested implementation history.
+
+## 2026-10-25 — verification completion, PostgreSQL in CI, first actual Codex contributions
+
+Branch `chore/completion-verification` (merged into `main` by fast-forward push; PR #16 closed as merged). No history rewrite.
+
+### Code and tools
+
+- `talkabout/cli.py`: a spent `--max-model-calls` ceiling stops before the worker and reports `increase_max_model_calls` with KO/EN next-step text. Cost defaults unchanged.
+- `talkabout/agent_runtime.py`: Codex 0.164.0 emits `item.completed`/`item.type=error` (an under-development-feature advisory) before `turn.started`. The adapter treated that as `runtime_protocol_mismatch`. It is now ignored as a non-output advisory; unknown item/event types, `turn.failed` and `error` still fail closed. Three synthetic regressions added.
+- `tools/run_safe_regression.py`: `--postgres-config` forwarding, repository-path refusal, and a legacy-console `UnicodeEncodeError` fix.
+- `tools/ci_postgres_fixture.ps1`: owned, loopback-only, disposable PostgreSQL cluster; refuses data-directory reuse; stops only what it started.
+- `.github/workflows/safe-regression.yml`: fetches the pinned 18.6 binaries, creates the fixture, runs the one regression command, always stops the cluster.
+
+### Verification
+
+- Local, one command with PostgreSQL: **633 passed / 3 skipped**, Node **196 passed**, runner exit 0.
+- Separate PostgreSQL selection: **19 passed** on a fresh 18.6 cluster.
+- CI (windows-latest, run `40140013613`): same **633 / 3**, job success in 2m35s.
+- `tests/test_agent_runtime.py`: 102 passed, 1 skip after the adapter fix.
+
+### Actual provider trial (S1, Codex only)
+
+- Memory-backed loopback fixture, synthetic identities, manual-start room, room-scoped 1h credential.
+- First `connect` failed with `runtime_protocol_mismatch` (1 model start). One diagnostic native `codex exec` with the adapter's exact safety flags captured the event stream (1 start).
+- After the fix: connection test passed, room started by explicit human control, first contribution `seq 8` published as `worker_reported_runtime` (1 start).
+- Reconnect with `--max-model-calls 1`: `connection_check_calls: 0` (exact receipt reused) and a second contribution `seq 12` (1 start). No duplicate attempts or messages.
+- Cleanup: room closed, four credentials revoked, fixture server stopped.
+- Model starts this trial: **5**. Lifetime Codex starts: **6 of 6**, so further Codex starts require new approval. Claude budget remains 3.
+
+### Boundaries
+
+No operating deployment, operating database, account creation, MFA, paging/archival, binary upload or POSIX runtime support. Provider token usage and billing remain unknown. Worker-reported evidence is not vendor attestation.
+
+### Next
+
+S2 (Codex + Claude in one room, pause/recovery) needs new approval and a fresh budget; the Claude S1 path is the cheapest next step.
