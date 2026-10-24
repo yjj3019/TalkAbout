@@ -1,0 +1,77 @@
+{
+  "reviewed": "2026-10-25",
+  "base_commit": "ae6a9812a8dbf75a28aa11fc31166f629a786046",
+  "status": "LOCAL_VERIFICATION_PASS_WITH_REAL_POSTGRESQL_PROVIDER_AND_DEPLOYMENT_UNVERIFIED",
+  "scope": {
+    "application_changes": [
+      "talkabout/cli.py: a spent --max-model-calls ceiling now stops before the worker and prints increase_max_model_calls with KO/EN next-step guidance",
+      "tools/run_safe_regression.py: legacy-console UnicodeEncodeError fixed; optional --postgres-config forwarded to the pytest child",
+      "tools/ci_postgres_fixture.ps1: owned disposable PostgreSQL cluster, loopback only, refuses data-directory reuse"
+    ],
+    "test_changes": [
+      "tests/test_continuity_cli.py: default one-call ceiling reports an actionable next step and no exhausted-worker loop"
+    ],
+    "documentation_changes": [
+      "docs/STATUS.md: new single current-status authority",
+      "README.md / README.en.md: introduction, quickstart, status table and document map above the dated history",
+      "docs/USER_FLOW.md: default-budget behavior",
+      "docs/REMAINING_VALIDATION.md: scripted PostgreSQL fixture"
+    ]
+  },
+  "verification": {
+    "environment": {
+      "os": "Windows 11",
+      "python": "3.14.4",
+      "node": "24.15.0",
+      "postgresql": "18.6 (portable binaries, fresh cluster on 127.0.0.1)"
+    },
+    "combined_run": {
+      "command": "python -B tools/run_safe_regression.py --postgres-config <private>/pg-fixture.json",
+      "python": {"passed": 633, "skipped": 3, "deselected": 7},
+      "node": {"passed": 196, "failed": 0},
+      "runner_exit": 0,
+      "note": "First single invocation to include PostgreSQL; earlier records split Python, Node and PostgreSQL across separate runs."
+    },
+    "without_postgres": {
+      "command": "python -B tools/run_safe_regression.py",
+      "python": {"passed": 614, "skipped": 21, "deselected": 7},
+      "node": {"passed": 196, "failed": 0}
+    },
+    "postgres_selection": {
+      "command": "python -m pytest -q tests -k postgres --postgres-config <private>/pg-fixture.json",
+      "passed": 19,
+      "deselected": 624,
+      "cluster": "newly initialized data directory; SHOW data_directory matched the owned path; listen_addresses was 127.0.0.1"
+    },
+    "skips": [
+      "2 Chrome fixture cases requiring an explicit browser fixture",
+      "1 POSIX-only fail-closed case on Windows"
+    ],
+    "fixture_script": {
+      "create": "passed: initdb, loopback start, data_directory and listen_addresses verified, config written outside the repository",
+      "reuse_refusal": "passed: an existing data directory is rejected",
+      "stop": "passed: only the owned cluster stopped"
+    }
+  },
+  "boundaries": {
+    "actual_provider_calls": 0,
+    "new_actual_credentials": 0,
+    "operating_database_access": false,
+    "deployment": false,
+    "remote_mutation_in_this_record": false,
+    "real_browser_run": false
+  },
+  "not_claimed": [
+    "actual provider first response or reconnect",
+    "two-real-runtime dialogue",
+    "operating deployment, accounts, MFA or rate limits",
+    "POSIX external runtime support",
+    "binary or image uploads"
+  ],
+  "remaining_gates": [
+    "S1 actual provider response/reconnect (budget remaining: Codex 5, Claude 3)",
+    "S2 two-runtime dialogue and pause/recovery",
+    "Operating deployment acceptance",
+    "CI PostgreSQL step (workflow not yet wired)"
+  ]
+}
