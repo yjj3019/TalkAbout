@@ -1,5 +1,12 @@
 # Remaining verification / 남은 검증 재현 절차
 
+2026-10-25 follow-up: the manual cluster steps below are now scripted. `tools/ci_postgres_fixture.ps1 -Action create`
+creates a new owned data directory, listens on `127.0.0.1` only, verifies the reported `data_directory` and
+`listen_addresses`, and writes the pytest `--postgres-config` JSON outside the repository; `-Action stop` shuts down
+only that cluster. `python -B tools/run_safe_regression.py --postgres-config <path>` then runs Python, Node and the
+PostgreSQL cases in one invocation. On 2026-10-25 this produced 19 PostgreSQL passes against a fresh 18.6 cluster. See
+[STATUS.md](STATUS.md). The records below keep their original dates.
+
 2026-10-20 follow-up: the one PostgreSQL case excluded from the later selected journey checks passed separately at `7bd48465476c05a9f0a438271bd80f5652009d69`. See the [single-case record](validation/journey-postgres-review-2026-10-20.json). Initdb retained disk synchronization; its local harness deadline alone was explicitly extended from 45 to 180 seconds after an initialization timeout. No model-call or security limit changed. This does not repeat the seventeen-case run or establish a full-suite/provider pass.
 
 LOCAL TEST DOCUMENTATION ONLY / 로컬 검증 문서. Reviewed 2026-10-19. No publication, merge, deployment, actual model invocation or operating credential issuance is implied. The original seventeen-case record below tested `9f68f602cc70b80224991c9c18c846b6ed8c434f`.

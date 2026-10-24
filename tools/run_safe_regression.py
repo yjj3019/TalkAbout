@@ -7,6 +7,12 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
+# Windows consoles default to a legacy code page; a child log containing a
+# check mark must not turn a completed run into a UnicodeEncodeError.
+try:
+    sys.stdout.reconfigure(errors='backslashreplace')
+except (AttributeError, ValueError):
+    pass
 EXCLUDED = {
     'test_mcp_stdio_process_interoperability': 'prebound sockets startup remains blocked by the offline guard',
     'test_postgres_real_loopback_health_readiness_and_shutdown': 'prebound sockets startup remains blocked by the offline guard',
@@ -16,7 +22,7 @@ EXCLUDED = {
 }
 
 
-def python_contracts(output):
+def python_contracts(output, postgres_config=None):
     sys.path[:0] = [str(ROOT), str(ROOT/'tools')]
     os.chdir(ROOT)
     from ci_guard import install
@@ -33,13 +39,26 @@ def python_contracts(output):
             if report.when=='call' or report.failed or report.skipped:
                 with (output/'cases.jsonl').open('a',encoding='utf-8') as stream:
                     stream.write(json.dumps({'nodeid':report.nodeid,'phase':report.when,'outcome':report.outcome})+'\n')
-    return pytest.main(['-q','-ra','tests','-p','no:cacheprovider','--maxfail=1',
-                        '--basetemp='+str(output/'temp')],plugins=[Reports()])
+    arguments=['-q','-ra','tests','-p','no:cacheprovider','--maxfail=1',
+               '--basetemp='+str(output/'temp')]
+    if postgres_config is not None: arguments += ['--postgres-config', str(postgres_config)]
+    return pytest.main(arguments,plugins=[Reports()])
 
 
 def main():
-    if len(sys.argv)>1 and sys.argv[1]=='child':
-        return python_contracts(Path(sys.argv[2]))
+    arguments=list(sys.argv[1:])
+    postgres_config=None
+    if '--postgres-config' in arguments:
+        index=arguments.index('--postgres-config')
+        if len(arguments)<=index+1: raise SystemExit('--postgres-config requires a path')
+        postgres_config=Path(arguments[index+1]).resolve()
+        del arguments[index:index+2]
+        if ROOT in postgres_config.parents:
+            raise SystemExit('refusing a fixture config inside the repository: keep it in a private directory')
+        if not postgres_config.is_file():
+            raise SystemExit('fixture config not found: '+str(postgres_config))
+    if arguments and arguments[0]=='child':
+        return python_contracts(Path(arguments[1]), postgres_config)
     sys.path.insert(0,str(ROOT))
     from talkabout.processes import ManagedProcess
     output=ROOT/'.ci-results'
@@ -49,7 +68,7 @@ def main():
         if any(word in key.upper() for word in ('TOKEN','API_KEY','DATABASE_URL','PASSWORD')):env.pop(key)
     results={}
     for name,command,timeout in (
-        ('python',[sys.executable,'-B',str(Path(__file__)),'child',str(output)],600),
+        ('python',[sys.executable,'-B',str(Path(__file__)),'child',str(output),*(['--postgres-config',str(postgres_config)] if postgres_config else [])],600),
         ('node',['node','--test',*[str(p) for p in sorted((ROOT/'tests').glob('*.mjs'))]],180),
     ):
         owned=None
