@@ -142,6 +142,58 @@ def runtime(monkeypatch, kind, behavior='success'):
     return adapter, peer
 
 
+class ExecTransport:
+    """Minimal stand-in for _JSONLTransport in codex exec-json tests."""
+    def __init__(self, events):
+        self.events, self.sent = list(events), []
+    def send_text(self, text, cancel, deadline): self.sent.append(text)
+    def receive(self, cancel, deadline):
+        if not self.events: raise AdapterError('runtime_outcome_unknown')
+        return self.events.pop(0)
+    def wait_success(self, cancel, deadline): return True
+
+
+def jsonl_runtime(events):
+    runtime = StructuredRuntime('codex', executable=sys.executable)
+    runtime._transport = ExecTransport(events)
+    runtime._cancel = threading.Event()
+    runtime._deadline = time.monotonic() + 5
+    runtime.session_id = None
+    return runtime
+
+
+def test_codex_exec_tolerates_pre_turn_advisory_item_without_output():
+    # Codex 0.164.0 emits this advisory before turn.started; it is not model output.
+    advisory = {'type': 'item.completed', 'item': {'id': 'warn-1', 'type': 'error',
+        'text': 'Under-development features enabled: skip_host_skill_discovery.'}}
+    runtime = jsonl_runtime([advisory, {'type': 'thread.started', 'thread_id': 'thread-1'},
+        {'type': 'turn.started'},
+        {'type': 'item.completed', 'item': {'id': 'msg-1', 'type': 'agent_message', 'text': 'ready'}},
+        {'type': 'turn.completed', 'status': 'completed'}])
+    assert runtime._codex_exec('prompt') == 'ready'
+    assert runtime.session_id == 'thread-1' and runtime._transport.sent == ['prompt']
+
+
+def test_codex_exec_still_rejects_unknown_item_and_event_types():
+    unknown_item = jsonl_runtime([{'type': 'thread.started', 'thread_id': 't'},
+        {'type': 'turn.started'},
+        {'type': 'item.completed', 'item': {'id': 'x', 'type': 'command_execution', 'text': 'no'}}])
+    with pytest.raises(AdapterError, match='runtime_tool_policy_violation'):
+        unknown_item._codex_exec('prompt')
+    unknown_event = jsonl_runtime([{'type': 'thread.started', 'thread_id': 't'},
+        {'type': 'session.updated'}])
+    with pytest.raises(AdapterError, match='runtime_protocol_mismatch'):
+        unknown_event._codex_exec('prompt')
+
+
+def test_codex_exec_advisory_alone_is_not_a_completed_turn():
+    runtime = jsonl_runtime([{'type': 'item.completed', 'item': {'id': 'w', 'type': 'error', 'text': 'warn'}},
+        {'type': 'thread.started', 'thread_id': 't'}, {'type': 'turn.started'},
+        {'type': 'turn.completed', 'status': 'completed'}])
+    with pytest.raises(AdapterError, match='runtime_invalid_output'):
+        runtime._codex_exec('prompt')
+
+
 @pytest.mark.parametrize('kind', ['codex', 'claude', 'grok'])
 def test_two_turns_resume_native_identifiers_and_private_workspace(monkeypatch, kind):
     adapter, peer = runtime(monkeypatch, kind)
