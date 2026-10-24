@@ -1,0 +1,79 @@
+{
+  "reviewed": "2026-10-25",
+  "evidence_class": "ACTUAL_NATIVE_RUNTIME_TRIAL_S1_PARTIAL_PASS",
+  "runtime": {"product": "Codex CLI", "version": "0.164.0", "auth_mode": "native", "transport": "exec-json"},
+  "fixture": {
+    "type": "memory-backed loopback server on 127.0.0.1",
+    "port": 8089,
+    "synthetic_owner": 1,
+    "synthetic_agents": 1,
+    "rooms": 1,
+    "room_start_policy": "manual",
+    "credential": "room-scoped, 3600s, revoked after the trial",
+    "topic": "Synthetic neutral question: name one colour and why",
+    "operating_data_or_files_sent": false
+  },
+  "provider_incompatibility_found_and_fixed": {
+    "symptom": "First connect attempt failed with runtime_protocol_mismatch; the server recorded runtime_check error_code runtime_failed and no receipt.",
+    "cause": "Codex CLI 0.164.0 emits an item.completed event with item.type=error (an under-development-feature warning caused by features.skip_host_skill_discovery=true) before turn.started. The adapter required turn.started first and treated the advisory as a protocol failure.",
+    "evidence": "A single diagnostic native exec with the adapter's exact safety flags captured: thread.started, item.completed/error (advisory), turn.started, item.completed/agent_message, turn.completed.",
+    "fix": "talkabout/agent_runtime.py now ignores item.completed/item.type=error as a non-output advisory; unknown event types, unknown item types, turn.failed and error events still fail closed.",
+    "regression": "3 new synthetic cases: advisory tolerated without output, advisory alone is not a completed turn, unknown item/event types still rejected. tests/test_agent_runtime.py: 102 passed, 1 skipped."
+  },
+  "s1": {
+    "connection_check": "passed (worker_reported_test), receipt id dadf36c2-df5e-4e20-9ef6-a415d1956903",
+    "room_start": "explicit human control start + approve; generation 1 -> 2",
+    "first_contribution": {
+      "seq": 8,
+      "execution_evidence": "worker_reported_runtime",
+      "generation": 2,
+      "task": "proposal, attempt 1",
+      "text": "Blue, because it evokes a clear sky and a sense of calm."
+    },
+    "reconnect": {
+      "command_budget": "--max-model-calls 1",
+      "connection_check_calls": 0,
+      "note": "The exact unexpired receipt was reused, so no new challenge model call was made.",
+      "contribution": {
+        "seq": 12,
+        "execution_evidence": "worker_reported_runtime",
+        "generation": 2,
+        "task": "review, attempt 1",
+        "text": "The response clearly names blue and gives a relevant reason: its association with clear skies and calm."
+      }
+    },
+    "duplicates": "none: each task reached attempt 1 and the room holds exactly two messages",
+    "token_in_output": false,
+    "false_completion_flags": false,
+    "cleanup": {
+      "room_closed": true,
+      "credentials_revoked": 4,
+      "fixture_server_stopped": true,
+      "provider_native_profile": "ordinary native-client state may persist; not copied, inspected or purged"
+    }
+  },
+  "budget": {
+    "model_starts_this_trial": {
+      "failed_connection_check": 1,
+      "diagnostic_native_exec": 1,
+      "successful_connection_check": 1,
+      "first_contribution": 1,
+      "reconnect_contribution": 1
+    },
+    "total_model_starts": 5,
+    "lifetime_codex_starts": 6,
+    "previous_budget_record": "Codex 1 consumed on 2026-10-17 with unknown outcome; approved total was 6",
+    "remaining_after_trial": {"codex": 0, "claude": 3},
+    "provider_token_usage": "unknown",
+    "provider_billing": "unknown",
+    "further_codex_starts": "blocked without new explicit approval"
+  },
+  "not_claimed": [
+    "two different real runtimes in one room (S2)",
+    "pause/recovery against a real provider process",
+    "operating deployment, accounts, MFA or rate limits",
+    "vendor attestation of model identity or usage",
+    "POSIX external runtime support"
+  ],
+  "release_effect": "S1 now has actual provider evidence for one runtime: authenticated check, first contribution and receipt-reusing reconnect. S1 for a second provider and the whole S2 gate remain unverified."
+}

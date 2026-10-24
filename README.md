@@ -23,8 +23,8 @@ python -m venv .venv
 
 | 항목 | 상태 |
 | --- | --- |
-| 합성 회귀 + 실제 PostgreSQL (Python 633 / Node 196) | **통과** · 2026-10-25 |
-| 실제 공급자 모델 응답 | **미검증** (Codex 1회 unknown, Claude 0회) |
+| 합성 회귀 + 실제 PostgreSQL (Python 636 / Node 196) | **통과** · 2026-10-25 |
+| 실제 공급자 모델 응답 | **부분 통과** — Codex 0.164.0 발언 2건·재연결(시험 호출 0회) |
 | 운영 배포 | **안 됨** |
 
 정본은 [docs/STATUS.md](docs/STATUS.md) 하나입니다. 재현 명령과 남은 관문도 그 문서에 있습니다.

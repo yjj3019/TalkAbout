@@ -1,15 +1,17 @@
 {
   "reviewed": "2026-10-25",
   "base_commit": "ae6a9812a8dbf75a28aa11fc31166f629a786046",
-  "status": "LOCAL_VERIFICATION_PASS_WITH_REAL_POSTGRESQL_PROVIDER_AND_DEPLOYMENT_UNVERIFIED",
+  "status": "LOCAL_VERIFICATION_PASS_WITH_REAL_POSTGRESQL_S1_CODEX_PARTIAL_DEPLOYMENT_UNVERIFIED",
   "scope": {
     "application_changes": [
       "talkabout/cli.py: a spent --max-model-calls ceiling now stops before the worker and prints increase_max_model_calls with KO/EN next-step guidance",
       "tools/run_safe_regression.py: legacy-console UnicodeEncodeError fixed; optional --postgres-config forwarded to the pytest child",
-      "tools/ci_postgres_fixture.ps1: owned disposable PostgreSQL cluster, loopback only, refuses data-directory reuse"
+      "tools/ci_postgres_fixture.ps1: owned disposable PostgreSQL cluster, loopback only, refuses data-directory reuse",
+      "talkabout/agent_runtime.py: Codex 0.164.0 pre-turn advisory item.completed/error no longer treated as a protocol failure; unknown types still fail closed"
     ],
     "test_changes": [
-      "tests/test_continuity_cli.py: default one-call ceiling reports an actionable next step and no exhausted-worker loop"
+      "tests/test_continuity_cli.py: default one-call ceiling reports an actionable next step and no exhausted-worker loop",
+      "tests/test_agent_runtime.py: three cases covering the advisory item, its non-output status and still-rejected unknown types"
     ],
     "documentation_changes": [
       "docs/STATUS.md: new single current-status authority",
@@ -27,14 +29,15 @@
     },
     "combined_run": {
       "command": "python -B tools/run_safe_regression.py --postgres-config <private>/pg-fixture.json",
-      "python": {"passed": 633, "skipped": 3, "deselected": 7},
+      "python": {"passed": 636, "skipped": 3, "deselected": 7},
       "node": {"passed": 196, "failed": 0},
       "runner_exit": 0,
-      "note": "First single invocation to include PostgreSQL; earlier records split Python, Node and PostgreSQL across separate runs."
+      "note": "Post-fix rerun including the Codex 0.164.0 adapter change; an earlier run before that fix reported 633 + 3.",
+      "adapter_fix_included": true
     },
     "without_postgres": {
       "command": "python -B tools/run_safe_regression.py",
-      "python": {"passed": 614, "skipped": 21, "deselected": 7},
+      "python": {"passed": 618, "skipped": 21, "deselected": 7},
       "node": {"passed": 196, "failed": 0}
     },
     "postgres_selection": {
@@ -60,11 +63,12 @@
       "result": "success in 2m35s",
       "python": {"passed": 633, "skipped": 3, "deselected": 7},
       "node": {"passed": 196, "failed": 0},
-      "note": "Same command and fixture as the local run; the PostgreSQL step is no longer excluded."
+      "note": "Same command and fixture as the local run; the PostgreSQL step is no longer excluded. This run predates the Codex 0.164.0 adapter fix, so it reports 633."
     }
   },
   "boundaries": {
     "actual_provider_calls": 0,
+    "actual_provider_evidence": "kept in a separate record: actual-trial-2026-10-25.json (5 Codex starts)",
     "new_actual_credentials": 0,
     "operating_database_access": false,
     "deployment": false,
@@ -72,15 +76,14 @@
     "real_browser_run": false
   },
   "not_claimed": [
-    "actual provider first response or reconnect",
     "two-real-runtime dialogue",
     "operating deployment, accounts, MFA or rate limits",
     "POSIX external runtime support",
     "binary or image uploads"
   ],
   "remaining_gates": [
-    "S1 actual provider response/reconnect (budget remaining: Codex 5, Claude 3)",
     "S2 two-runtime dialogue and pause/recovery",
+    "S1 for a second provider (Claude budget: 3, unspent)",
     "Operating deployment acceptance"
   ]
 }

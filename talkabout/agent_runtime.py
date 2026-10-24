@@ -757,9 +757,15 @@ class StructuredRuntime:
                     raise AdapterError('runtime_protocol_mismatch')
                 started = True
             elif kind in {'item.started', 'item.updated', 'item.completed'}:
+                item = _object(event.get('item'))
+                # Codex 0.164.0 emits an advisory item.completed/error before
+                # turn.started (for example the under-development feature
+                # warning). It is not model output and not a protocol failure;
+                # fatal failures still arrive as turn.failed or error events.
+                if item.get('type') == 'error':
+                    continue
                 if not started:
                     raise AdapterError('runtime_protocol_mismatch')
-                item = _object(event.get('item'))
                 if item.get('type') not in {'agent_message', 'reasoning', 'plan'}:
                     raise AdapterError('runtime_tool_policy_violation')
                 if kind == 'item.completed' and item.get('type') == 'agent_message':
