@@ -66,29 +66,90 @@ function shortAngle(from, to) {
   if (delta < -Math.PI) delta += Math.PI * 2;
   return delta;
 }
+const OUTFITS = [['#3a7568', '#2c5a50'], ['#6f4d7d', '#553b60'], ['#48608f', '#37496f'], ['#91584a', '#6f4338'], ['#77803f', '#5b6330'], ['#4d6270', '#3a4c58']];
+const PROFILES = [
+  { hair: 'short', accessory: 'glasses', skin: '#f0d2b6', hairColor: '#2b2724' },
+  { hair: 'bob', accessory: 'headset', skin: '#e7c1a1', hairColor: '#3a2a20' },
+  { hair: 'bun', accessory: 'scarf', skin: '#d8a878', hairColor: '#1e1a17' },
+  { hair: 'curly', accessory: 'round', skin: '#8e5b3c', hairColor: '#211913' },
+  { hair: 'long', accessory: 'hoodie', skin: '#f5ddc8', hairColor: '#4a382a' },
+  { hair: 'buzz', accessory: 'headphones', skin: '#c88d63', hairColor: '#241f1b' }
+];
+
+function hairFront(style, color) {
+  if (style === 'buzz') return `<path d="M-12.5,-31 q1,-13 12.5,-13 q11.5,0 12.5,13 q-5,-7 -12.5,-7 q-7.5,0 -12.5,7z" fill="${color}" opacity=".92"/>`;
+  if (style === 'bun') return `<path d="M-13,-30 q0,-15 13,-15 q13,0 13,15 q-7,-9 -13,-9 q-6,0 -13,9z" fill="${color}"/><circle cx="0" cy="-45" r="5.5" fill="${color}"/>`;
+  if (style === 'long') return `<path d="M-13.5,-31 q0,-15 13.5,-15 q13.5,0 13.5,15 q-4,-10 -13.5,-10 q-9.5,0 -13.5,10z" fill="${color}"/>`;
+  if (style === 'curly') return `<g fill="${color}"><circle cx="-9" cy="-38" r="5"/><circle cx="-2" cy="-42" r="5.5"/><circle cx="6" cy="-41" r="5"/><circle cx="12" cy="-36" r="4.6"/><circle cx="-13" cy="-33" r="4"/></g>`;
+  if (style === 'bob') return `<path d="M-13,-31 q0,-15 13,-15 q13,0 13,15 q-6,-9 -13,-9 q-7,0 -13,9z" fill="${color}"/>`;
+  return `<path d="M-13,-30 q1,-14 13,-14 q12,0 13,14 q-6,-8 -13,-8 q-7,0 -13,8z" fill="${color}"/>`;
+}
+
+function hairBack(style, color) {
+  if (style === 'bob') return `<path d="M-13.5,-28 q0,-19 13.5,-19 q13.5,0 13.5,19 l0,15 q-4,3 -7,0 l0,-13 q-6,4 -13,0 l0,13 q-3,3 -7,0z" fill="${color}"/>`;
+  if (style === 'long') return `<path d="M-14,-28 q0,-20 14,-20 q14,0 14,20 l0,26 q-5,5 -9,1 l0,-22 q-5,3 -10,0 l0,22 q-4,4 -9,-1z" fill="${color}"/>`;
+  if (style === 'bun') return `<path d="M-13,-28 q0,-18 13,-18 q13,0 13,18 l0,6 q-13,6 -26,0z" fill="${color}"/>`;
+  return '';
+}
+
+function accessoryMarkup(kind, accent, hood) {
+  if (kind === 'glasses') return `<g fill="none" stroke="#1f2b28" stroke-width="1.5" opacity=".9"><rect x="-9.5" y="-35.5" width="7.5" height="5.5" rx="2.4"/><rect x="2" y="-35.5" width="7.5" height="5.5" rx="2.4"/><path d="M-2,-33 h4"/><path d="M-9.5,-33.5 l-2.6,-1.2"/><path d="M9.5,-33.5 l2.6,-1.2"/></g>`;
+  if (kind === 'round') return `<g fill="none" stroke="#1f2b28" stroke-width="1.4" opacity=".9"><circle cx="-5.5" cy="-33" r="4.2"/><circle cx="5.5" cy="-33" r="4.2"/><path d="M-1.3,-33 h2.6"/></g>`;
+  if (kind === 'headset') return `<path d="M-13,-33 q0,-17 13,-17 q13,0 13,17" fill="none" stroke="#26332f" stroke-width="2.6"/><rect x="10.5" y="-34" width="6" height="9.5" rx="2.6" fill="#26332f"/><path d="M11.5,-24 q-6,6.5 -10.5,6" fill="none" stroke="#26332f" stroke-width="1.8"/><circle cx="1" cy="-18" r="1.5" fill="#26332f"/>`;
+  if (kind === 'headphones') return `<path d="M-13.5,-32 q0,-18 13.5,-18 q13.5,0 13.5,18" fill="none" stroke="#22302c" stroke-width="2.6"/><rect x="-16" y="-34" width="5.5" height="10" rx="2.6" fill="#22302c"/><rect x="10.5" y="-34" width="5.5" height="10" rx="2.6" fill="#22302c"/>`;
+  if (kind === 'scarf') return `<path d="M-10,-18 q10,6 20,0 l0,5 q-10,6 -20,0z" fill="${accent}"/><path d="M6,-14 l4,10 l-5,1 l-3,-9z" fill="${accent}" opacity=".85"/>`;
+  if (kind === 'hoodie') return `<path d="M-16,-24 q0,-20 16,-20 q16,0 16,20 q-16,9 -32,0z" fill="${hood}" opacity=".95"/><path d="M-4,-6 l-1,10 M4,-6 l1,10" stroke="#dfe9e4" stroke-width="1.4" opacity=".8"/>`;
+  return '';
+}
+
 function actorElement(member, tone) {
   const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
   g.setAttribute('class', 'ch');
   g.dataset.tone = String(tone);
   g.dataset.id = String(member.id || '');
-  const variant = Number.parseInt(tone, 10) % 3;
-  const hair = [
-    'M-13,-1 q12,-17 25,-1 q-5,-12 -13,-12 q-8,0 -12,13z',
-    'M-14,0 q2,-18 14,-18 q13,0 14,17 q-8,-9 -28,1z',
-    'M-13,2 q-2,-18 12,-18 q15,0 15,18 q-6,-12 -27,0z'
-  ][variant];
+  const index = (Number.parseInt(tone, 10) + String(member.id || '').length) % PROFILES.length;
+  const profile = PROFILES[index];
+  const hue = TONE_HUES[tone] ?? 168;
+  const [outfit, outfitDark] = OUTFITS[index];
+  const accent = `hsl(${hue} 58% 62%)`;
+  const shirt = '#e9e4d8';
+  const skinShade = 'rgba(0,0,0,.12)';
+
   g.innerHTML = `<g class="ch-flip">` +
-    `<path d="M-36,36 q0,-48 36,-48 q36,0 36,48 l-12,6 q-24,-14 -48,0 z" fill="#1f3431"/>` +
-    `<ellipse cx="0" cy="42" rx="30" ry="11" fill="#000" opacity=".3"/>` +
-    `<path class="ch-body" d="M-22,40 q0,-34 22,-34 q22,0 22,34 z"/>` +
-    `<path class="ch-collar" d="M-8,8 q8,7 8,14 q0,-7 8,-14 q-8,3 -16,0z"/>` +
-    `<circle class="ch-head" cx="0" cy="1" r="13"/>` +
-    `<path class="ch-hair" d="${hair}"/>` +
-    `<path class="ch-arm" d="M-22,15 q-9,7 -8,17"/><path class="ch-arm" d="M22,15 q9,7 8,17"/>` +
+    `<ellipse class="ch-shadow" cx="0" cy="47" rx="19" ry="6" fill="#000" opacity=".3"/>` +
+    `<g class="ch-legs">` +
+      `<g class="leg leg--l"><rect x="-9.5" y="18" width="7.5" height="26" rx="3.6" fill="${outfitDark}"/><ellipse cx="-6.5" cy="44.5" rx="6" ry="3.2" fill="#151d1d"/></g>` +
+      `<g class="leg leg--r"><rect x="2" y="18" width="7.5" height="26" rx="3.6" fill="${outfitDark}"/><ellipse cx="5.5" cy="44.5" rx="6" ry="3.2" fill="#151d1d"/></g>` +
     `</g>` +
-    `<g class="ch-bubble"><rect x="-17" y="-60" width="34" height="21" rx="10.5"/>` +
-    `<circle cx="-6" cy="-49.5" r="2.2"/><circle cx="0" cy="-49.5" r="2.2"/><circle cx="6" cy="-49.5" r="2.2"/></g>` +
-    `<text x="0" y="64" text-anchor="middle" class="plate">${String(member.display_name || member.id || '?').trim().slice(0, 12)}</text>`;
+    `<g class="ch-torso">` +
+      `<path d="M-15,-13 q15,-6 30,0 l2,28 q0,7 -7,7 h-20 q-7,0 -7,-7z" fill="${outfit}"/>` +
+      `<path d="M-15,-13 q15,-6 30,0 l0.4,6 q-15,-6 -30.4,0z" fill="${outfitDark}" opacity=".55"/><path d="M-14.6,-12.6 q14.6,-5.6 29.2,0" fill="none" stroke="#ffffff" stroke-opacity=".22" stroke-width="1.6" stroke-linecap="round"/>` +
+      `<path d="M-6.5,-13.5 l6.5,11 l6.5,-11 q-6.5,3 -13,0z" fill="${shirt}"/>` +
+      `<path d="M-7,-12.5 l7,12 l7,-12" fill="none" stroke="${outfitDark}" stroke-width="1.8"/>` +
+      `<circle cx="9.5" cy="3" r="3" fill="${accent}"/>` +
+      `<path d="M-9,20 h18" stroke="${outfitDark}" stroke-width="1.4" opacity=".7"/>` +
+    `</g>` +
+    `<g class="arm arm--l"><rect x="-21" y="-10" width="7" height="23" rx="3.5" fill="${outfitDark}"/>` +
+      `<circle cx="-17.5" cy="15.5" r="4.2" fill="${profile.skin}"/></g>` +
+    `<g class="arm arm--r"><rect x="14" y="-10" width="7" height="23" rx="3.5" fill="${outfitDark}"/>` +
+      `<circle cx="17.5" cy="15.5" r="4.2" fill="${profile.skin}"/></g>` +
+    `<g class="ch-head">` +
+      `${hairBack(profile.hair, profile.hairColor)}` +
+      `<rect x="-4.2" y="-21" width="8.4" height="9" rx="3.4" fill="${profile.skin}"/>` +
+      `<rect x="-4.2" y="-21" width="8.4" height="3.4" rx="1.7" fill="${skinShade}"/>` +
+      `<circle cx="0" cy="-30" r="11.8" fill="${profile.skin}"/>` +
+      `<circle cx="-12.2" cy="-29" r="2.6" fill="${profile.skin}"/><circle cx="12.2" cy="-29" r="2.6" fill="${profile.skin}"/>` +
+      `${hairFront(profile.hair, profile.hairColor)}` +
+      `<g class="ch-eyes"><rect x="-6.6" y="-33.5" width="3.2" height="4.2" rx="1.6" fill="#20302d"/>` +
+        `<rect x="3.4" y="-33.5" width="3.2" height="4.2" rx="1.6" fill="#20302d"/></g>` +
+      `<path d="M-7.5,-37.5 q2.4,-1.4 4.6,-.4 M3,-37.9 q2.2,-1 4.6,.4" fill="none" stroke="${profile.hairColor}" stroke-width="1.3" opacity=".75"/>` +
+      `<path d="M-2.8,-24.6 q2.8,2.4 5.6,0" fill="none" stroke="#9a5f4f" stroke-width="1.5" stroke-linecap="round"/>` +
+      `${accessoryMarkup(profile.accessory, accent, outfitDark)}` +
+    `</g>` +
+    `</g>` +
+    `<g class="ch-bubble"><rect x="-17" y="-88" width="34" height="21" rx="10.5"/>` +
+      `<circle cx="-6" cy="-77.5" r="2.2"/><circle cx="0" cy="-77.5" r="2.2"/><circle cx="6" cy="-77.5" r="2.2"/></g>` +
+    `<text x="0" y="-50" text-anchor="middle" class="plate">${String(member.display_name || member.id || '?').trim().slice(0, 12)}</text>`;
   return g;
 }
 function startStageAnimation(room) {
@@ -105,9 +166,13 @@ function startStageAnimation(room) {
   const activeSpeaker = lastAgent && lastAgent.created_at > speakCutoff ? lastAgent.actor_id : null;
   const spot = svg.querySelector('.spot');
 
+  const usedTones = new Set();
   const actors = members.map(([id, member], index) => {
     const angle = -Math.PI / 2 + (index * Math.PI * 2) / members.length;
-    const node = actorElement({ ...member, id }, toneOf(id));
+    let tone = toneOf(id);
+    while (usedTones.has(tone)) tone = (tone + 1) % 6;
+    usedTones.add(tone);
+    const node = actorElement({ ...member, id }, tone);
     group.append(node);
     const speaking = activeSpeaker === id;
     if (speaking) node.classList.add('speaking');
