@@ -1,3 +1,16 @@
+## 2026-10-26 (3차) — 서버 측 결함 수정 / synthetic-only
+
+**LOCAL PROTOTYPE / NOT DEPLOYED. 실제 공급자 시험 NOTRUN.** 분석에서 남겨둔 항목 중 실제 결함 3건만 반영했다. 근거·한계는 [SESSION_LOG](SESSION_LOG.md) 2026-10-26 항목.
+
+| 영역 | 변경 | 검증 |
+| --- | --- | --- |
+| task 만료 판정 | 모델 호출 예산을 `attempt`가 아니라 runtime 도달 시도(`_started_attempts`)로 계산, `attempt >= attempts×2` 상한 유지 | `tests/test_scheduler_bounds.py` 4건 |
+| 무음 정지 | 배정 가능 agent가 없으면 유한 대기 후 `room.stalled` → `room.closed`, agent 복귀 시 해제 | `tests/test_scheduler_bounds.py` 2건 |
+| ack 증거 | resync 커서에 `skipped_rooms` 표시, 해당 방 ack은 `delivery_unproven`(422) | `tests/test_scheduler_bounds.py` 2건 |
+| 내부 필드 노출 | `public_task`가 `_` 접두 키를 숨김 | 기존 task 응답 계약 테스트 |
+
+측정: Python 703 passed / 4 failed(`EXCLUDED` 브라우저 3 + 샌드박스 named-pipe 1) / 23 skipped — 표준 러너가 아닌 동등 명령([STATUS](STATUS.md) §2.1). PostgreSQL·실제 공급자·S2는 재실행하지 않았다.
+
 ## 2026-10-25 (2차) — 외부 3-저장소 분석 기반 개선 반영 / synthetic-only
 
 **LOCAL PROTOTYPE / NOT DEPLOYED. 실제 공급자 시험 NOTRUN.** Orca · opencodex · hermes-agent 분석에서 도출한 개선 중 합성 검증이 가능한 항목만 반영했다. 상세 변경·근거·한계는 [SESSION_LOG](SESSION_LOG.md) 2026-10-25 2차 항목, 현재 수치는 [STATUS](STATUS.md) §2.1.

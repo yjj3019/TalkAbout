@@ -47,9 +47,10 @@ pwsh tools/ci_postgres_fixture.ps1 -Action stop -BinDir <postgres>/bin -DataDir 
 
 | 항목 | 측정값 | 비고 |
 | --- | --- | --- |
-| Python | **692 passed / 7 failed / 23 skipped** | 실패 7건 중 6건은 `EXCLUDED` 목록의 브라우저·MCP 프로세스 항목(CI에서 제외되는 것과 동일), 1건은 샌드박스 named-pipe 제한(`multiprocessing/connection.py:614` WinError 5). 스킵 23건은 PostgreSQL 픽스처 미제공(22) + POSIX 전용 1 |
+| Python (2차) | **692 passed / 7 failed / 23 skipped** | 실패 7건 중 6건은 `EXCLUDED` 목록의 브라우저·MCP 프로세스 항목(CI에서 제외되는 것과 동일), 1건은 샌드박스 named-pipe 제한(`multiprocessing/connection.py:614` WinError 5). 스킵 23건은 PostgreSQL 픽스처 미제공(22) + POSIX 전용 1 |
+| Python (3차, 서버 측 결함 수정 후) | **703 passed / 4 failed / 23 skipped** | 실패 4건: `EXCLUDED` 브라우저 항목 3건 + 샌드박스 named-pipe 1건. 같은 환경에서 실행마다 브라우저·MCP 픽스처 항목의 성패가 달라지므로(2차 7건 → 3차 4건) **실패 수 자체를 회귀 지표로 쓰지 않는다** |
 | Node | 9개 파일 **206 passed** | 신규 `ui-reduced-motion.test.mjs` 9건 포함 |
-| 신규 테스트 | **63건** | escort 7 · storage_health 34 · 승인 8 · stop 플래그 8 · ACP 격리 3 · 첨부 저장소 3 |
+| 신규 테스트 | **71건** | escort 7 · storage_health 34 · 승인 8 · stop 플래그 8 · ACP 격리 3 · 첨부 저장소 3 · 스케줄러/ack 8 |
 
 - **PostgreSQL 통합은 재실행하지 않았다(NOTRUN).** §2의 19건 기록은 그대로 유효하며, 이번 측정에는 포함되지 않았다.
 - §2의 618/196 기록과 직접 비교하지 않는다. 그 사이 테스트가 추가되어 기준선 자체가 달라졌으므로, PostgreSQL 픽스처가 있는 환경에서 표준 러너로 다시 측정해야 한다.
@@ -79,6 +80,11 @@ pwsh tools/ci_postgres_fixture.ps1 -Action stop -BinDir <postgres>/bin -DataDir 
     - **첨부 저장소**: Windows에서 `mkdir(mode=0o700)`을 전달하지 않습니다(제한 토큰에서 쓸 수 없는 DACL이 만들어짐).
     - **journal SQLite 노출 보고**: 링크된 SQLite 3.50.4가 upstream WAL-reset 버그 영향 범위(3.7.0–3.51.2, 백포트 3.50.7/3.44.6)에 있음을 기동 시 1회 경고합니다(`talkabout/storage_health.py`). **PRAGMA·저장 방식은 바꾸지 않았고**, 해소는 런타임 SQLite를 3.51.3+로 올리는 것입니다.
     - **웹 접근성**: `prefers-reduced-motion` 블록에 잘못 들어가 있던 pill 규칙을 제거하고 aurora 등 애니메이션 정지를 실제 대상에 적용했습니다.
+
+12. **서버 측 결함 3건을 수정했습니다(2026-10-25 3차, 합성 검증만).** 마찬가지로 실제 공급자 재시험은 NOTRUN입니다.
+    - **모델 호출 예산과 시도(attempt) 예산 분리**: 이제 `attempt`는 claim마다 증가하지만, 만료 판정은 **runtime에 실제로 도달한 시도 수**(`_started_attempts`, heartbeat `runtime_started` 근거)로 합니다. runtime 이전에 실패한 claim(오래된 generation, lease 만료, worker 크래시)은 호출 예산을 쓰지 않습니다. 무한 루프 방지를 위해 `attempt >= attempts × 2` 상한은 유지합니다.
+    - **무음 정지 감지**: 배정 가능한 agent가 하나도 없는 active 방은 이제 **유한 대기 후** `room.stalled`(사유 `no_eligible_members`, `mode_status = stalled`)를 1회 기록하고, 그 뒤 닫힙니다(`room.closed`). 대기 시간은 `task_seconds × 2`, 종료는 그 2배입니다. agent가 다시 가능해지면 stall 표시는 해제됩니다. — 설계 문서의 "전원 unavailable이면 bounded 대기 후 close"가 실제로 구현된 것입니다.
+    - **재동기화 커서를 배달 증거로 인정하지 않음**: resync(snapshot/rebase) 커서는 응답이 싣지 않은 event를 건너뛰며 offset을 전진시킵니다. 이제 그런 커서에는 `skipped_rooms`가 표시되고, 해당 방의 ack은 `delivery_unproven`(422)으로 거부됩니다. 명시적 `join` 재동기화가 필요합니다. `public_task`는 `_` 접두 키를 일반적으로 숨기도록 정리했습니다(내부 필드 유출 방지).
 
 ## 4. 아직 남은 것 (완료로 표시하지 않음)
 

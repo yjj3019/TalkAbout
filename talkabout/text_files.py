@@ -98,7 +98,9 @@ def migrate_room(room):
 
 
 def public_task(task):
-    return {k:copy.deepcopy(v) for k,v in task.items() if not k.startswith('_file_')}
+    # Private task bookkeeping (lease hashes, started-attempt evidence) never leaves the
+    # server; the previous filter hid only the file-lease keys.
+    return {k:copy.deepcopy(v) for k,v in task.items() if not k.startswith('_')}
 
 
 def claim_proof(token,room_id,task,key):

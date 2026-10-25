@@ -560,6 +560,11 @@ class Core(Participation):
                 if events or time.monotonic() >= end or rebase:
                     payload = {"principal": actor["id"], "scope": revision, "view": target_room or "inbox", "offsets": offsets,
                                "epochs": {r: m["epoch"] for r, m in members.items()}, "rotation": rotation + 1}
+                    if gaps:
+                        # These offsets jumped over events this response never carried. An
+                        # acknowledgment of such a cursor would claim a delivery the server
+                        # did not produce, so the rooms where content was skipped are marked.
+                        payload["skipped_rooms"] = sorted(set(gaps))
                     if session_id is not None:
                         payload.update(participation_session=session_id, _credential_binding=token_hash(token))
                     next_cursor = ident()

@@ -71,6 +71,10 @@ class Participation:
                         and cursor.get('epochs', {}).get(room_id) == member['epoch'], 'invalid_cursor', 403)
                 seq = cursor['offsets'].get(room_id)
                 require(type(seq) is int and member['read_start_seq'] - 1 <= seq <= room['last_seq'], 'invalid_cursor', 422)
+                # A resync cursor advanced past events this session was never handed. It is
+                # still a valid cursor, but acknowledging it would turn "I skipped history"
+                # into "I received history". Rejoin for an explicit resync instead.
+                require(room_id not in (cursor.get('skipped_rooms') or ()), 'delivery_unproven', 422)
                 session['delivered_seq'] = max(session['delivered_seq'], seq)
                 if body['state'] == 'read':
                     session['read_seq'] = max(session['read_seq'], seq)
