@@ -118,6 +118,7 @@ pwsh tools/ci_postgres_fixture.ps1 -Action stop -BinDir <postgres>/bin -DataDir 
 | [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) | 날짜별 구현 스냅샷(이력) |
 | [SESSION_LOG.md](SESSION_LOG.md) | 날짜별 세션 이력 |
 | [RUNTIME_IMPLEMENTATION_VALIDATION.md](RUNTIME_IMPLEMENTATION_VALIDATION.md) | 실제 에이전트 연결 구현·검증 기록(2026-10-17 스냅샷) |
+| [POSIX_CONTAINMENT_PLAN.md](POSIX_CONTAINMENT_PLAN.md) | POSIX 실행 격리 계획(PROPOSED, 미착수) |
 | [validation/](validation/) | 실행별 증거 JSON |
 
 ## English
