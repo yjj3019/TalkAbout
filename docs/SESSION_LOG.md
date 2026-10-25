@@ -20,6 +20,7 @@
 
 - `tests/test_posix_containment.py` **9건** — **WSL Ubuntu / Python 3.12에서 3회 연속 9 passed**(flakes 없음).
   로컬 Windows에서는 `skipif`로 9건 skip.
+- **CI 결과**: PR #32 head `d2f8103` run `40235059346` — `posix-containment` **pass(20초, ubuntu-latest)**, `safe-regression` **pass(2분27초, windows-latest)**. merge `e719365` run `40235300612`도 두 잡 모두 pass.
 - **CI 사실 정정**: 이 저장소의 CI는 `windows-latest` 하나뿐이어서 POSIX 코드는 **어떤 CI에서도 실행되지 않았다**.
   `.github/workflows/safe-regression.yml`에 `posix-containment`(`ubuntu-latest`) 잡을 추가해 이 9건을 실행한다.
 - 계약 테스트 1건 갱신: `test_posix_detached_descendant_program_cannot_launch` → `test_posix_execution_path_fails_closed_before_launch`.
