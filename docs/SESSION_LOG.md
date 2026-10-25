@@ -20,6 +20,18 @@
 - 신규 테스트 **8건**(`tests/test_scheduler_bounds.py`): 예산 분리 4 · stall 2 · ack 증거 2.
 - 검증 하네스는 직전 커밋과 동일한 비표준 방식이다([STATUS](STATUS.md) §2.1).
 
+### CI 확인 — 표준 러너 통과
+
+로컬 샌드박스에서는 표준 러너가 완주하지 못했지만, **GitHub Actions에서는 표준 러너로 통과했다.** 이 실행이 이번 변경의 기준선이다.
+
+| 실행 | 대상 | 결과 |
+| --- | --- | --- |
+| [`40206446277`](https://github.com/yjj3019/TalkAbout/actions/runs/40206446277) | PR #30 head `d5a381b` | **success** — guarded Python + 실제 임시 PostgreSQL + synthetic UI 계약 |
+| [`40206504760`](https://github.com/yjj3019/TalkAbout/actions/runs/40206504760) | merge commit `7e7a0aa` (`main`) | **success** |
+
+로컬에서 보였던 4건의 실패(브라우저 픽스처 3 + named-pipe 1)는 CI에 나타나지 않았으므로 **이 환경의 제약**이었음이 확인된다. 다만 **CI 통과는 릴리스 관문 통과가 아니다**: 실제 공급자 재시험·S2·운영 배포는 여전히 NOTRUN이다.
+
+
 ### 하지 않은 것 (NOTRUN)
 
 실제 공급자 재시험, PostgreSQL 통합, S2 2-runtime 대화, POSIX 실행 격리, quota 4분류·인증 3값·구조적 로깅, 문서 SSOT gate.
