@@ -151,3 +151,22 @@ test('tabs have connected semantics and support arrow/Home/End focus',async()=>{
   assert.match(html,new RegExp(`role="tabpanel" aria-labelledby="tab-control-${name}" id="tab-${name}"`));}
  for(const name of ['onboarding','credential'])assert.match(html,new RegExp(`id="${name}-dialog" aria-labelledby="${name}-title" aria-describedby="${name}-help"`));
 });
+
+test('room stage renders a spatial scene and the room list renders a plan', async () => {
+  const h = await harness();
+  const spatial = {...room, mode: 'free_discussion', members: {
+    human: {kind: 'human', status: 'active', display_name: 'Owner', permissions: ['room:read']},
+    a: {kind: 'agent', status: 'active', display_name: 'Agent A', permissions: ['room:read']}
+  }};
+  h.run(`view.language='ko';view.select('room');view.room=${JSON.stringify(spatial)};renderRoom(view.room);`);
+  const stage = h.node('room-stage').innerHTML;
+  assert.match(stage, /<svg/);
+  assert.match(stage, /class="actors"/);
+  assert.match(stage, /data-set="free_discussion"/);
+  assert.ok(h.node('stage-status').textContent.includes(labels.ko.free_discussion));
+  h.run(`renderRooms([${JSON.stringify(spatial)}])`);
+  const card = h.node('rooms').children[0];
+  const plan = card.children[0].innerHTML;
+  assert.match(plan, /<svg/);
+  assert.equal((plan.match(/<circle/g) || []).length >= 2, true);
+});

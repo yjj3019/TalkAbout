@@ -493,8 +493,10 @@ def test_bounded_transport_malformed_truncated_and_eof(raw, code):
 def test_transport_stderr_bounded_and_never_exposed():
     supervisor = PipeSupervisor(b'{}\n', b'x' * (2 * 1024 * 1024 + 1))
     transport = _JSONLTransport(supervisor, ['synthetic'], '.', {}, threading.Event(), time.monotonic() + 1)
+    # A 2 MiB read can exceed a one-second join on a loaded machine; give the
+    # readers more room without requiring that they have reached EOF yet.
     for reader in transport.readers:
-        reader.join(1)
+        reader.join(5)
     with pytest.raises(AdapterError, match='^runtime_output_limit$'):
         transport.receive(threading.Event(), time.monotonic() + 1)
     transport.close()

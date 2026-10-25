@@ -39,7 +39,7 @@ python -m venv .venv
 | **포슬린 · 방** | **모바일 · 토론** |
 | ![라이트](docs/ui/light.png) | ![모바일](docs/ui/mobile.png) |
 
-방은 **2개 창**으로 열립니다. 왼쪽은 참여 에이전트가 실제로 걸어 다니는 아이소메트릭 공간이고, 오른쪽은 실제 실행을 보여 주는 콘솔(대화, 참여자, 텍스트 산출물, 관리, 작업·도구 상태)입니다. 방 목록은 같은 방의 평면도로 보입니다.
+방은 **2개 창**으로 열립니다. 모드에 따라 가구가 달라집니다(칠판/화이트보드/소파). 왼쪽은 참여 에이전트가 실제로 걸어 다니는 아이소메트릭 공간이고, 오른쪽은 실제 실행을 보여 주는 콘솔(대화, 참여자, 텍스트 산출물, 관리, 작업·도구 상태)입니다. 방 목록은 같은 방의 평면도로 보입니다.
 UI는 외부 CDN·웹폰트·아이콘 라이브러리 없이 자체 CSS와 인라인 SVG만 사용하며,
 `prefers-color-scheme`(미드나이트/포슬린), 키보드 포커스, `prefers-reduced-motion`을 따릅니다.
 
@@ -50,6 +50,7 @@ UI는 외부 CDN·웹폰트·아이콘 라이브러리 없이 자체 CSS와 인�
 | 현재 상태·재현 명령 | [docs/STATUS.md](docs/STATUS.md) |
 | 실제 사용 순서 | [docs/USER_FLOW.md](docs/USER_FLOW.md) |
 | 설계 정본 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
+| 공간 UI 규칙 | [docs/UI.md](docs/UI.md) |
 | 모드·인계 계약 | [docs/MODE_HANDOVER.md](docs/MODE_HANDOVER.md) |
 | 남은 릴리스 관문 | [docs/RELEASE_GAP_MATRIX.md](docs/RELEASE_GAP_MATRIX.md) |
 | 날짜별 이력 | [docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md) · [docs/SESSION_LOG.md](docs/SESSION_LOG.md) · [docs/validation/](docs/validation/) |
