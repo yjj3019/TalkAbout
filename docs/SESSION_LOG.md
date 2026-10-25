@@ -1,5 +1,38 @@
 # TalkAbout session log
 
+## 2026-10-26 06:30 UTC — POSIX 격리 계층(C1) + Linux CI 잡 / POSIX containment layer
+
+세 번째 트랙 후보. **POSIX 실행은 여전히 차단**이며, 이번 작업은 격리 계층만 구현하고 활성화는 보류했다.
+
+### 구현 (C1)
+
+`talkabout/processes.py`에 `stop_posix_group`과 POSIX 분기를 추가했다. Windows 경로는 그대로다.
+
+| 속성 | 구현 |
+| --- | --- |
+| P1 그룹 격리 | `start_new_session=True`로 자식을 새 세션·그룹 리더로 띄우고 pgid 소유를 확인 |
+| P2 부모 우선 종료 | 부모 SIGTERM → grace → 그룹 SIGTERM → 그룹 SIGKILL |
+| P3 회수 증명 | SIGKILL 후 **생존자 재확인이 비어야만** 성공. 읽을 수 없으면 `process_exit_unconfirmed` |
+| P5 PID 재사용 가드 | `/proc/<pid>/stat`의 start time을 launch 시 기록하고 신호 직전에 대조 |
+| P6 상한 | 사다리 전체가 유한(최대 ~6초), 자기 그룹 신호 금지, `shell`/`creationflags` 옵션 거부 |
+
+### 검증
+
+- `tests/test_posix_containment.py` **9건** — **WSL Ubuntu / Python 3.12에서 3회 연속 9 passed**(flakes 없음).
+  로컬 Windows에서는 `skipif`로 9건 skip.
+- **CI 사실 정정**: 이 저장소의 CI는 `windows-latest` 하나뿐이어서 POSIX 코드는 **어떤 CI에서도 실행되지 않았다**.
+  `.github/workflows/safe-regression.yml`에 `posix-containment`(`ubuntu-latest`) 잡을 추가해 이 9건을 실행한다.
+- 계약 테스트 1건 갱신: `test_posix_detached_descendant_program_cannot_launch` → `test_posix_execution_path_fails_closed_before_launch`.
+  격리 계층은 이제 POSIX를 지원하지만 **제품 경로는 여전히 fail-closed**라는 새 계약을 검사한다.
+- Windows 전체: **719 passed / 4 failed / 32 skipped** — 실패 4건은 `EXCLUDED` 브라우저 3 + 샌드박스 named-pipe 1.
+
+### 보류한 것 (P4 · C2)
+
+supervisor가 SIGKILL로 죽으면 POSIX에 Job Object 등가물이 없어 자식이 남는다. 이 구멍(P4)이 닫히기 전에는
+`cli.py`·`adapters.py`의 POSIX 거부를 해제하지 않았다. 후보 두 가지(`prctl(PR_SET_PDEATHSIG)`의 스레드 발화 위험,
+부모 감시 escort 프로세스)는 [POSIX_CONTAINMENT_PLAN.md](POSIX_CONTAINMENT_PLAN.md) §7에 정리했고 채택하지 않았다.
+따라서 **이 계층은 제품 경로에서 도달 불가능**하고, "POSIX 지원"이 아니다.
+
 ## 2026-10-26 00:50 UTC — 문서 SSOT gate + provider 한도 어휘 / docs gate and typed limits
 
 다음 트랙 후보 중 **문서 SSOT gate**와 **provider 실패 어휘 타입화**를 반영했다. 합성 검증만 했고 실제 공급자 재시험은 하지 않았다(NOTRUN).

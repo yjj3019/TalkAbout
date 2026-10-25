@@ -47,10 +47,10 @@ pwsh tools/ci_postgres_fixture.ps1 -Action stop -BinDir <postgres>/bin -DataDir 
 
 | 항목 | 측정값 | 비고 |
 | --- | --- | --- |
-| Python (2차) | **692 passed / 7 failed / 23 skipped** | 실패 7건 중 6건은 `EXCLUDED` 목록의 브라우저·MCP 프로세스 항목(CI에서 제외되는 것과 동일), 1건은 샌드박스 named-pipe 제한(`multiprocessing/connection.py:614` WinError 5). 스킵 23건은 PostgreSQL 픽스처 미제공(22) + POSIX 전용 1 |
-| Python (3차·4차, 서버 측 결함 및 문서/한도 어휘 반영 후) | **719 passed / 4 failed / 23 skipped** | 실패 4건: `EXCLUDED` 브라우저 항목 3건 + 샌드박스 named-pipe 1건. 같은 환경에서 실행마다 브라우저·MCP 픽스처 항목의 성패가 달라지므로(2차 7건 → 3차 4건) **실패 수 자체를 회귀 지표로 쓰지 않는다** |
+| Python (2차) | **692 passed / 7 failed / 23 skipped** | 실패 7건 중 6건은 `EXCLUDED` 목록의 브라우저·MCP 프로세스 항목(CI에서 제외되는 것과 동일), 1건은 샌드박스 named-pipe 제한(`multiprocessing/connection.py:614` WinError 5). 스킵 32건은 PostgreSQL 픽스처 미제공(22) + POSIX 전용 10(기존 1 + 신규 9) |
+| Python (3차·4차, 서버 측 결함 및 문서/한도 어휘 반영 후) | **719 passed / 4 failed / 32 skipped** | 실패 4건: `EXCLUDED` 브라우저 항목 3건 + 샌드박스 named-pipe 1건. 같은 환경에서 실행마다 브라우저·MCP 픽스처 항목의 성패가 달라지므로(2차 7건 → 3차 4건) **실패 수 자체를 회귀 지표로 쓰지 않는다** |
 | Node | 9개 파일 **206 passed** | 신규 `ui-reduced-motion.test.mjs` 9건 포함 |
-| 신규 테스트 | **87건** | escort 7 · storage_health 34 · 승인 8 · stop 플래그 8 · ACP 격리 3 · 첨부 저장소 3 · 스케줄러/ack 8 · 문서 계약 7 · 한도 어휘 9 |
+| 신규 테스트 | **96건** | escort 7 · storage_health 34 · 승인 8 · stop 플래그 8 · ACP 격리 3 · 첨부 저장소 3 · 스케줄러/ack 8 · 문서 계약 7 · 한도 어휘 9 · POSIX 격리 9 |
 | **CI (표준 러너)** | **통과** — PR #30 head `d5a381b` [`40206446277`](https://github.com/yjj3019/TalkAbout/actions/runs/40206446277) · merge `7e7a0aa` [`40206504760`](https://github.com/yjj3019/TalkAbout/actions/runs/40206504760) · PR #31 head `33bd91d` [`40208480239`](https://github.com/yjj3019/TalkAbout/actions/runs/40208480239) · merge `66075d1` [`40208764352`](https://github.com/yjj3019/TalkAbout/actions/runs/40208764352) | GitHub Actions가 **표준 러너**(`tools/run_safe_regression.py`)로 guarded Python + **실제 임시 PostgreSQL** + synthetic UI 계약을 실행. 위 로컬 측정은 이 실행을 대체하지 않으며, 이 브랜치들의 표준 검증은 CI 통과다 |
 
 - **PostgreSQL 통합은 로컬에서 재실행하지 않았다(NOTRUN).** 다만 위 CI 실행이 실제 임시 PostgreSQL 픽스처를 포함해 통과했으므로, 로컬 미실행은 검증 공백이 아니라 이 환경의 제약이다.
@@ -93,6 +93,12 @@ pwsh tools/ci_postgres_fixture.ps1 -Action stop -BinDir <postgres>/bin -DataDir 
     - **provider 한도 어휘**: `rate_limit_event`를 닫힌 집합(`rejected` / `allowed` / `unknown`)으로만 분류합니다. `rejected`일 때만 `runtime_usage_limit_reached`로 turn을 중단하고, `allowed`·`unknown`은 turn을 계속합니다. 근거는 `last_diagnostics.usage_limit_events`·`usage_limit_evidence`(상태 토큰·존재 키·`resets_at`만, 자유 텍스트 없음)에 남습니다. codex의 `error`/`turn.failed`도 닫힌 짧은 토큰(`usage_limit_exceeded` 등)만 타입화하고, provider의 자유 텍스트 메시지는 증거로 쓰지 않습니다.
     - **한계(중요)**: 이 status 어휘는 **실제 공급자 프레임에서 확인한 것이 아니라 닫힌 집합 가정**입니다. 다만 모르는 값은 전부 `unknown`으로 흘려 turn을 계속하므로, 어휘가 틀려도 **건강한 turn을 중단시키지 않습니다**. 실제 시험에서 `usage_limit_evidence`로 어휘를 확정해야 합니다(NOTRUN).
 
+14. **POSIX 격리 계층(C1)을 구현하고 Linux CI 잡을 추가했습니다(2026-10-26). POSIX 실행은 여전히 차단입니다.** 상세: [POSIX_CONTAINMENT_PLAN.md](POSIX_CONTAINMENT_PLAN.md).
+    - **구현**: `talkabout/processes.py`의 `stop_posix_group` — `start_new_session`으로 그룹 격리, 부모 우선 SIGTERM → 그룹 SIGTERM → SIGKILL 사다리, **생존자 재확인 후에만 성공**, PID 재사용(start time 대조) 거부, 자기 그룹 신호 금지, 프로세스 테이블을 읽을 수 없으면 `process_exit_unconfirmed`(fail-closed). 정지 경로 전체가 상한을 가집니다.
+    - **검증**: `tests/test_posix_containment.py` 9건을 **WSL Ubuntu / Python 3.12에서 3회 연속 통과**(flakes 없음). 로컬 Windows에서는 skip입니다.
+    - **CI**: 이 저장소의 CI는 `windows-latest`뿐이라 POSIX 코드가 **어떤 CI에서도 실행되지 않았습니다**. `safe-regression.yml`에 `posix-containment`(ubuntu-latest) 잡을 추가해 이 9건을 실행합니다.
+    - **보류(중요)**: supervisor가 SIGKILL로 죽으면 POSIX에는 Job Object 등가물이 없어 자식이 남습니다(P4). 이 구멍이 닫히기 전에는 `cli.py`·`adapters.py`의 POSIX 거부를 해제하지 않았습니다. 따라서 **제품 경로에서 이 계층은 도달 불가능**하며, "POSIX 지원"이 아닙니다.
+
 ## 4. 아직 남은 것 (완료로 표시하지 않음)
 
 | 남은 관문 | 왜 남았는가 | 다음 행동 |
@@ -103,7 +109,7 @@ pwsh tools/ci_postgres_fixture.ps1 -Action stop -BinDir <postgres>/bin -DataDir 
 | 운영 계정·MFA·분산 rate limit | private loopback 프로토타입 범위 | 정책 결정 후 |
 | paging/archival/disk quota | P0 상한(방 64, 이벤트 2048 등)만 존재 | 운영 정책 결정 |
 | binary/이미지 upload | 기본 비활성, `.txt/.md`만 opt-in | P2 격리·검사 |
-| POSIX 실행 | Windows Job containment 검증 전 차단 | 격리 검증 후 |
+| POSIX 실행 | 격리 계층(C1)과 Linux CI 잡은 있으나, supervisor가 SIGKILL로 죽으면 자식이 남는 P4 구멍이 미해결이라 **활성화 보류** | P4 구현([POSIX_CONTAINMENT_PLAN.md](POSIX_CONTAINMENT_PLAN.md) §7) → C2에서 `cli.py`·`adapters.py` 거부 해제 |
 
 ## 5. 문서 지도
 

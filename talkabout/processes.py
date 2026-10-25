@@ -1,5 +1,12 @@
-"""Windows kill-on-close containment; unsupported platforms fail before launch."""
+"""Process containment: a Windows kill-on-close job, and a POSIX lifetime ladder.
+
+Neither path is a sandbox. Windows confines a child to a job object that dies with the
+supervisor; POSIX proves the child's process group is gone before reporting success, and
+reports an unconfirmed stop instead of assuming one. POSIX containment currently covers
+lifetime only: killing the supervisor itself is not handled (see docs/POSIX_CONTAINMENT_PLAN.md).
+"""
 import os
+import signal
 import subprocess
 import threading
 import time
@@ -7,6 +14,13 @@ import time
 
 class ProcessCleanupError(Exception):
     pass
+
+
+# The POSIX ladder is bounded end to end: parent-first SIGTERM, then the group, then
+# SIGKILL, then a survivor re-check that must come back empty before "stopped" is true.
+POSIX_TERM_GRACE_SECONDS = 2.0
+POSIX_KILL_GRACE_SECONDS = 2.0
+POSIX_VERIFY_SECONDS = 1.0
 
 
 if os.name == 'nt':
@@ -102,14 +116,130 @@ def stop_windows_job(job, process):
         kernel.CloseHandle(job)
 
 
+def _proc_stat(pid):
+    """Return state/ppid/pgrp/start-time for a pid from Linux /proc, or None.
+
+    The start time is what makes a PID comparison meaningful: PID reuse between the
+    launch and the stop would otherwise let the ladder signal an unrelated process.
+    """
+    if not os.path.isdir('/proc'):
+        return None
+    try:
+        with open('/proc/%d/stat' % pid, 'rb') as handle:
+            raw = handle.read(8192)
+    except OSError:
+        return None
+    try:
+        text = raw.decode('utf-8', 'replace')
+        fields = text[text.rindex(')') + 2:].split()
+        return {'state': fields[0], 'ppid': int(fields[1]), 'pgrp': int(fields[2]), 'start': int(fields[19])}
+    except (ValueError, IndexError):
+        return None
+
+
+def _proc_group_members(pgid):
+    """Live (non-zombie) pids in *pgid*, excluding this supervisor.
+
+    Returns None when the process table cannot be enumerated. That difference matters:
+    an unreadable table cannot prove the group is gone, so the caller must fail closed
+    rather than report a clean stop.
+    """
+    if not os.path.isdir('/proc'):
+        return None
+    members = []
+    try:
+        names = os.listdir('/proc')
+    except OSError:
+        return None
+    for name in names:
+        if not name.isdigit():
+            continue
+        pid = int(name)
+        if pid in {os.getpid(), pgid}:
+            continue
+        stat = _proc_stat(pid)
+        if stat is None or stat['pgrp'] != pgid or stat['state'] == 'Z':
+            continue
+        members.append(pid)
+    return members
+
+
+def stop_posix_group(process, pgid, started):
+    """Terminate *pgid* and prove it empty. Raises when the proof fails.
+
+    The leader is signalled first so a cooperative process can shut down in order;
+    descendants that inherited the group are then escalated to SIGKILL. Every signal
+    target is re-read from the process table immediately before use, and nothing is
+    signalled for a group this process belongs to.
+    """
+    if not isinstance(pgid, int) or pgid <= 1:
+        raise ProcessCleanupError('posix_group_unverified')
+    if pgid == os.getpgrp() or pgid == os.getpid():
+        # A failed start_new_session must never turn the stop into a self-kill.
+        raise ProcessCleanupError('posix_group_unverified')
+    live = _proc_stat(process.pid)
+    if live is not None and started is not None and live['start'] != started:
+        raise ProcessCleanupError('process_stop_refused_pid_reuse')
+    if live is None and process.poll() is None:
+        raise ProcessCleanupError('process_stop_refused_unidentified')
+
+    def signal_one(pid, number):
+        stat = _proc_stat(pid)
+        if stat is None or stat['state'] == 'Z':
+            return
+        try:
+            os.kill(pid, number)
+        except ProcessLookupError:
+            return
+        except PermissionError:
+            raise ProcessCleanupError('process_stop_refused_permission') from None
+
+    signal_one(process.pid, signal.SIGTERM)
+    deadline = time.monotonic() + POSIX_TERM_GRACE_SECONDS
+    while time.monotonic() < deadline and process.poll() is None:
+        time.sleep(.02)
+
+    for number, grace in ((signal.SIGTERM, POSIX_TERM_GRACE_SECONDS),
+                          (signal.SIGKILL, POSIX_KILL_GRACE_SECONDS)):
+        members = _proc_group_members(pgid)
+        if members is None:
+            raise ProcessCleanupError('process_exit_unconfirmed')
+        if not members:
+            break
+        for pid in members:
+            signal_one(pid, number)
+        deadline = time.monotonic() + grace
+        while time.monotonic() < deadline:
+            remaining = _proc_group_members(pgid)
+            if remaining is None:
+                raise ProcessCleanupError('process_exit_unconfirmed')
+            if not remaining:
+                break
+            time.sleep(.02)
+
+    try:
+        process.wait(timeout=POSIX_VERIFY_SECONDS)
+    except subprocess.TimeoutExpired:
+        raise ProcessCleanupError('process_exit_unconfirmed') from None
+    deadline = time.monotonic() + POSIX_VERIFY_SECONDS
+    while True:
+        survivors = _proc_group_members(pgid)
+        if survivors is None:
+            raise ProcessCleanupError('process_exit_unconfirmed')
+        if not survivors:
+            return True
+        if time.monotonic() >= deadline:
+            raise ProcessCleanupError('process_exit_unconfirmed')
+        time.sleep(.02)
+
+
 class ManagedProcess:
     """A process must enter its containment before it can execute user/runtime code."""
     def __init__(self, command, cancel=None, deadline=None, **options):
         self.lock = threading.RLock(); self.job = None; self.closed = False
+        self.pgid = None; self.started = None
         if (cancel and cancel.is_set()) or (deadline is not None and time.monotonic() >= deadline):
             raise ProcessCleanupError('process_cancelled_before_launch')
-        if os.name != 'nt':
-            raise ProcessCleanupError('runtime_containment_unsupported')
         if os.name == 'nt':
             self.job = kernel.CreateJobObjectW(None, None)
             if not self.job: raise ProcessCleanupError('job_creation_failed')
@@ -118,6 +248,11 @@ class ManagedProcess:
                 kernel.CloseHandle(self.job); self.job = None
                 raise ProcessCleanupError('job_limits_failed')
             options['creationflags'] = subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP | 4  # CREATE_SUSPENDED
+        else:
+            if options.get('shell') or 'creationflags' in options:
+                # A shell would spawn outside the group we just created and own.
+                raise ProcessCleanupError('posix_containment_options_unsupported')
+            options['start_new_session'] = True
         try:
             self.process = subprocess.Popen(command, **options)
             if os.name == 'nt':
@@ -126,6 +261,18 @@ class ManagedProcess:
                 if (cancel and cancel.is_set()) or (deadline is not None and time.monotonic() >= deadline):
                     raise ProcessCleanupError('process_cancelled_before_resume')
                 resume_suspended(self.process)
+            else:
+                # start_new_session makes the child the leader of a new group and session.
+                self.pgid = self.process.pid
+                self.started = (_proc_stat(self.process.pid) or {}).get('start')
+                try:
+                    actual_group = os.getpgid(self.process.pid)
+                except ProcessLookupError:
+                    # Already exited between spawn and verification; the session guarantee
+                    # still holds for the group we recorded at launch.
+                    actual_group = self.pgid
+                if self.pgid == os.getpgrp() or actual_group != self.pgid:
+                    raise ProcessCleanupError('posix_group_unverified')
         except Exception:
             process = getattr(self, 'process', None)
             if process and process.poll() is None:
@@ -141,6 +288,8 @@ class ManagedProcess:
                 job, self.job = self.job, None
                 if job is None: raise ProcessCleanupError('previous_cleanup_unconfirmed')
                 stop_windows_job(job, process)
+            else:
+                stop_posix_group(process, self.pgid, self.started)
             self.closed = True
             return True
 
