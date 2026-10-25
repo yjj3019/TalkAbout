@@ -1,3 +1,19 @@
+## 2026-10-25 (2차) — 외부 3-저장소 분석 기반 개선 반영 / synthetic-only
+
+**LOCAL PROTOTYPE / NOT DEPLOYED. 실제 공급자 시험 NOTRUN.** Orca · opencodex · hermes-agent 분석에서 도출한 개선 중 합성 검증이 가능한 항목만 반영했다. 상세 변경·근거·한계는 [SESSION_LOG](SESSION_LOG.md) 2026-10-25 2차 항목, 현재 수치는 [STATUS](STATUS.md) §2.1.
+
+| 영역 | 변경 | 검증 |
+| --- | --- | --- |
+| ACP 클라이언트 | 비매칭 응답 프레임을 fatal이 아니라 격리(개수 + 구조만 진단 기록) | `test_agent_runtime.py` 3건 신규, 계약 테스트 1건 갱신 |
+| 유한 종료 | `runtime.shutdown()` 5초 escort, 미확인은 `runtime_stopped=False` | `test_runtime_escort.py` 7건 |
+| journal stop 플래그 | 판독 실패를 stop으로 승격하지 않음, BUSY/LOCKED만 유한 재시도, 20ms→200ms | `test_journal_stop_flag.py` 8건 |
+| 승인 종료 조건 | `responder_available=False` → 즉시 denied, `expire_pending()` | `test_tool_broker_approval.py` 8건 |
+| 첨부 저장소 | Windows에서 `mode=0o700` 미전달 | 기존 text file 계약 유지 |
+| journal SQLite | WAL-reset 취약 범위 자가검사·경고(PRAGMA 무변경) | `test_storage_health.py` 34건 |
+| 웹 접근성 | reduced-motion 블록 오염 수정 | `tests/ui-reduced-motion.test.mjs` 9건 |
+
+측정: Python 692 passed / 7 failed(6건은 러너 `EXCLUDED`, 1건은 샌드박스 named-pipe) / 23 skipped, Node 206 passed — 표준 러너가 아닌 동등 명령으로 측정했다([STATUS](STATUS.md) §2.1). PostgreSQL 통합·실제 공급자·S2는 재실행하지 않았다.
+
 ## Final feature checkpoint — 2026-10-13
 
 ### Git delivery and deployment preparation update

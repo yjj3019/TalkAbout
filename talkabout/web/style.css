@@ -1690,21 +1690,12 @@ body > footer {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  body::before, .stage-caption {
-  position: absolute;
-  right: 14px;
-  bottom: 12px;
-  z-index: 3;
-  padding: 4px 10px;
-  font-size: .7rem;
-  font-weight: 600;
-  color: var(--muted);
-  background: rgba(6, 12, 13, .6);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  backdrop-filter: blur(8px);
-}
-.room-stage .ch, .room-stage .ch * { animation: none !important; }
+  body::before,
+  .room-stage .motes circle,
+  .room-stage .prop-lights circle,
+  .live-dot,
+  .room-stage .ch,
+  .room-stage .ch * { animation: none !important; }
   *, *::before, *::after { transition: none !important; }
 }
 

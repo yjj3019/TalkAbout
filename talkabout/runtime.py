@@ -30,6 +30,35 @@ class RuntimeTimeout(Exception):
         super().__init__("runtime_wait_stopped")
 
 
+# The stop path runs after the turn budget is gone, so it cannot borrow that budget:
+# it needs its own bound. An unbounded runtime.shutdown() is the last way a bounded
+# call can hang forever, and a stop nobody can prove is reported as unconfirmed.
+SHUTDOWN_ESCORT_SECONDS = 5.0
+
+
+def bounded_shutdown(shutdown, bound=None):
+    """Run shutdown() out of band and never wait past the escort bound.
+
+    True only when shutdown() returned a truthy value within the bound. A timeout,
+    an exception or a falsey return is False, which callers must report as an
+    unconfirmed stop instead of claiming the runtime stopped.
+    """
+    limit = SHUTDOWN_ESCORT_SECONDS if bound is None else bound
+    done = queue.Queue(maxsize=1)
+
+    def invoke():
+        try:
+            done.put(bool(shutdown()))
+        except BaseException:
+            done.put(False)
+
+    threading.Thread(target=invoke, daemon=True).start()
+    try:
+        return done.get(timeout=max(0.0, limit))
+    except queue.Empty:
+        return False
+
+
 def bounded_call(runtime, context, cancel, timeout):
     """Bound waiting, never claim to forcibly stop remote side effects."""
     if timeout <= 0:
@@ -52,7 +81,7 @@ def bounded_call(runtime, context, cancel, timeout):
         cancel.set()
         shutdown = getattr(runtime, 'shutdown', None)
         if callable(shutdown):
-            stopped = bool(shutdown())
+            stopped = bounded_shutdown(shutdown)
         else:
             execution_done.wait(0.02)
             stopped = execution_done.is_set()

@@ -1,4 +1,9 @@
-"""Windows CI contracts only: no provider, real credential, install or deployment actions."""
+"""Windows CI contracts only: no provider, real credential, install or deployment actions.
+
+Each run requires a fresh evidence directory. `TALKABOUT_CI_RESULTS` points that
+directory elsewhere, so a stale or foreign-owned `.ci-results` cannot block a local
+run; CI keeps the default path.
+"""
 import collections
 import json
 import os
@@ -61,7 +66,7 @@ def main():
         return python_contracts(Path(arguments[1]), postgres_config)
     sys.path.insert(0,str(ROOT))
     from talkabout.processes import ManagedProcess
-    output=ROOT/'.ci-results'
+    output = Path(os.environ.get('TALKABOUT_CI_RESULTS') or ROOT/'.ci-results').resolve()
     output.mkdir(exist_ok=False)
     env=dict(os.environ,PYTHONDONTWRITEBYTECODE='1',PYTEST_DISABLE_PLUGIN_AUTOLOAD='1',PYTHONNOUSERSITE='1')
     for key in list(env):

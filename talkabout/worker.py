@@ -16,6 +16,26 @@ import httpx
 
 from .domain import digest
 from .runtime import BudgetedClient, RuntimeTimeout, bounded_call, check_deadline, validate_adapter_policy
+from .storage_health import warn_if_journal_is_exposed
+
+
+# Reading the stop flag must never become a control action. A transient lock means
+# "ask again", damage means "unknown", and neither is a human asking to stop: reporting
+# one as a stop cancelled a live turn and committed it as cancelled while the lease
+# fence is what actually reclaims work that never finishes.
+STOP_READ_PATIENCE_SECONDS = 1.0
+STOP_POLL_SECONDS = 0.2
+_TRANSIENT_SQLITE_CODES = tuple(code for code in (
+    getattr(sqlite3, 'SQLITE_BUSY', None), getattr(sqlite3, 'SQLITE_LOCKED', None)) if code is not None)
+
+
+def transient_sqlite_error(error):
+    """True only for BUSY/LOCKED. A known result code decides; text only when none exists."""
+    code = getattr(error, 'sqlite_errorcode', None)
+    if isinstance(code, int):
+        return (code & 0xFF) in _TRANSIENT_SQLITE_CODES
+    text = str(error).lower()
+    return 'locked' in text or 'busy' in text
 
 
 class StopRequested(Exception):
@@ -122,6 +142,7 @@ class Journal:
         self.db = sqlite3.connect(path)
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.execute("PRAGMA synchronous=FULL")
+        warn_if_journal_is_exposed()  # report-only: never changes the PRAGMAs above
         self.db.executescript("CREATE TABLE IF NOT EXISTS settings(k TEXT PRIMARY KEY,v TEXT);"
                              "CREATE TABLE IF NOT EXISTS inbox(id TEXT PRIMARY KEY,payload TEXT NOT NULL);"
                              "CREATE TABLE IF NOT EXISTS queue(id TEXT PRIMARY KEY,state TEXT NOT NULL,payload TEXT NOT NULL);")
@@ -169,10 +190,30 @@ class Journal:
     def close(self):
         self.db.close()
 
+    def _stop_flag(self):
+        """Read the stop flag with a bounded retry; None when it cannot be read.
+
+        An unreadable flag is not a stop request, and a stop is late-safe here: a turn
+        that is not stopped is still reclaimed by its lease and deadline. Waiting for a
+        definable answer is the fail-safe direction; writing state on a guess is not.
+        """
+        deadline = time.monotonic() + STOP_READ_PATIENCE_SECONDS
+        delay = 0.01
+        while True:
+            try:
+                with closing(sqlite3.connect(self.path, timeout=0.2)) as connection:
+                    row = connection.execute("SELECT v FROM settings WHERE k='stop'").fetchone()
+                return bool(row and json.loads(row[0]))
+            except ValueError:
+                return None  # A corrupt value is unknown, not a stop.
+            except sqlite3.Error as error:
+                if not transient_sqlite_error(error) or time.monotonic() >= deadline:
+                    return None
+            time.sleep(delay)
+            delay = min(delay * 2, 0.2)
+
     def stop_requested(self):
-        with closing(sqlite3.connect(self.path, timeout=1)) as connection, connection:
-            row = connection.execute("SELECT v FROM settings WHERE k='stop'").fetchone()
-            return bool(row and json.loads(row[0]))
+        return self._stop_flag() is True
 
     def stop_state(self, state):
         with closing(sqlite3.connect(self.path, timeout=1)) as connection, connection:
@@ -236,8 +277,13 @@ class Worker:
         self.last_step_started_runtime=False
         check_deadline(self.run_deadline)
         if self.journal.stop_requested():
-            status = self.journal.status()
-            unknown = status.get("uncertain", 0) or status.get("call_started", 0)
+            # The flag was readable and true. If the queue cannot be read, the stop is
+            # still unconfirmed: never claim 'stopped' on an unreadable journal.
+            try:
+                status = self.journal.status()
+            except sqlite3.Error:
+                status = None
+            unknown = True if status is None else bool(status.get("uncertain", 0) or status.get("call_started", 0))
             self.journal.stop_state("unreachable" if unknown else "stopped")
             return "stop_unconfirmed" if unknown else "stopped"
         if not saved_result_only:
@@ -389,12 +435,10 @@ class Worker:
                             return
 
                 def watch_stop():
-                    while not finished.wait(0.02):
-                        try:
-                            requested = self.journal.stop_requested()
-                        except sqlite3.Error:
-                            requested = True
-                        if requested:
+                    # 200ms, not 20ms: the previous rate opened a fresh connection fifty
+                    # times a second, which is what put the reader in the writer's way.
+                    while not finished.wait(STOP_POLL_SECONDS):
+                        if self.journal.stop_requested():
                             stop_seen.set()
                             cancel.set()
                             return

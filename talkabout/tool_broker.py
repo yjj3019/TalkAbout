@@ -135,7 +135,7 @@ class ToolBroker:
             return tuple(sorted((p for p in policy.permissions if self._authorize(fence, p)),
                                 key=lambda p: (p.tool, p.target, p.action)))
 
-    def request(self, fence, permission, arguments, key):
+    def request(self, fence, permission, arguments, key, responder_available=True):
         identifier(key)
         require(isinstance(fence, ExecutionFence) and isinstance(permission, ToolPermission) and isinstance(arguments, dict), 'invalid_request')
         arguments_json = canonical(arguments)
@@ -154,7 +154,13 @@ class ToolBroker:
             require(len(self._records) < self.capacity, 'invocation_capacity')
             request = ApprovalRequest(uuid.uuid4().hex, fence, permission, arguments_json, fingerprint, intent,
                                       min(policy.expires_at, fence.expires_at))
-            record = Invocation(request, 'awaiting_approval' if permission.action == 'write' else 'ready')
+            if permission.action == 'write' and responder_available is not True:
+                # No human can answer: hold nothing open. A write approval with no responder
+                # deadlocks until some unrelated deadline, so it fails closed at admission
+                # instead. Absence of a responder is never consent.
+                record = Invocation(request, 'denied', error_code='no_user_can_answer')
+            else:
+                record = Invocation(request, 'awaiting_approval' if permission.action == 'write' else 'ready')
             self._records[request.id], self._keys[lookup] = record, request.id
             self._events.append((request.id, record.state, fence.agent_id, self.clock(), request.request_digest))
             return record
@@ -169,6 +175,24 @@ class ToolBroker:
         self._records[record.request.id] = updated
         self._events.append((record.request.id, state, audit_actor, self.clock(), record.request.request_digest))
         return updated
+
+    def expire_pending(self, now=None):
+        """Terminal state for approvals nobody answered before the request expired.
+
+        An approval request carries min(policy, fence) expiry, but nothing observed it:
+        a write left in awaiting_approval stayed there for the life of the process. The
+        sweep is idempotent, never touches a record a human already settled, and returns
+        only the invocation ids it moved.
+        """
+        moment = self.clock() if now is None else now
+        expired = []
+        with self._lock:
+            for invocation_id, record in list(self._records.items()):
+                if record.state != 'awaiting_approval' or record.request.expires_at > moment:
+                    continue
+                self._transition(record, 'expired', error_code='approval_expired')
+                expired.append(invocation_id)
+        return tuple(expired)
 
     def inspect(self, invocation_id, fence):
         with self._lock:

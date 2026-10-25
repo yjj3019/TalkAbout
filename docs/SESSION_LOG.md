@@ -1,5 +1,37 @@
 # TalkAbout session log
 
+## 2026-10-25 23:40 UTC — 3-저장소 분석 기반 개선 반영 / improvements from external review
+
+외부 저장소 3개(Orca · opencodex · hermes-agent) 정밀 분석에서 도출한 개선안 중 **합성 검증이 가능한 항목만** 반영했다. 실제 공급자 시험은 하지 않았다(NOTRUN).
+
+### 반영한 것 (코드)
+
+| 영역 | 변경 | 근거 |
+| --- | --- | --- |
+| ACP 클라이언트 | 대기 중 요청에 속하지 않는 응답 프레임을 fatal(`runtime_protocol_mismatch`)이 아니라 **격리**로 처리. 개수와 **구조만**(id 타입·필드명·error/result 유무) 진단에 남기고 turn은 계속한다 | `talkabout/agent_runtime.py` `_quarantine_response` |
+| 유한 종료 | 타임아웃 탈출로가 `runtime.shutdown()`을 **무제한** 대기하던 것을 5초 escort로 제한. 확인 못 하면 `runtime_stopped=False`(=미확인) | `talkabout/runtime.py` `bounded_shutdown` |
+| journal stop 플래그 | 읽기 실패를 stop으로 승격하지 않는다: BUSY/LOCKED만 유한 재시도, 손상·기타 오류는 **unknown**(=정지 아님). 폴링 20ms→200ms. 큐를 못 읽으면 `stop_unconfirmed` | `talkabout/worker.py` `_stop_flag` |
+| 승인 종료 조건 | `responder_available=False`인 write는 `awaiting_approval`로 세우지 않고 **즉시 denied**(`no_user_can_answer`). `expire_pending()`으로 `awaiting_approval`이 요청 만료를 넘기지 못하게 한다 | `talkabout/tool_broker.py` |
+| 첨부 저장소 | Windows에서 `mode=0o700`을 전달하지 않는다. Windows는 mode를 무시하는데, 제한 토큰에서는 그 값이 **쓸 수 없는 디렉터리**를 만든다 | `talkabout/text_files.py:36-48` |
+| journal SQLite | `storage_health`로 링크된 SQLite의 WAL-reset 취약 범위를 판정하고 프로세스당 1회 경고. **PRAGMA는 바꾸지 않는다** | 신규 `talkabout/storage_health.py` |
+| 웹 접근성 | `prefers-reduced-motion` 블록 안에 잘못 들어가 있던 `.stage-caption` pill 규칙 제거, `body::before`·`.motes`·`.prop-lights`·`.live-dot` 애니메이션 정지 | `talkabout/web/style.css:1692-1700` |
+| 로컬 실행 | 증거 디렉터리를 `TALKABOUT_CI_RESULTS`로 바꿀 수 있게 함(기본값·동작 동일) | `tools/run_safe_regression.py` |
+
+### 검증 (합성만)
+
+- Python: **692 passed / 7 failed / 23 skipped**. 실패 7건 중 6건은 `tools/run_safe_regression.py`의 `EXCLUDED` 목록에 있는 브라우저·MCP 프로세스 항목, 1건은 이 세션 샌드박스의 named-pipe 제한(`multiprocessing/connection.py:614` WinError 5). 스킵 23건 = PostgreSQL 픽스처 미제공 22 + POSIX 전용 1.
+- Node: 9개 파일 **206 passed** (`node <file>` 인프로세스 실행).
+- 신규 테스트 **63건**: escort 7 · storage_health 34 · 승인 8 · stop 플래그 8 · ACP 격리 3 · 첨부 저장소 3.
+- 계약 테스트 2건 갱신: `test_grok_unexpected_prompt_response_id_is_quarantined_not_fatal`(구: `..._fails_closed`), `test_stop_read_closes_after_query_error_without_claiming_a_stop`.
+
+### 검증 환경의 한계 (제품 결함 아님)
+
+`.ci-results`가 이전 샌드박스 실행이 만든 0o700 DACL 때문에 읽히지 않고, 같은 이유로 `tempfile.mkdtemp`/`TemporaryDirectory`가 만든 디렉터리에 접근할 수 없다. `node --test`는 자식 프로세스 파이프가 막혀(`spawn EPERM`) 실행되지 않는다. 그래서 **`tools/run_safe_regression.py`를 그대로 돌리지 못했고**, 동일 pytest 플래그 + 로컬 전용 `sitecustomize`(Windows에서 무시되는 mode 인자 제거)로 우회했다. CI의 표준 명령은 변경되지 않았다.
+
+### 하지 않은 것 (NOTRUN)
+
+실제 Codex/Claude/Grok 재시험, Grok 기본 lease·반복 turn, PostgreSQL 통합 재실행, 2-runtime 대화(S2), POSIX 실행 격리, 문서 SSOT gate, quota 4분류·인증 3값·구조적 로깅 도입. 이 항목들은 [RELEASE_GAP_MATRIX.md](RELEASE_GAP_MATRIX.md)의 관문을 그대로 유지한다.
+
 ## 2026-10-18 22:14 UTC — WIP planning checkpoint / 구현 전 종료
 
 사용자가 오늘 작업을 종료하도록 요청하여 기능 구현과 추가 테스트를 시작하지 않고 이력만 보존했다. 아래 항목은 재개 계획이며 구현 완료를 뜻하지 않는다.
