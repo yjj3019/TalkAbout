@@ -112,6 +112,16 @@ Branch `chore/completion-verification` (merged into `main` by fast-forward push;
 - Cleanup: room closed, four credentials revoked, fixture server stopped.
 - Model starts this trial: **5**. Lifetime Codex starts: **6 of 6**, so further Codex starts require new approval. Claude budget remains 3.
 
+### Actual provider trial (S1, Claude only, 2026-10-25)
+
+- Same owned loopback fixture pattern (MemoryStore + real `create_app`), synthetic identities.
+- Claude Code 2.1.310, native auth. Connection test `passed`; one real contribution at seq 8 with `worker_reported_runtime` and runtime_check `3464a252`.
+- Task stages recorded by the new event stream: `claimed → preflight → runtime_started → runtime_completed → completed`.
+- The real cold start took 36.6s; the connection-check bound was 30s, so it was raised to 90s.
+- Claude model starts this trial: **3 of 3** (one diagnostic check, one check after a fixture restart, one contribution).
+- Grok: CLI native refused with `runtime_auth_mode_unsupported`; xAI API refused with `runtime_auth_required` (no `XAI_API_KEY`). Zero model starts.
+- Evidence: [validation/actual-trial-2026-10-25-claude.json](validation/actual-trial-2026-10-25-claude.json).
+
 ### Boundaries
 
 No operating deployment, operating database, account creation, MFA, paging/archival, binary upload or POSIX runtime support. Provider token usage and billing remain unknown. Worker-reported evidence is not vendor attestation.

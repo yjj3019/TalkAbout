@@ -54,12 +54,14 @@ pwsh tools/ci_postgres_fixture.ps1 -Action stop -BinDir <postgres>/bin -DataDir 
 
 8. **UI를 자체 디자인 시스템으로 다시 만들었습니다.** 콘텐츠·ID·계약은 그대로 두고 시각 계층만 교체했습니다: 방은 2개 창(왼쪽: 참여 에이전트가 걸어 다니는 아이소메트릭 공간, 오른쪽: 대화·참여자·산출물·관리·작업 상태 콘솔)으로 열립니다. 방 목록은 같은 방의 평면도입니다. 미드나이트(기본)와 포슬린(라이트) 두 테마, 구조화된 메시지(아바타·종류·시각·근거 칩), 버전별 산출물, 세그먼트 탭, 인라인 SVG 아이콘(외부 CDN·웹폰트 없음). 스크린샷은 [docs/ui/](ui/)에 있고 README에 연결했습니다.
 
+9. **Claude 실제 S1을 통과했습니다(2026-10-25).** 소유 루프백 픽스처에서 Claude Code 2.1.310 native 연결 시험 `passed`, 실제 발언 1건이 `worker_reported_runtime`(seq 8, runtime_check `3464a252…`)으로 기록되었고, task 실행 단계도 `claimed → preflight → runtime_started → runtime_completed → completed`로 남았습니다. 실제 콜드 스타트가 36.6초여서 연결 시험 상한을 30초→90초로 올렸습니다. Claude 모델 시작 3회를 모두 사용했습니다. **Grok은 두 경로 모두 차단**입니다: CLI native `runtime_auth_mode_unsupported`, xAI API `runtime_auth_required`(키 없음), 모델 호출 0회. 근거: [actual-trial-2026-10-25-claude.json](validation/actual-trial-2026-10-25-claude.json).
+
 ## 4. 아직 남은 것 (완료로 표시하지 않음)
 
 | 남은 관문 | 왜 남았는가 | 다음 행동 |
 | --- | --- | --- |
 | 실제 2-runtime 대화(S2) | Codex 단일 runtime에서만 S1을 통과. Claude·pause 복구는 미시험 | 새 예산 승인 후 S2 계획 |
-| 실제 2번째 공급자 S1 | Claude 시험 호출 3회 예산은 남아 있으나 미실행 | 별도 승인 |
+| 실제 2번째 공급자 S1 | Claude는 2026-10-25 통과(예산 3/3 소진). Grok은 게이트/키 부재로 차단 | Grok: XAI_API_KEY 제공 또는 CLI 격리 검증 |
 | 운영 배포 | 대상·TLS·백업·보존 정책 미결정 | [DEPLOYMENT_RUNBOOK.md](DEPLOYMENT_RUNBOOK.md) |
 | 운영 계정·MFA·분산 rate limit | private loopback 프로토타입 범위 | 정책 결정 후 |
 | paging/archival/disk quota | P0 상한(방 64, 이벤트 2048 등)만 존재 | 운영 정책 결정 |
