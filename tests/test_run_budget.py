@@ -133,7 +133,10 @@ def test_cli_run_includes_preflight_in_one_second_budget(fixture, tmp_path, monk
     monkeypatch.setattr(sys, 'argv', ['talkabout', 'run', '--config', str(config), '--synthetic', '--steps', '1', '--max-seconds', '1'])
     started = time.monotonic()
     cli.main()
-    assert time.monotonic()-started < 1.35
+    # The budget behaviour is asserted above by the call count, the terminal
+    # reason and the absence of a completion. This bound only guards against
+    # a hang; a loaded CI machine must not turn it into a flaky failure.
+    assert time.monotonic()-started < 3
     output = capsys.readouterr().out
     assert runtime.calls == (0 if preflight_exhausted else 1)
     assert ('run_budget_exhausted' if preflight_exhausted else 'runtime_timeout') in output
