@@ -56,6 +56,8 @@ pwsh tools/ci_postgres_fixture.ps1 -Action stop -BinDir <postgres>/bin -DataDir 
 
 9. **Claude 실제 S1을 통과했습니다(2026-10-25).** 소유 루프백 픽스처에서 Claude Code 2.1.310 native 연결 시험 `passed`, 실제 발언 1건이 `worker_reported_runtime`(seq 8, runtime_check `3464a252…`)으로 기록되었고, task 실행 단계도 `claimed → preflight → runtime_started → runtime_completed → completed`로 남았습니다. 실제 콜드 스타트가 36.6초여서 연결 시험 상한을 30초→90초로 올렸습니다. Claude 모델 시작 3회를 모두 사용했습니다. **Grok은 두 경로 모두 차단**입니다: CLI native `runtime_auth_mode_unsupported`, xAI API `runtime_auth_required`(키 없음), 모델 호출 0회. 근거: [actual-trial-2026-10-25-claude.json](validation/actual-trial-2026-10-25-claude.json).
 
+10. **Grok 네이티브 경로를 구현하고 연결 시험까지 통과했습니다.** 격리 프로필(`--grok-profile`)에서 `grok login` 후 `cached_token`으로 ACP 인증하고, `_x.ai/*` 메타데이터를 무시하며, 시작 cwd가 워크스페이스와 다르면 fail-closed합니다. 실제 연결 시험은 `passed`(receipt `d0e7606e…`)였지만, 기여 1건은 task 단계가 `failed`로 남아 아직 통과하지 못했습니다. [PROVIDERS.md](PROVIDERS.md)
+
 ## 4. 아직 남은 것 (완료로 표시하지 않음)
 
 | 남은 관문 | 왜 남았는가 | 다음 행동 |

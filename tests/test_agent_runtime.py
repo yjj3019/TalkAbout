@@ -63,9 +63,13 @@ class ProtocolPeer:
         if self.behavior == 'rpc_error' and method == 'initialize':
             transport.put({'id': request_id, 'error': {'code': -1, 'message': 'SYNTHETIC SECRET'}})
         elif method == 'initialize':
-            result({'protocolVersion': 1, 'agentInfo': {'version': '1.2.3'},
-                    'serverInfo': {'version': '1.2.3'}, 'agentCapabilities': {'loadSession': True},
-                    'authMethods': [{'id': 'xai.api_key'}]})
+            methods = [{'id': 'xai.api_key'}, {'id': 'cached_token'}] if self.kind == 'grok' else [{'id': 'xai.api_key'}]
+            payload = {'protocolVersion': 1, 'agentInfo': {'version': '1.2.3'},
+                       'serverInfo': {'version': '1.2.3'}, 'agentCapabilities': {'loadSession': True},
+                       'authMethods': methods}
+            if getattr(self, 'reported_cwd', None):
+                payload['_meta'] = {'currentWorkingDirectory': self.reported_cwd}
+            result(payload)
         elif method == 'account/read':
             result({'account': {'type': 'chatgpt'}})
         elif method == 'authenticate':
@@ -341,15 +345,48 @@ def test_native_auth_never_falls_back_to_inherited_api_key(monkeypatch):
     adapter.shutdown()
 
 
-def test_grok_native_auth_is_explicitly_unsupported_before_launch(monkeypatch):
+def test_grok_native_requires_a_signed_in_profile_before_launch(monkeypatch):
     monkeypatch.setenv('XAI_API_KEY', 'synthetic-billable-key')
     def forbidden(*args, **kwargs):
-        pytest.fail('No process should launch for unsupported native authentication')
+        pytest.fail('No process should launch without a signed-in profile')
     monkeypatch.setattr('talkabout.agent_runtime._JSONLTransport', forbidden)
     adapter = StructuredRuntime('grok', executable=sys.executable)
-    with pytest.raises(AdapterError, match='runtime_auth_mode_unsupported'):
+    assert adapter.probe()['reason'] == 'runtime_auth_required'
+    with pytest.raises(AdapterError, match='runtime_auth_required'):
         adapter.run({'room_id': 'room-one'}, threading.Event())
     assert adapter.calls == 0
+    adapter.shutdown()
+
+
+def test_grok_native_authenticates_with_cached_token(tmp_path, monkeypatch):
+    profile = tmp_path / 'grok-profile'
+    profile.mkdir()
+    (profile / 'auth.json').write_text('{"synthetic": true}')
+    peer = ProtocolPeer('grok', 'success')
+    monkeypatch.setattr(StructuredRuntime, '_ensure_preflight', lambda self, cancel: None)
+    monkeypatch.setattr('talkabout.agent_runtime._JSONLTransport', peer.factory)
+    adapter = StructuredRuntime('grok', executable=sys.executable, auth_mode='native', grok_profile=str(profile))
+    assert adapter.probe()['reason'] is None
+    assert adapter.probe()['grok_profile'] == str(profile)
+    text = adapter.run({'room_id': 'room-one', 'prompt': 'hello'}, threading.Event())
+    assert text.startswith('Answer 1')
+    auth = [event for event in peer.transports[0].sent if event.get('method') == 'authenticate']
+    assert auth and auth[0]['params']['methodId'] == 'cached_token'
+    assert peer.transports[0].env['GROK_HOME'] == str(profile.resolve())
+    adapter.shutdown()
+
+
+def test_grok_reports_a_workspace_discovery_mismatch(tmp_path, monkeypatch):
+    profile = tmp_path / 'grok-profile'
+    profile.mkdir()
+    (profile / 'auth.json').write_text('{"synthetic": true}')
+    peer = ProtocolPeer('grok', 'success')
+    peer.reported_cwd = str(tmp_path)
+    monkeypatch.setattr(StructuredRuntime, '_ensure_preflight', lambda self, cancel: None)
+    monkeypatch.setattr('talkabout.agent_runtime._JSONLTransport', peer.factory)
+    adapter = StructuredRuntime('grok', executable=sys.executable, auth_mode='native', grok_profile=str(profile))
+    with pytest.raises(AdapterError, match='runtime_workspace_isolation_unverified'):
+        adapter.run({'room_id': 'room-one', 'prompt': 'hello'}, threading.Event())
     adapter.shutdown()
 
 
@@ -1022,14 +1059,15 @@ def test_grok_owned_repo_boundary_is_a_valid_nonbare_git_workdir(monkeypatch, tm
     adapter.shutdown()
 
 
-def test_grok_api_launch_remains_blocked_until_exact_binary_isolation_verified(monkeypatch):
+def test_grok_api_key_uses_the_api_auth_method(monkeypatch):
     monkeypatch.setenv('XAI_API_KEY', 'synthetic-test-key')
-    monkeypatch.setattr('talkabout.agent_runtime._JSONLTransport', lambda *args: pytest.fail('Unverified binary must not start'))
+    peer = ProtocolPeer('grok', 'success')
+    monkeypatch.setattr(StructuredRuntime, '_ensure_preflight', lambda self, cancel: None)
+    monkeypatch.setattr('talkabout.agent_runtime._JSONLTransport', peer.factory)
     adapter = StructuredRuntime('grok', executable=sys.executable, auth_mode='api_key')
-    assert adapter.probe()['reason'] == 'runtime_workspace_isolation_unverified'
-    with pytest.raises(AdapterError, match='runtime_workspace_isolation_unverified'):
-        adapter.preflight()
-    with pytest.raises(AdapterError, match='runtime_workspace_isolation_unverified'):
-        adapter.run({'room_id': 'room-one'}, threading.Event())
-    assert adapter.calls == 0 and adapter._workspace is None
+    assert adapter.probe()['reason'] is None
+    text = adapter.run({'room_id': 'room-one', 'prompt': 'hello'}, threading.Event())
+    assert text.startswith('Answer 1')
+    auth = [event for event in peer.transports[0].sent if event.get('method') == 'authenticate']
+    assert auth and auth[0]['params']['methodId'] == 'xai.api_key'
     adapter.shutdown()

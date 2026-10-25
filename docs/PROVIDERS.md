@@ -34,6 +34,26 @@
 
 `gated`는 코드가 있으나 안전 게이트(격리·인증)가 확인되지 않아 실행 전에 차단된다는 뜻입니다.
 
+## Grok CLI (네이티브 OAuth, 격리 프로필)
+
+Grok CLI는 `xai.api_key`가 아니라 `cached_token`(로컬 캐시) 또는 `grok.com`(OAuth)을 광고합니다.
+그래서 API 키 없이도 **격리된 프로필에 한 번 로그인**하면 네이티브로 붙일 수 있습니다.
+
+```powershell
+# 1) 격리 프로필에서 한 번만 로그인 (브라우저 승인)
+$env:GROK_HOME = 'D:\TalkAbout\grok-profile'
+grok login
+
+# 2) 어댑터는 같은 프로필을 GROK_HOME으로 사용하고 HOME/USERPROFILE도 그 아래로 격리
+python -m talkabout.cli connect --config agent.local.json --runtime grok --auth-mode native `
+  --grok-profile 'D:\TalkAbout\grok-profile' --approve-external --max-model-calls 3 --steps 1 --max-seconds 300 --prompt-token
+```
+
+- `cached_token`만 수용하고 `grok.com`만 있으면 `runtime_auth_required`로 끝납니다(로그인 필요).
+- 시작 직후 ACP `initialize`의 `currentWorkingDirectory`가 워크스페이스와 다르면 `runtime_workspace_isolation_unverified`로 거부합니다.
+- `_x.ai/*` 메타데이터 알림(세션 설정·모델 목록·공지)은 출력이 아니므로 무시하고, 알 수 없는 메서드는 계속 fail-closed입니다.
+- 확인된 것: **연결 시험 통과**(receipt `d0e7606e…`, worker_reported_test). 아직 확인되지 않은 것: 기여 1건(프로토콜/로컬 프로브 타이밍 문제로 실패, `failed` 단계 기록).
+
 ## 사용법
 
 ```text

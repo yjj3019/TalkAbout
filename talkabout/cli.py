@@ -22,7 +22,7 @@ def emit_json(value):
         print(json.dumps(value, ensure_ascii=True))
 
 
-def provider_runtime(kind, runtime_options, model=None, base_url=None, key_env=None, config=None):
+def provider_runtime(kind, runtime_options, model=None, base_url=None, key_env=None, config=None, grok_profile=None):
     """Build the adapter for a provider id, CLI or HTTP."""
     provider = providers.get(kind)
     if provider is None:
@@ -39,7 +39,7 @@ def provider_runtime(kind, runtime_options, model=None, base_url=None, key_env=N
                                platform_credential=options.pop('platform_credential', None),
                                run_deadline=options.pop('run_deadline', None))
     from .agent_runtime import StructuredRuntime
-    return StructuredRuntime(provider.id, **{**runtime_options, 'auth_mode': runtime_options.get('auth_mode', 'native')})
+    return StructuredRuntime(provider.id, **{**runtime_options, 'auth_mode': runtime_options.get('auth_mode', 'native'), 'grok_profile': grok_profile})
 
 
 def main():
@@ -73,6 +73,7 @@ def main():
             command.add_argument("--provider-model", help="Model id for an HTTP provider; defaults to the provider preset")
             command.add_argument("--provider-url", help="Base URL for --runtime compatible or a self-hosted gateway")
             command.add_argument("--provider-key-env", help="Environment variable that holds the provider key")
+            command.add_argument("--grok-profile", help="Isolated directory holding the Grok login (GROK_HOME) for --runtime grok --auth-mode native")
             command.add_argument("--auth-mode", choices=["native", "api_key"], default="native", help="Native CLI login by default; explicit api_key may use separately billed provider quota, never automatic fallback")
             command.add_argument("--resume-worker", action="store_true", help="Explicitly clear a previous local stop request; uncertain tasks remain blocked")
             command.add_argument("--retry-check", action="store_true", help="Explicitly allow a new provider test after an uncertain prior test; it may consume usage again")
@@ -207,7 +208,7 @@ def main():
                     runtime_options={'credential_env':config.get('token_env','TALKABOUT_TOKEN'),'platform_credential':token,'run_deadline':deadline,'auth_mode':args.auth_mode}
                     if args.codex_transport!='exec-json':runtime_options['codex_transport']=args.codex_transport
                     def build_runtime():
-                        return provider_runtime(args.runtime, runtime_options, args.provider_model, args.provider_url, args.provider_key_env, config)
+                        return provider_runtime(args.runtime, runtime_options, args.provider_model, args.provider_url, args.provider_key_env, config, args.grok_profile)
                     test_runtime = build_runtime()
                     probe = test_runtime.probe()
                     if probe.get('reason') or not probe.get('available'):

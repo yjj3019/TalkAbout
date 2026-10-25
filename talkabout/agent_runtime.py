@@ -366,7 +366,8 @@ class StructuredRuntime:
     No adapter reads/copies OAuth tokens or falls back to API-key billing.
     """
     def __init__(self, kind, executable=None, platform_credential=None,
-                 credential_env='TALKABOUT_TOKEN', run_deadline=None, auth_mode='native', codex_transport='exec-json', observer=None):
+                 credential_env='TALKABOUT_TOKEN', run_deadline=None, auth_mode='native', codex_transport='exec-json', observer=None,
+             grok_profile=None):
         if observer is not None and not callable(observer):
             raise AdapterError('invalid_runtime_observer')
         self.observer = observer
@@ -381,6 +382,10 @@ class StructuredRuntime:
         if auth_mode not in {'native', 'api_key'}:
             raise AdapterError('runtime_auth_mode_unsupported')
         self.auth_mode = auth_mode
+        # Native Grok reads its cached OAuth token from GROK_HOME. An explicit
+        # profile directory keeps that token and every other config root out of
+        # the real user home; the user logs in once into this directory.
+        self.grok_profile = str(grok_profile) if grok_profile else None
         if codex_transport not in {'exec-json', 'app-server'}:
             raise AdapterError('unsupported_runtime_transport')
         self.codex_transport = codex_transport
@@ -424,17 +429,18 @@ class StructuredRuntime:
         key_name = {'codex': 'OPENAI_API_KEY', 'claude': 'ANTHROPIC_API_KEY', 'grok': 'XAI_API_KEY'}[self.kind]
         key_names = {key_name, 'CODEX_API_KEY'} if self.kind == 'codex' else {key_name}
         key_present = any(key.upper() in key_names and bool(value) for key, value in env.items())
+        grok_native_ready = bool(self.grok_profile) and (Path(self.grok_profile) / 'auth.json').is_file()
         reason = ('runtime_unavailable' if not available else
                   'runtime_shell_wrapper_unsupported' if script else
-                  'runtime_auth_mode_unsupported' if self.kind == 'grok' and self.auth_mode == 'native' else
+                  'runtime_auth_required' if self.kind == 'grok' and self.auth_mode == 'native' and not grok_native_ready else
                   'runtime_auth_required' if self.auth_mode == 'api_key' and not key_present else
-                  'runtime_workspace_isolation_unverified' if self.kind == 'grok' else
                   'runtime_containment_unsupported' if not _containment_supported() else None)
         return {'kind': self.kind, 'available': available and not script,
                 'containment_supported': _containment_supported(), 'runtime_version': self.runtime_version,
                 'transport': self.codex_transport if self.kind == 'codex' else 'stream-json' if self.kind == 'claude' else 'acp',
-                'auth_mode': self.auth_mode, 'auth_mode_supported': not (self.kind == 'grok' and self.auth_mode == 'native'),
-                'credential_present': key_present if self.auth_mode == 'api_key' else None,
+                'auth_mode': self.auth_mode, 'auth_mode_supported': True,
+                'credential_present': key_present if self.auth_mode == 'api_key' else (grok_native_ready if self.kind == 'grok' else None),
+                'grok_profile': self.grok_profile,
                 'provider_verified': False, 'safety_flags_verified': self._verified_executable is not None,
                 'reason': reason}
 
@@ -481,9 +487,11 @@ class StructuredRuntime:
                     raise AdapterError('runtime_cancelled')
                 self._supervisor = supervisor
             try:
-                return execute_bounded([self.executable] + args, '', cancel, timeout=10,
-                    blocked_names=blocked, blocked_values=self.blocked_values,
-                    supervisor=supervisor, run_deadline=deadline)
+                # Version/help probes are local, but a cold CLI start can exceed 10s
+                # on a loaded machine (measured: Grok 1.0.70 help took >10s).
+                return execute_bounded([self.executable] + args, '', cancel, timeout=30,
+                                       blocked_names=blocked, blocked_values=self.blocked_values,
+                                       supervisor=supervisor, run_deadline=deadline)
             except AdapterError as error:
                 if error.code in {'runtime_failed', 'runtime_invalid_output'}:
                     raise AdapterError('runtime_version_unsupported') from None
@@ -508,7 +516,7 @@ class StructuredRuntime:
             'claude': ('--restricted', '--safe-mode', '--strict-mcp-config', '--mcp-config',
                        '--setting-sources', '--settings', '--permission-mode', '--tools',
                        '--input-format', '--output-format', '--session-id', '--resume'),
-            'grok': ('--no-auto-update', '--tools', '--deny', '--sandbox', '--no-plan',
+            'grok': ('--tools', '--deny', '--sandbox', '--no-plan',
                      '--no-subagents', '--disable-web-search'),
         }[self.kind]
         if self.kind == 'codex' and self.codex_transport == 'exec-json':
@@ -562,7 +570,7 @@ class StructuredRuntime:
                        '--mcp-config', '{"mcpServers":{}}', '--setting-sources', '',
                        '--settings', '{"disableAllHooks":true}', '--permission-mode', 'dontAsk']
             return command + (['--resume', self.session_id] if self.session_id else ['--session-id', self._claude_new_id])
-        return [self.executable, '--no-auto-update', '--tools', '', '--deny', '*', '--sandbox', 'read-only',
+        return [self.executable, '--tools', '', '--deny', '*', '--sandbox', 'read-only',
                 '--no-plan', '--no-subagents', '--disable-web-search', 'agent', 'stdio']
 
     def _ensure_grok_repo_boundary(self):
@@ -597,15 +605,14 @@ class StructuredRuntime:
                 env['CODEX_API_KEY'] = env.get('CODEX_API_KEY') or env['OPENAI_API_KEY']
                 env.pop('OPENAI_API_KEY', None)
         if self.kind == 'grok':
-            if self.auth_mode != 'api_key':
-                raise AdapterError('runtime_auth_mode_unsupported')
-            if not env.get('XAI_API_KEY'):
+            if self.auth_mode == 'api_key' and not env.get('XAI_API_KEY'):
                 raise AdapterError('runtime_auth_required')
             self._ensure_grok_repo_boundary()
             # Grok's Windows home discovery uses USERPROFILE, not just GROK_HOME.
             # Isolate all profile/config/cache roots; otherwise global hooks, plugins,
             # .agents, or compatibility files could still load from the real user.
-            profile = Path(self._workspace.name) / 'profile'
+            # Native login keeps one directory that the user signed into once.
+            profile = Path(self.grok_profile).resolve() if self.grok_profile else Path(self._workspace.name) / 'profile'
             roots = {
                 'HOME': profile, 'USERPROFILE': profile,
                 'APPDATA': profile / 'AppData' / 'Roaming',
@@ -614,7 +621,7 @@ class StructuredRuntime:
                 'XDG_DATA_HOME': profile / '.local' / 'share',
                 'XDG_CACHE_HOME': profile / '.cache',
                 'XDG_STATE_HOME': profile / '.local' / 'state',
-                'GROK_HOME': profile / '.grok',
+                'GROK_HOME': profile if self.auth_mode == 'native' else profile / '.grok',
                 'TEMP': profile / 'tmp', 'TMP': profile / 'tmp',
                 'TMPDIR': profile / 'tmp',
             }
@@ -689,6 +696,10 @@ class StructuredRuntime:
                 update = _object(_object(event.get('params')).get('update'))
                 if update.get('sessionUpdate') in {'tool_call', 'tool_call_update'}:
                     raise AdapterError('runtime_tool_policy_violation')
+            elif self.kind == 'grok' and isinstance(event.get('method'), str) and event['method'].startswith('_x.ai/'):
+                # Vendor metadata (session setup, model list, MCP, announcements).
+                # It is not model output; unknown namespaces still fail closed.
+                continue
             self._pending.append(event)
             if len(self._pending) > 512:
                 raise AdapterError('runtime_output_limit')
@@ -872,7 +883,7 @@ class StructuredRuntime:
         blocked = self.blocked_names | {'OPENAI_API_KEY', 'XAI_API_KEY'}
         if self.auth_mode == 'native':
             blocked = blocked | {'ANTHROPIC_API_KEY'}
-        raw = execute_bounded(command, '', cancel, timeout=min(self.timeout, 10),
+        raw = execute_bounded(command, '', cancel, timeout=min(self.timeout, 30),
                               blocked_names=blocked, blocked_values=self.blocked_values,
                               supervisor=supervisor, run_deadline=self._deadline)
         try:
@@ -949,9 +960,19 @@ class StructuredRuntime:
         if isinstance(version, str) and len(version) < 100:
             self.runtime_version = version
         methods = info.get('authMethods', [])
-        if not isinstance(methods, list) or not any(isinstance(m, dict) and m.get('id') == 'xai.api_key' for m in methods):
-            raise AdapterError('runtime_auth_mode_unsupported')
-        self._rpc('authenticate', {'methodId': 'xai.api_key', '_meta': {'headless': True}})
+        ids = {m.get('id') for m in methods if isinstance(m, dict)} if isinstance(methods, list) else set()
+        if self.auth_mode == 'native':
+            if 'cached_token' not in ids:
+                raise AdapterError('runtime_auth_required')
+            method_id = 'cached_token'
+        else:
+            if 'xai.api_key' not in ids:
+                raise AdapterError('runtime_auth_mode_unsupported')
+            method_id = 'xai.api_key'
+        self._rpc('authenticate', {'methodId': method_id, '_meta': {'headless': True}})
+        reported = _object(info.get('_meta', {})).get('currentWorkingDirectory')
+        if isinstance(reported, str) and Path(reported).resolve() != Path(self._workspace.name).resolve():
+            raise AdapterError('runtime_workspace_isolation_unverified')
         params = {'cwd': self._workspace.name, 'mcpServers': []}
         if self.session_id:
             if not _object(info.get('agentCapabilities', {})).get('loadSession'):
@@ -984,7 +1005,12 @@ class StructuredRuntime:
             text = _text(text + self._grok_update(event))
 
     def _grok_update(self, event, historical=False):
-        if event.get('method') != 'session/update':
+        method = event.get('method')
+        if method != 'session/update':
+            # Vendor metadata notifications (session setup, model/settings
+            # updates) arrive during a prompt too. They are not model output.
+            if isinstance(method, str) and method.startswith('_x.ai/'):
+                return ''
             raise AdapterError('runtime_protocol_mismatch')
         params = _object(event.get('params'))
         if params.get('sessionId') != self.session_id:
