@@ -84,6 +84,8 @@ def main():
             command.add_argument('--persist-provider-sessions',action='store_true',help='Opt-in local Codex checkpoints; automatic resume requires verified stable account identity')
             command.add_argument('--codex-transport',choices=['exec-json','app-server'],default='exec-json')
             command.add_argument('--experimental-app-server',action='store_true',help='Explicit gate for the existing experimental Codex app-server transport')
+            command.add_argument('--work-profile',action='store_true',help='Owner opt-in: let the agent use its own tools inside --work-workspace (Codex exec only). The platform still applies nothing')
+            command.add_argument('--work-workspace',type=Path,help='Existing directory the work profile may read and edit; refused if it overlaps the platform or is the home directory')
     args = parser.parse_args()
     if args.command == "providers":
         import json as _json
@@ -201,12 +203,21 @@ def main():
                     parser.error('app-server requires Codex and explicit --experimental-app-server')
                 if args.runtime and providers.get(args.runtime) and providers.get(args.runtime).transport == 'cli' and os.name != 'nt':
                     parser.error('External CLI execution requires verified Windows Job containment; POSIX execution is disabled. HTTP providers are not affected')
+                if bool(args.work_profile) != bool(args.work_workspace):
+                    parser.error('--work-profile and --work-workspace must be given together')
+                if args.work_profile and (args.runtime != 'codex' or args.codex_transport != 'exec-json'):
+                    parser.error('--work-profile currently requires --runtime codex with --codex-transport exec-json')
+                if args.work_profile and (args.synthetic or os.name != 'nt'):
+                    parser.error('--work-profile requires a real runtime under verified containment')
                 deadline = time.monotonic() + args.max_seconds
                 client.deadline = deadline
                 if args.runtime:
                     from .connector import verify_runtime, ConnectionCheckError, RoomRuntimePool
                     runtime_options={'credential_env':config.get('token_env','TALKABOUT_TOKEN'),'platform_credential':token,'run_deadline':deadline,'auth_mode':args.auth_mode}
                     if args.codex_transport!='exec-json':runtime_options['codex_transport']=args.codex_transport
+                    if args.work_profile:
+                        runtime_options['work_profile']=True
+                        runtime_options['work_workspace']=str(args.work_workspace)
                     def build_runtime():
                         return provider_runtime(args.runtime, runtime_options, args.provider_model, args.provider_url, args.provider_key_env, config, args.grok_profile)
                     test_runtime = build_runtime()
