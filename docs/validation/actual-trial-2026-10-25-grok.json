@@ -1,0 +1,47 @@
+{
+  "recorded_at": "2026-10-25",
+  "scope": "actual provider trial, Grok CLI native OAuth, S1 (one connection check and one contribution)",
+  "server": {
+    "kind": "owned loopback fixture (MemoryStore + real create_app)",
+    "room_id": "35e59a0f6b91253625016ee8ef545cdc",
+    "identities": "synthetic trial owner + trial-claude (fixture handle is inherited, runtime is grok)",
+    "lease_seconds": 120,
+    "task_seconds": 180,
+    "provider_attestation": false
+  },
+  "runtime": {
+    "kind": "grok",
+    "cli_version": "1.0.70",
+    "auth_mode": "native cached_token",
+    "profile": "persistent isolated Grok profile; credential not copied, read, or recorded",
+    "model": "CLI selected; not independently attested",
+    "connection_test": {
+      "status": "passed",
+      "receipt_id": "fffa7808-8e54-4774-8e52-6c6369c8f76c",
+      "verification": "worker_reported_test",
+      "calls": 1
+    },
+    "contribution": {
+      "task_id": "3717e7ef-3146-4532-bae7-d74ffa532d42",
+      "attempt": 1,
+      "state": "completed",
+      "message_id": "a14ac520-76e6-4cd8-9b73-0a2f6590aabe",
+      "message_seq": 7,
+      "text_chars": 265,
+      "execution_evidence": "worker_reported_runtime",
+      "task_events": ["claimed", "preflight", "runtime_started", "runtime_completed", "completed"],
+      "calls": 1
+    },
+    "journal_task_state": "done"
+  },
+  "diagnosis_before_success": {
+    "direct_short_prompt_calls": 3,
+    "results": ["runtime_protocol_mismatch at the prompt response ID check", "completed", "completed"],
+    "note": "First result had an unmatched response ID; offending frame was not captured. The adapter still rejects unknown IDs. Local version/help probes also timed out intermittently under load; direct calls used the previously verified exact binary but did not constitute an S1 trial."
+  },
+  "safety_and_limitations": [
+    "No protocol response-ID bypass or automatic replay was added; an uncertain turn remains uncertain.",
+    "S1 passed in a 120-second-lease fixture, not the default 20-second lease.",
+    "No two-provider conversation, repeated Grok turn, vendor attestation, or billing reconciliation was verified."
+  ]
+}
