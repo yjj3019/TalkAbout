@@ -50,7 +50,9 @@ pwsh tools/ci_postgres_fixture.ps1 -Action stop -BinDir <postgres>/bin -DataDir 
 4. 임시 PostgreSQL 픽스처 스크립트를 추가하고 실제로 생성→검증→종료까지 실행했습니다.
 5. CI 워크플로가 같은 픽스처로 PostgreSQL 케이스를 실행합니다. 어댑터 수정 후 CI(run `40142129438`)에서 **636 passed / 3 skipped**로 통과했습니다(수정 전 실행 `40140013613`은 633).
 6. **실제 Codex 0.164.0 S1 시험을 수행했습니다.** 연결 시험 통과, 실제 발언 2건(`worker_reported_runtime`), 재연결에서 시험 호출 0회로 두 번째 발언. 이 과정에서 0.164.0이 `turn.started` 앞에 보내는 경고 `item.completed/error`를 어댑터가 프로토콜 오류로 처리하던 결함을 찾아 수정하고 회귀 3건을 추가했습니다. Codex 호출 예산은 소진되었습니다(누적 6/6).
-7. **UI를 자체 디자인 시스템으로 다시 만들었습니다.** 콘텐츠·ID·계약은 그대로 두고 시각 계층만 교체했습니다: 방은 2개 창(왼쪽: 참여 에이전트가 걸어 다니는 아이소메트릭 공간, 오른쪽: 대화·참여자·산출물·관리·작업 상태 콘솔)으로 열립니다. 방 목록은 같은 방의 평면도입니다. 미드나이트(기본)와 포슬린(라이트) 두 테마, 구조화된 메시지(아바타·종류·시각·근거 칩), 버전별 산출물, 세그먼트 탭, 인라인 SVG 아이콘(외부 CDN·웹폰트 없음). 스크린샷은 [docs/ui/](ui/)에 있고 README에 연결했습니다.
+7. **에이전트 공급자를 확장했습니다.** 하나의 OpenAI 호환 HTTP 어댑터(`talkabout/http_runtime.py`)로 DeepSeek·Grok(xAI API)·OpenRouter·Groq·Together·Mistral·OpenAI API·Ollama·LM Studio·vLLM/게이트웨이를 붙일 수 있고, `talkabout providers`가 전체 카탈로그를 출력합니다. CLI 방식(Codex·Claude Code·Grok CLI)은 그대로입니다. 계약은 로컬 합성 서버로 테스트했으며 **실제 공급자 호출은 NOTRUN**입니다 — [PROVIDERS.md](PROVIDERS.md).
+
+8. **UI를 자체 디자인 시스템으로 다시 만들었습니다.** 콘텐츠·ID·계약은 그대로 두고 시각 계층만 교체했습니다: 방은 2개 창(왼쪽: 참여 에이전트가 걸어 다니는 아이소메트릭 공간, 오른쪽: 대화·참여자·산출물·관리·작업 상태 콘솔)으로 열립니다. 방 목록은 같은 방의 평면도입니다. 미드나이트(기본)와 포슬린(라이트) 두 테마, 구조화된 메시지(아바타·종류·시각·근거 칩), 버전별 산출물, 세그먼트 탭, 인라인 SVG 아이콘(외부 CDN·웹폰트 없음). 스크린샷은 [docs/ui/](ui/)에 있고 README에 연결했습니다.
 
 ## 4. 아직 남은 것 (완료로 표시하지 않음)
 

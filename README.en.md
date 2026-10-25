@@ -54,6 +54,7 @@ The UI uses no CDN, web font or icon library: only its own CSS and inline SVG, w
 | Actual usage order | [docs/USER_FLOW.md](docs/USER_FLOW.md) |
 | Design baseline | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
 | Spatial UI rules | [docs/UI.md](docs/UI.md) |
+| Agent providers | [docs/PROVIDERS.md](docs/PROVIDERS.md) |
 | Mode and handover contract | [docs/MODE_HANDOVER.md](docs/MODE_HANDOVER.md) |
 | Remaining release gates | [docs/RELEASE_GAP_MATRIX.md](docs/RELEASE_GAP_MATRIX.md) |
 | Dated history | [docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md) · [docs/SESSION_LOG.md](docs/SESSION_LOG.md) · [docs/validation/](docs/validation/) |

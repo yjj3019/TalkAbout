@@ -11,6 +11,7 @@ from .config import database_config
 from .store import PostgresStore
 from .worker import APIClient, Journal, SyntheticRuntime, Worker
 from .runtime import RunBudgetExceeded, check_deadline
+from . import providers
 
 
 def emit_json(value):
@@ -21,10 +22,31 @@ def emit_json(value):
         print(json.dumps(value, ensure_ascii=True))
 
 
+def provider_runtime(kind, runtime_options, model=None, base_url=None, key_env=None, config=None):
+    """Build the adapter for a provider id, CLI or HTTP."""
+    provider = providers.get(kind)
+    if provider is None:
+        from .adapters import AdapterError
+        raise AdapterError('unsupported_runtime')
+    if provider.transport == 'http':
+        from .http_runtime import HttpChatRuntime
+        options = dict(runtime_options)
+        options.pop('auth_mode', None)
+        options.pop('codex_transport', None)
+        config = config or {}
+        return HttpChatRuntime(provider.id, base_url=base_url, model=model, api_key_env=key_env,
+                               credential_env=options.pop('credential_env', 'TALKABOUT_TOKEN'),
+                               platform_credential=options.pop('platform_credential', None),
+                               run_deadline=options.pop('run_deadline', None))
+    from .agent_runtime import StructuredRuntime
+    return StructuredRuntime(provider.id, **{**runtime_options, 'auth_mode': runtime_options.get('auth_mode', 'native')})
+
+
 def main():
     parser = argparse.ArgumentParser(description="TalkAbout private text-only prototype; no external model calls by default")
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("init-db")
+    sub.add_parser("providers", help="List every supported agent provider (CLI and OpenAI-compatible HTTP)")
     serve=sub.add_parser("serve")
     serve.add_argument('--text-attachment-root',type=Path,help='Opt in to inert UTF-8 attachments using an existing private server directory; no directory or database migration is created at startup')
     sub.add_parser("preflight", help="Validate loopback configuration and existing schema; never initialize accounts or data")
@@ -38,6 +60,8 @@ def main():
         command.add_argument("--config", type=Path, required=True)
         if name in {"check", "join", "run", "connect"}:
             command.add_argument("--prompt-token", action="store_true", help="Read bearer credential privately from your TTY; never pass it as an argument")
+        if name == "providers":
+            command.add_argument("--json", action="store_true", help="Print the machine-readable catalogue")
         if name == "join":
             command.add_argument("--room", required=True)
             command.add_argument("--acknowledge-private", action="store_true")
@@ -45,7 +69,10 @@ def main():
             command.add_argument("--steps", type=int, default=1)
             command.add_argument("--synthetic", action="store_true")
             command.add_argument("--max-seconds", type=int, default=60)
-            command.add_argument("--runtime", choices=['codex', 'claude', 'grok'])
+            command.add_argument("--runtime", choices=providers.cli_ids() + providers.http_ids())
+            command.add_argument("--provider-model", help="Model id for an HTTP provider; defaults to the provider preset")
+            command.add_argument("--provider-url", help="Base URL for --runtime compatible or a self-hosted gateway")
+            command.add_argument("--provider-key-env", help="Environment variable that holds the provider key")
             command.add_argument("--auth-mode", choices=["native", "api_key"], default="native", help="Native CLI login by default; explicit api_key may use separately billed provider quota, never automatic fallback")
             command.add_argument("--resume-worker", action="store_true", help="Explicitly clear a previous local stop request; uncertain tasks remain blocked")
             command.add_argument("--retry-check", action="store_true", help="Explicitly allow a new provider test after an uncertain prior test; it may consume usage again")
@@ -57,6 +84,17 @@ def main():
             command.add_argument('--codex-transport',choices=['exec-json','app-server'],default='exec-json')
             command.add_argument('--experimental-app-server',action='store_true',help='Explicit gate for the existing experimental Codex app-server transport')
     args = parser.parse_args()
+    if args.command == "providers":
+        import json as _json
+        if getattr(args, "json", False):
+            print(_json.dumps({"providers": providers.catalog()}, ensure_ascii=False, indent=2))
+        else:
+            for item in providers.catalog():
+                print(f"{item['id']:<12} {item['label']:<34} {item['transport']:<5} {item['status']:<7} "
+                      f"{(item['key_env'] or '-'):<20} {item['default_model'] or '-'}")
+                if item["note"]:
+                    print(f"{'':<12} {item['note']}")
+        return
     if args.command in {"init-db", "serve", "bootstrap-human", "preflight", "setup-code"}:
         dsn = os.environ.get("TALKABOUT_DATABASE_URL")
         if not dsn:
@@ -160,15 +198,17 @@ def main():
                 if args.persist_provider_sessions and args.runtime!='codex':parser.error('Provider session checkpoints currently require Codex')
                 if args.codex_transport=='app-server' and (args.runtime!='codex' or not args.experimental_app_server):
                     parser.error('app-server requires Codex and explicit --experimental-app-server')
-                if args.runtime and os.name != 'nt': parser.error('External CLI execution requires verified Windows Job containment; POSIX execution is disabled')
+                if args.runtime and providers.get(args.runtime) and providers.get(args.runtime).transport == 'cli' and os.name != 'nt':
+                    parser.error('External CLI execution requires verified Windows Job containment; POSIX execution is disabled. HTTP providers are not affected')
                 deadline = time.monotonic() + args.max_seconds
                 client.deadline = deadline
                 if args.runtime:
-                    from .agent_runtime import StructuredRuntime
                     from .connector import verify_runtime, ConnectionCheckError, RoomRuntimePool
                     runtime_options={'credential_env':config.get('token_env','TALKABOUT_TOKEN'),'platform_credential':token,'run_deadline':deadline,'auth_mode':args.auth_mode}
                     if args.codex_transport!='exec-json':runtime_options['codex_transport']=args.codex_transport
-                    test_runtime = StructuredRuntime(args.runtime, **runtime_options)
+                    def build_runtime():
+                        return provider_runtime(args.runtime, runtime_options, args.provider_model, args.provider_url, args.provider_key_env, config)
+                    test_runtime = build_runtime()
                     probe = test_runtime.probe()
                     if probe.get('reason') or not probe.get('available'):
                         test_runtime.shutdown()
@@ -187,7 +227,7 @@ def main():
                     if args.persist_provider_sessions:
                         from .codex_sessions import CodexSessionJournal
                         session_journal=CodexSessionJournal(journal,connector_lease,test_runtime._connection_binding)
-                    runtime = RoomRuntimePool(lambda: StructuredRuntime(args.runtime, **runtime_options),session_journal=session_journal)
+                    runtime = RoomRuntimePool(build_runtime,session_journal=session_journal)
                     total_remaining=max(0,args.max_model_calls-check_calls)
                     room_remaining=min(total_remaining,args.max_room_calls if args.max_room_calls is not None else total_remaining)
                     pending=journal.next() if room_remaining==0 else None

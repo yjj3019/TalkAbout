@@ -208,3 +208,6 @@ labels.ko.stage_runtime_completed='응답 수신'; labels.en.stage_runtime_compl
 labels.ko.stage_tool_blocked='도구 차단'; labels.en.stage_tool_blocked='tool blocked';
 labels.ko.stage_completed='완료'; labels.en.stage_completed='completed';
 labels.ko.stage_failed='실패'; labels.en.stage_failed='failed';
+
+labels.ko.httpProviderHelp='DeepSeek·Grok(xAI)·OpenRouter·Groq·Together·Mistral·OpenAI API·Ollama·LM Studio처럼 OpenAI 호환 /chat/completions를 제공하는 공급자는 API 키 환경변수만 있으면 됩니다. 로컬 서버는 키가 필요 없습니다.';
+labels.en.httpProviderHelp='Providers that speak OpenAI-compatible /chat/completions — DeepSeek, Grok (xAI), OpenRouter, Groq, Together, Mistral, OpenAI API, Ollama, LM Studio — need only the API key environment variable. Local servers need no key.';
