@@ -1033,6 +1033,34 @@ progress::-moz-progress-bar { background: var(--accent); border-radius: 999px; }
 .room-stage-panel .room-stage { position: absolute; inset: 0; }
 .room-stage-panel .room-stage svg { width: 100%; height: 100%; }
 
+.stage-camera {
+  position: absolute;
+  right: 12px;
+  top: 12px;
+  z-index: 4;
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  background: rgba(6, 12, 13, .6);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  backdrop-filter: blur(10px);
+}
+.stage-camera button {
+  padding: 4px 10px;
+  font-size: .68rem;
+  font-weight: 600;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  box-shadow: none;
+}
+.stage-camera button[aria-pressed="true"] {
+  color: var(--ink);
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 22%, transparent);
+}
 .stage-hud {
   position: absolute;
   left: 14px;
@@ -1114,7 +1142,7 @@ progress::-moz-progress-bar { background: var(--accent); border-radius: 999px; }
 
 .room-console #tab-discussion {
   display: grid;
-  grid-template-rows: auto minmax(220px, 1fr) auto auto auto minmax(0, auto);
+  grid-template-rows: auto minmax(160px, 1fr) auto auto auto 140px;
   gap: 10px;
   overflow: hidden;
 }
@@ -1123,7 +1151,7 @@ progress::-moz-progress-bar { background: var(--accent); border-radius: 999px; }
 .room-console #tab-discussion > #message { grid-row: 3; }
 .room-console #tab-discussion > #text-files-panel { grid-row: 4; margin-top: 0; }
 .room-console #tab-discussion > h3 { grid-row: 5; margin: 6px 0 0; }
-.room-console #tab-discussion > #tasks { grid-row: 6; max-height: 132px; overflow-y: auto; }
+.room-console #tab-discussion > #tasks { grid-row: 6; min-height: 0; overflow-y: auto; }
 .room-console .task-list { margin-top: 4px; }
 
 @media (max-width: 1080px) {
@@ -1304,6 +1332,7 @@ progress::-moz-progress-bar { background: var(--accent); border-radius: 999px; }
 .task-list { display: flex; flex-direction: column; gap: 6px; }
 .task-list > li:not(.card) {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
   padding: 10px 13px;
@@ -1314,6 +1343,17 @@ progress::-moz-progress-bar { background: var(--accent); border-radius: 999px; }
   border-radius: var(--radius-sm);
 }
 .task-list .task-name { font-weight: 600; }
+.task-events { flex: 1 1 100%; display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
+.task-event {
+  padding: 1px 7px;
+  font-size: .65rem;
+  color: var(--faint);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+.task-event.stage-completed { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 22%, transparent); }
+.task-event.stage-tool_blocked { color: var(--gold); border-color: color-mix(in srgb, var(--gold) 26%, transparent); }
+.task-event.stage-failed { color: var(--red); border-color: color-mix(in srgb, var(--red) 26%, transparent); }
 .task-list .task-meta {
   margin-left: auto;
   font-family: var(--font-mono);

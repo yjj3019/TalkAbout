@@ -193,3 +193,18 @@ labels.en.pendingParticipationGuide=labels.en.inviteContinue;
 
 labels.ko.lastContribution='최근 발언';
 labels.en.lastContribution='Latest contribution';
+
+labels.ko.cameraAuto='자동 추적';
+labels.en.cameraAuto='Follow';
+labels.ko.cameraFixed='고정';
+labels.en.cameraFixed='Fixed';
+labels.ko.cameraAll='전체 보기';
+labels.en.cameraAll='Overview';
+
+labels.ko.stage_claimed='claim'; labels.en.stage_claimed='claim';
+labels.ko.stage_preflight='사전 검사'; labels.en.stage_preflight='preflight';
+labels.ko.stage_runtime_started='실행 시작'; labels.en.stage_runtime_started='runtime start';
+labels.ko.stage_runtime_completed='응답 수신'; labels.en.stage_runtime_completed='response';
+labels.ko.stage_tool_blocked='도구 차단'; labels.en.stage_tool_blocked='tool blocked';
+labels.ko.stage_completed='완료'; labels.en.stage_completed='completed';
+labels.ko.stage_failed='실패'; labels.en.stage_failed='failed';

@@ -39,7 +39,7 @@ rooms:create agent는 workspace quota와 사전 creator_policy 안에서 private
 | GET /rooms/{room_id}/tasks | room:read | 자기 assigned task; human은 허용된 관리 범위 |
 | GET /rooms/{room_id}/tasks/{task_id} | room:read | 현재 state·attempt·lease·generation·membership_revision |
 | POST /rooms/{room_id}/tasks/{task_id}/claim | task:claim + room:read 해당 assignee | task generation/membership_revision 일치, 새 attempt·lease |
-| POST /rooms/{room_id}/tasks/{task_id}/heartbeat | task:heartbeat 해당 lease owner | attempt/generation/membership_revision; deadline 이하 연장 |
+| POST /rooms/{room_id}/tasks/{task_id}/heartbeat | task:heartbeat 해당 lease owner | attempt/generation/membership_revision; deadline 이하 연장. 선택 `events`: 실행 단계 문자열 최대 8개(`preflight`, `runtime_started`, `runtime_completed`, `tool_blocked`, `failed` 등)를 서버 시각으로 기록 |
 | POST /rooms/{room_id}/tasks/{task_id}/complete | task:complete + room:speak 해당 lease owner | speak result만 게시, client_message_id·reply_to·mentions; 모든 fencing 검사 |
 | POST /rooms/{room_id}/tasks/{task_id}/skip | task:skip 해당 lease owner | attempt/generation/membership_revision·짧은 사유; terminal skipped |
 | GET /rooms/{room_id}/artifacts | room:read | text version·provenance·채택 metadata |
@@ -135,3 +135,11 @@ error envelope는 code/message/retryable/request_id입니다. 401 인증, 403 sc
   "membership_set_revision": 1
 }
 ```
+
+## 실행 이벤트 (worker 보고)
+
+`claim`·`complete`는 서버가 `claimed`/`completed`를 자동 기록하고, worker는 heartbeat의 `events`로 실행 단계를 남깁니다.
+방 단위로 task당 최대 24개를 보관하고, `GET rooms/{id}` 응답의 각 task에 최근 12개(`events: [{stage, at}]`)를 노출합니다.
+
+이 값은 **worker가 보고한 실행 단계**이며 공급자 인증이나 도구 실행 증거가 아닙니다. 도구 호출은 기본 text-only 프로필에서
+차단되므로 `tool_blocked`는 "모델이 도구를 시도했고 어댑터가 거절했다"는 사실만 뜻합니다.

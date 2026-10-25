@@ -43,7 +43,7 @@ function clockTime(at) {
 }
 function artifactNode(room,a,effective){const node=make('article',undefined,'artifact'),head=make('header',undefined,'artifact-head');head.append(make('h3',t('version')+' '+a.revision));node.append(head);const list=make('ol',undefined,'version-list');a.versions.forEach((v,index)=>{const li=make('li',undefined,'version'),vh=make('header',undefined,'version-head');vh.append(make('span','v'+(index+1),'version-tag'),make('span',t('contributor')+': '+(room.members[v.actor_id]?.display_name||v.actor_id),'version-owner'));if(a.adopted===v.id)vh.append(make('span',t('adopted'),'chip chip--ok'));const text=make('pre',v.text,'version-text'),actions=make('div',undefined,'version-actions'),button=document.createElement('button');button.textContent=t('download');button.onclick=async()=>{try{const data=await api(`rooms/${room.id}/artifacts/${a.id}/versions/${v.id}/download`);if(view.selected!==room.id)return;const url=URL.createObjectURL(new Blob([data.text],{type:'text/plain;charset=utf-8'}));const link=document.createElement('a');link.href=url;link.download='TalkAbout-text.txt';link.click();URL.revokeObjectURL(url);}catch{notice('rejected');}};actions.append(button);if(effective.includes('room:adopt')&&room.state==='active'){const adopt=document.createElement('button');adopt.textContent=t('adopt');adopt.onclick=()=>{if(view.selected!==room.id||!confirm(t('confirmAdopt')))return;const body={generation:room.generation,membership_revision:room.members[user.id].revision,expected_revision:a.revision,version_id:v.id};mutate('adopt',body,key=>api(`rooms/${room.id}/artifacts/${a.id}/adoptions`,{method:'POST',body,key}));};actions.append(adopt);}li.append(vh,text,actions);list.append(li);});node.append(list);return node;}
 function messageNode(room,m){const agent=m.actor_kind==='agent',node=make('article',undefined,'message '+(agent?'message--agent':'message--human'));node.append(make('span',(m.display_name||'?').trim().slice(0,1),'avatar'));const body=make('div',undefined,'message-body'),head=make('header',undefined,'message-head');head.append(make('strong',m.display_name||m.actor_id),make('span',t(agent?'agentBadge':'humanBadge'),'badge'+(agent?' badge--agent':'')),make('span',t(m.kind)||m.kind,'message-kind'));const time=clockTime(m.created_at);if(time)head.append(make('time',time));body.append(head,make('p',m.text,'message-text'));const meta=make('footer',undefined,'message-meta');meta.append(make('span',t('storedMessage'),'chip chip--quiet'));if(agent){const evidence=m.execution_evidence==='synthetic_test_only'?['journeySynthetic','chip--warn']:m.execution_evidence==='worker_reported_runtime'?['journeyWorkerEvidence','chip--ok']:['journeyUnverified',''];meta.append(make('span',t(evidence[0]),('chip '+evidence[1]).trim()));}for(const ref of m.attachment_refs||[])meta.append(action(t('viewTextAttachment'),()=>viewTextFile(room.id,ref.file_id)));body.append(meta);node.append(body);return node;}
-function taskNode(room,task){const li=document.createElement('li'),who=room.members[task.assignee]?.display_name||task.assignee;li.append(make('span',t(task.state)||task.state,'status-pill status-'+task.state),make('span',who+' · '+(t(task.purpose)||task.purpose),'task-name'));li.append(make('span',t('attemptLabel')+': '+task.attempt+' · '+t('generationLabel')+': '+task.generation+(task.state==='completed'?' · '+t('storedCompletion'):''),'task-meta'));return li;}
+function taskNode(room,task){const li=document.createElement('li'),who=room.members[task.assignee]?.display_name||task.assignee;li.append(make('span',t(task.state)||task.state,'status-pill status-'+task.state),make('span',who+' · '+(t(task.purpose)||task.purpose),'task-name'));li.append(make('span',t('attemptLabel')+': '+task.attempt+' · '+t('generationLabel')+': '+task.generation+(task.state==='completed'?' · '+t('storedCompletion'):''),'task-meta'));const trail=(task.events||[]).slice(-6);if(trail.length){const box=make('div',undefined,'task-events');for(const event of trail){box.append(make('span',(t('stage_'+event.stage)||event.stage)+' '+clockTime(event.at),'task-event stage-'+event.stage));}li.append(box);}return li;}
 function toneOf(value){let hash=0;for(const ch of String(value||''))hash=(hash*31+ch.charCodeAt(0))>>>0;return hash%6;}
 const TONE_HUES = [168, 262, 206, 38, 330, 132];
 const TABLE = { x: 450, y: 372, rx: 166, ry: 88 };
@@ -67,6 +67,42 @@ function shortAngle(from, to) {
   return delta;
 }
 const OUTFITS = [['#3a7568', '#2c5a50'], ['#6f4d7d', '#553b60'], ['#48608f', '#37496f'], ['#91584a', '#6f4338'], ['#77803f', '#5b6330'], ['#4d6270', '#3a4c58']];
+const THEMES = {
+  bounded_rounds: {
+    outer: 'blazer',
+    outfits: [['#3c4a63', '#2d394e'], ['#4c4152', '#3a3140'], ['#5c4638', '#46352b'], ['#3e5348', '#2f4038'], ['#4a4f5e', '#393d49'], ['#57413b', '#42312d']],
+    accessories: ['glasses', 'round', 'scarf', 'headset', 'glasses', 'round']
+  },
+  co_creation: {
+    outer: 'crew',
+    outfits: [['#2f6f66', '#24564f'], ['#5c4b86', '#463a67'], ['#3f5f8f', '#304a70'], ['#8a5a3f', '#6b4630'], ['#6d7a3a', '#545f2c'], ['#3f6d80', '#305462']],
+    accessories: ['headset', 'headphones', 'hoodie', 'glasses', 'headset', 'round']
+  },
+  free_discussion: {
+    outer: 'sweater',
+    outfits: [['#8a5a44', '#6b4534'], ['#6f7440', '#575b30'], ['#6a4a63', '#52394c'], ['#8a7248', '#6b5837'], ['#4f6a52', '#3c5240'], ['#7c4f42', '#603c32']],
+    accessories: ['scarf', 'hoodie', 'glasses', 'headphones', 'scarf', 'round']
+  }
+};
+
+function outerwearMarkup(kind, outfitDark, accent) {
+  if (kind === 'blazer') {
+    return `<path d="M-15,-13 l8,11 l-2,5 l-7,-10z" fill="${outfitDark}"/>` +
+      `<path d="M15,-13 l-8,11 l2,5 l7,-10z" fill="${outfitDark}"/>` +
+      `<path d="M0,-10 l2.6,4 l-2.6,10 l-2.6,-10z" fill="${accent}" opacity=".85"/>` +
+      `<circle cx="-11" cy="12" r="1.6" fill="${accent}" opacity=".7"/>`;
+  }
+  if (kind === 'crew') {
+    return `<path d="M-8,-13.6 q8,6.5 16,0" fill="none" stroke="${outfitDark}" stroke-width="2.2"/>` +
+      `<path d="M-5.5,-11 l3.4,13 M5.5,-11 l-3.4,13" stroke="${accent}" stroke-width="1.6" opacity=".8"/>` +
+      `<rect x="1" y="1" width="6" height="8" rx="1.2" fill="#e9e4d8" stroke="${outfitDark}" stroke-width=".8" transform="rotate(4)"/>` +
+      `<rect x="2.4" y="3.6" width="3.2" height="1" fill="${accent}" opacity=".8"/>`;
+  }
+  return `<path d="M-14.6,17.6 q14.6,4.4 29.2,0" fill="none" stroke="${outfitDark}" stroke-width="3" stroke-linecap="round"/>` +
+    `<path d="M-12,21 q12,3.4 24,0" fill="none" stroke="${outfitDark}" stroke-width="2" opacity=".7"/>` +
+    `<circle cx="-12.6" cy="-4" r="1.7" fill="${accent}" opacity=".65"/>`;
+}
+
 const PROFILES = [
   { hair: 'short', accessory: 'glasses', skin: '#f0d2b6', hairColor: '#2b2724' },
   { hair: 'bob', accessory: 'headset', skin: '#e7c1a1', hairColor: '#3a2a20' },
@@ -102,15 +138,16 @@ function accessoryMarkup(kind, accent, hood) {
   return '';
 }
 
-function actorElement(member, tone) {
+function actorElement(member, tone, mode, index = 0) {
   const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
   g.setAttribute('class', 'ch');
   g.dataset.tone = String(tone);
   g.dataset.id = String(member.id || '');
-  const index = (Number.parseInt(tone, 10) + String(member.id || '').length) % PROFILES.length;
-  const profile = PROFILES[index];
+  const profile = PROFILES[index % PROFILES.length];
   const hue = TONE_HUES[tone] ?? 168;
-  const [outfit, outfitDark] = OUTFITS[index];
+  const theme = THEMES[mode] || THEMES.bounded_rounds;
+  const [outfit, outfitDark] = theme.outfits[index % theme.outfits.length];
+  const accessory = theme.accessories[index % theme.accessories.length];
   const accent = `hsl(${hue} 58% 62%)`;
   const shirt = '#e9e4d8';
   const skinShade = 'rgba(0, 0, 0, .12)';
@@ -140,6 +177,7 @@ function actorElement(member, tone) {
         `<path d="M-7,-12.5 l7,12 l7,-12" fill="none" stroke="${outfitDark}" stroke-width="1.8"/>` +
         `<circle cx="9.5" cy="3" r="3" fill="${accent}"/>` +
         `<path d="M-9,20 h18" stroke="${outfitDark}" stroke-width="1.4" opacity=".7"/>` +
+        outerwearMarkup(theme.outer, outfitDark, accent) +
       `</g>` +
       `<g class="arm arm--l"><rect x="-21" y="-10" width="7" height="23" rx="3.5" fill="${outfitDark}"/>` +
         `<circle cx="-17.5" cy="15.5" r="4.2" fill="${profile.skin}"/></g>` +
@@ -157,7 +195,7 @@ function actorElement(member, tone) {
         `<path d="M-7.5,-37.5 q2.4,-1.4 4.6,-.4 M3,-37.9 q2.2,-1 4.6,.4" fill="none" stroke="${profile.hairColor}" stroke-width="1.3" opacity=".75"/>` +
         `<g class="ch-mouth"><path class="mouth-idle" d="M-2.8,-24.6 q2.8,2.4 5.6,0" fill="none" stroke="#9a5f4f" stroke-width="1.5" stroke-linecap="round"/>` +
           `<ellipse class="mouth-talk" cx="0" cy="-23.6" rx="2.5" ry="1.9" fill="#8a4a3e" stroke="#3a2320" stroke-width=".6"/></g>` +
-        `${accessoryMarkup(profile.accessory, accent, outfitDark)}` +
+        `${accessoryMarkup(accessory, accent, outfitDark)}` +
       `</g>` +
     `</g>` +
     `</g>` +
@@ -223,6 +261,22 @@ function showStageProfile(room, actorId, event, host) {
   card.style.left = x + 'px';
   card.style.top = y + 'px';
 }
+let cameraMode = 'auto';
+try {
+  const stored = typeof localStorage !== 'undefined' ? localStorage.getItem('talkabout.camera') : null;
+  if (stored === 'auto' || stored === 'fixed' || stored === 'all') cameraMode = stored;
+} catch (error) { cameraMode = 'auto'; }
+
+function applyCameraMode(mode) {
+  cameraMode = mode;
+  try { if (typeof localStorage !== 'undefined') localStorage.setItem('talkabout.camera', mode); } catch (error) { /* private mode */ }
+  const group = document.getElementById('stage-camera');
+  if (group && typeof group.querySelectorAll === 'function') {
+    for (const button of group.querySelectorAll('button')) {
+      button.setAttribute('aria-pressed', button.dataset.camera === mode ? 'true' : 'false');
+    }
+  }
+}
 function startStageAnimation(room) {
   stopStageAnimation();
   const host = el('room-stage');
@@ -243,7 +297,7 @@ function startStageAnimation(room) {
     let tone = toneOf(id);
     while (usedTones.has(tone)) tone = (tone + 1) % 6;
     usedTones.add(tone);
-    const node = actorElement({ ...member, id }, tone);
+    const node = actorElement({ ...member, id }, tone, room.mode, index);
     group.append(node);
     const speaking = activeSpeaker === id;
     node.classList.add('seated');
@@ -334,14 +388,17 @@ function startStageAnimation(room) {
 
     const zoomW = BASE_VIEW.w * 0.82, zoomH = BASE_VIEW.h * 0.82;
     const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
-    const target = speaker
-      ? {
-          x: clamp(speaker.x - zoomW / 2, BASE_VIEW.x, BASE_VIEW.x + BASE_VIEW.w - zoomW),
-          y: clamp(speaker.y - 60 - zoomH / 2, BASE_VIEW.y, BASE_VIEW.y + BASE_VIEW.h - zoomH),
-          w: zoomW, h: zoomH
-        }
-      : BASE_VIEW;
-    const ease = speaker ? 0.045 : 0.02;
+    const overview = BASE_VIEW.w * 0.06;
+    const target = cameraMode === 'all'
+      ? { x: BASE_VIEW.x - overview, y: BASE_VIEW.y - overview, w: BASE_VIEW.w + overview * 2, h: BASE_VIEW.h + overview * 2 }
+      : (speaker && cameraMode === 'auto')
+        ? {
+            x: clamp(speaker.x - zoomW / 2, BASE_VIEW.x, BASE_VIEW.x + BASE_VIEW.w - zoomW),
+            y: clamp(speaker.y - 60 - zoomH / 2, BASE_VIEW.y, BASE_VIEW.y + BASE_VIEW.h - zoomH),
+            w: zoomW, h: zoomH
+          }
+        : BASE_VIEW;
+    const ease = speaker && cameraMode === 'auto' ? 0.045 : 0.02;
     for (const key of ['x', 'y', 'w', 'h']) view[key] += (target[key] - view[key]) * ease;
     svg.setAttribute('viewBox', `${view.x.toFixed(1)} ${view.y.toFixed(1)} ${view.w.toFixed(1)} ${view.h.toFixed(1)}`);
 
@@ -719,3 +776,8 @@ async function initialSetup(){setupCsrf=null;if(!await syncSetupStatus(true))ret
 language();const initialAuthEpoch=authEpoch;initialSetup().then(locked=>{if(locked)return null;return api('session');}).then(async data=>{if(!data||initialAuthEpoch!==authEpoch)return;user=data.user;csrf=data.csrf_token;el('actor').textContent=user.display_name+' [human]';el('login').hidden=true;el('dashboard').hidden=false;startCommunityWatch();const requested=new URLSearchParams(location.search).get('room');await refresh();if(initialAuthEpoch===authEpoch&&user&&!view.selected&&requested&&roomCache.some(room=>room.id===requested))await openRoom(requested,false);}).catch(()=>{if(initialAuthEpoch===authEpoch)notice('setupRefreshFailed');});
 
 async function refreshHandovers(epoch){if(!can('room:manage_members')){el('handovers').replaceChildren();return;}const offers=await api('admin/handovers');if(epoch!==listEpoch||!user)return;el('handovers').replaceChildren(...offers.map(offer=>{const button=document.createElement('button');button.textContent=t('acceptHandover')+' · '+offer.room_id;button.onclick=()=>{if(!user||!confirm(t('confirmHandover')))return;const body={expected_room_revision:offer.room_revision,expected_handover_revision:offer.handover_revision,acknowledge_history:true};mutate('handover',body,key=>api('rooms/'+offer.room_id+'/handover/accept',{method:'POST',body,key}));};return button;}));}
+
+for (const button of document.querySelectorAll('#stage-camera button')) {
+  button.onclick = () => applyCameraMode(button.dataset.camera);
+}
+applyCameraMode(cameraMode);

@@ -372,6 +372,7 @@ class Worker:
                 payload["runtime_started"] = True
                 self.last_step_started_runtime=True
                 self.journal.save(tid, "call_started", payload)
+                self._beat(prefix, task, ["preflight", "runtime_started"], "start")
                 cancel, finished = threading.Event(), threading.Event()
                 heartbeat_failed = threading.Event()
                 fence = {k: task[k] for k in ("attempt", "generation", "membership_revision")}
@@ -407,6 +408,7 @@ class Worker:
                     lease_remaining=max(0,latest['lease_expires_at']-time.time()) if claimed.get('attachment_refs') else float('inf')
                     text = bounded_call(self.runtime, context, cancel, min(self.runtime_timeout, max(0, task["deadline"] - time.time()), lease_remaining, remaining))
                     check_deadline(self.run_deadline)
+                    self._beat(prefix, task, ["runtime_completed"], "end")
                 except RuntimeTimeout as error:
                     if stop_seen.is_set():
                         self.journal.save(tid, "cancelled" if error.runtime_stopped else "uncertain", payload)
@@ -414,7 +416,9 @@ class Worker:
                         return "stopped" if error.runtime_stopped else "stop_unconfirmed"
                     self.journal.save(tid, "uncertain", payload)
                     return "heartbeat_failed" if heartbeat_failed.is_set() else "runtime_timeout"
-                except Exception:
+                except Exception as error:
+                    code = getattr(error, "code", "")
+                    self._beat(prefix, task, ["tool_blocked"] if code == "runtime_tool_policy_violation" else ["failed"], "fail")
                     self.journal.save(tid, "uncertain", payload)
                     raise
                 finally:
@@ -451,6 +455,17 @@ class Worker:
                 self.journal.save(tid, "failed", payload)
             raise
         # Transport failures preserve claim_pending/result_saved for same-key recovery.
+
+    def _beat(self, prefix, task, stages, key_suffix):
+        """Best-effort worker-reported execution stages; never blocks the turn."""
+        if not stages:
+            return
+        body = {k: task[k] for k in ("attempt", "generation", "membership_revision")} | {"events": list(stages)}
+        try:
+            self.client.request("POST", prefix + "/heartbeat", body,
+                                f"stage:{task['id']}:{task['attempt']}:{key_suffix}")
+        except Exception:
+            pass
 
     def safe_to_continue_after(self,result):
         """Known pre-call stale work can drain; uncertain/post-call work never auto-repeats."""

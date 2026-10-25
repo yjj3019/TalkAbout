@@ -179,6 +179,21 @@ def fencing(room, member, task, actor, body, now):
             and body.get("membership_revision") == member["revision"] == task["membership_revision"], "stale_attempt")
 
 
+TASK_EVENT_STAGES = {
+    "claimed", "preflight", "runtime_started", "prompt_submitted", "runtime_completed",
+    "tool_blocked", "completed", "failed", "cancelled", "skipped",
+}
+
+
+def record_task_event(room, task_id, stage, now):
+    """Append one bounded worker-reported execution stage to the task."""
+    require(isinstance(stage, str) and stage in TASK_EVENT_STAGES, "invalid_event_stage", 422)
+    events = room.setdefault("task_events", {}).setdefault(task_id, [])
+    events.append({"stage": stage, "at": now})
+    if len(events) > 24:
+        del events[:-24]
+
+
 def message(room, actor, body, now, task=None, fingerprint=None):
     result = body.get("result", body)
     require(isinstance(result, dict), "invalid_result", 422)
