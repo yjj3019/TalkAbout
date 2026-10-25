@@ -9,12 +9,15 @@ from .text_files import (claim_proof, filter_refs, public_task, token_hash, vali
 
 from .domain import (AGENT_PERMISSIONS, HUMAN_PERMISSIONS, Problem, active, authorize,
                      cancel_tasks, digest, emit, fencing, ident, message, new_room,
-                     replay, require, save_response, schedule, participant_permissions)
+                     record_task_event, replay, require, save_response, schedule, participant_permissions)
 
 
 def public_room(room, actor, principals=None):
     viewer_member = authorize(actor, room, "room:read")
     tasks = [public_task(t) for t in room["tasks"].values() if actor["kind"] == "human" or t["assignee"] == actor["id"]]
+    recorded = room.get("task_events", {})
+    for task in tasks:
+        task["events"] = copy.deepcopy(recorded.get(task["id"], []))[-12:]
     for task in tasks:
         if 'attachment_refs' in task:task['attachment_refs']=filter_refs(actor,room,viewer_member,task['attachment_refs'])
     messages=[]
@@ -277,12 +280,18 @@ class Core(Participation):
                         refs={r['file_id']:r for m in visible for r in filter_refs(actor,room,member,m.get('attachment_refs',[]))}
                         task['attachment_refs']=list(refs.values())[:8]
                     emit(room, "task.claimed", task_id=target, attempt=task["attempt"])
+                    record_task_event(room, target, "claimed", now)
                     response = copy.deepcopy(task)
                 else:
                     require(verb in {"complete", "heartbeat", "skip"}, "not_found", 404)
                     fencing(room, member, task, actor, body, now)
                     if verb == "heartbeat":
                         task["lease_expires_at"] = min(task["deadline"], now + room["limits"]["lease"])
+                        events = body.get("events", [])
+                        require(isinstance(events, list) and len(events) <= 8
+                                and all(isinstance(item, str) for item in events), "invalid_events", 422)
+                        for stage in events:
+                            record_task_event(room, target, stage, now)
                         response = copy.deepcopy(task)
                     elif verb == "complete":
                         if room["mode"] == "co_creation" and task["purpose"] == "creator":
@@ -311,6 +320,7 @@ class Core(Participation):
                             proposal = copy.deepcopy(artifact)
                             proposal["versions"] = [v for v in proposal["versions"] if v["seq"] >= member["read_start_seq"]]
                         task["state"] = "completed"
+                        record_task_event(room, target, "completed", now)
                         member["greeted"] = True
                         emit(room, "task.completed", task_id=target)
                         response = {"message": msg, "task": copy.deepcopy(task)}

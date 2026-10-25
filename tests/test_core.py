@@ -41,7 +41,7 @@ def test_expired_attempt_fenced(fixture):
 
 
 def test_pause_complete_race_and_replay(fixture):
-    _, core, rid = fixture
+    store, core, rid = fixture
     task = leased(core, rid)
     barrier = threading.Barrier(2)
     def pause():
@@ -149,3 +149,24 @@ def test_client_id_cannot_be_reused_for_another_task(fixture):
     current = leased(core, rid)
     with pytest.raises(Problem, match="client_message_conflict"):
         core.mutation("fixture-a", rid, "tasks/" + current["id"] + "/complete", "third", body)
+
+def test_execution_events_are_recorded_bounded_and_exposed(fixture):
+    store, core, rid = fixture
+    task = leased(core, rid)
+    fence = {k: task[k] for k in ("attempt", "generation", "membership_revision")}
+    path = "tasks/" + task["id"] + "/heartbeat"
+    core.mutation("fixture-a", rid, path, "hb-one", {**fence, "events": ["runtime_started", "tool_blocked"]})
+    view = core.read("fixture-a", rid)
+    events = next(item for item in view["tasks"] if item["id"] == task["id"])["events"]
+    assert [event["stage"] for event in events] == ["claimed", "runtime_started", "tool_blocked"]
+    assert all(isinstance(event["at"], float) for event in events)
+    with pytest.raises(Problem, match="invalid_event_stage"):
+        core.mutation("fixture-a", rid, path, "hb-bad", {**fence, "events": ["shell"]})
+    with pytest.raises(Problem, match="invalid_events"):
+        core.mutation("fixture-a", rid, path, "hb-many", {**fence, "events": ["preflight"] * 9})
+    for index in range(30):
+        core.mutation("fixture-a", rid, path, f"hb-cap-{index}", {**fence, "events": ["preflight"]})
+    capped = next(item for item in core.read("fixture-a", rid)["tasks"] if item["id"] == task["id"])["events"]
+    assert len(capped) == 12
+    with store.transaction(rid, "fixture-human") as (_, room):
+        assert len(room["task_events"][task["id"]]) == 24
