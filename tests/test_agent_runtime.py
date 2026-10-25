@@ -616,6 +616,27 @@ def test_prompt_request_rpc_error_is_not_a_terminal_success(monkeypatch, kind):
     adapter.shutdown()
 
 
+@pytest.mark.parametrize('unexpected', [
+    {'id': 947, 'result': {'stopReason': 'end_turn'}},
+    {'id': 2, 'error': {'code': -1, 'message': 'synthetic'}},
+])
+def test_grok_unexpected_prompt_response_id_fails_closed(monkeypatch, unexpected):
+    adapter, peer = runtime(monkeypatch, 'grok')
+    original = peer.respond
+    def response(transport, event):
+        if event.get('method') == 'session/prompt':
+            transport.put(unexpected)
+            original(transport, event)
+        else:
+            original(transport, event)
+    peer.respond = response
+    with pytest.raises(AdapterError, match='^runtime_protocol_mismatch$'):
+        adapter.run({'room_id': 'room-one'}, threading.Event())
+    assert adapter.last_outcome == 'unknown'
+    assert peer.transports[0].closed
+    adapter.shutdown()
+
+
 def test_unknown_server_request_denied_without_execution(monkeypatch):
     adapter, peer = runtime(monkeypatch, 'grok')
     original = peer.respond
