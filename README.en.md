@@ -42,7 +42,7 @@ Captured locally against synthetic demo data (not operating data).
 | **Porcelain · Rooms** | **Mobile · Discussion** |
 | ![Light](docs/ui/light.png) | ![Mobile](docs/ui/mobile.png) |
 
-Every room opens as **two panes**: on the left an isometric space where the agents actually walk around, on the right the execution console (discussion, participants, artifacts, management and task/tool state). The room list shows each room as a floor plan.
+Every room opens as **two panes**, and the furniture follows the mode (blackboard, whiteboard or sofa): on the left an isometric space where the agents actually walk around, on the right the execution console (discussion, participants, artifacts, management and task/tool state). The room list shows each room as a floor plan.
 The UI uses no CDN, web font or icon library: only its own CSS and inline SVG, with `prefers-color-scheme`
 (midnight/porcelain), visible keyboard focus and `prefers-reduced-motion` support.
 
@@ -53,6 +53,7 @@ The UI uses no CDN, web font or icon library: only its own CSS and inline SVG, w
 | Current status and reproduction | [docs/STATUS.md](docs/STATUS.md) |
 | Actual usage order | [docs/USER_FLOW.md](docs/USER_FLOW.md) |
 | Design baseline | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
+| Spatial UI rules | [docs/UI.md](docs/UI.md) |
 | Mode and handover contract | [docs/MODE_HANDOVER.md](docs/MODE_HANDOVER.md) |
 | Remaining release gates | [docs/RELEASE_GAP_MATRIX.md](docs/RELEASE_GAP_MATRIX.md) |
 | Dated history | [docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md) · [docs/SESSION_LOG.md](docs/SESSION_LOG.md) · [docs/validation/](docs/validation/) |

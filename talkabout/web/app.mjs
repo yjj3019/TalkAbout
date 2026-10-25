@@ -46,96 +46,184 @@ function messageNode(room,m){const agent=m.actor_kind==='agent',node=make('artic
 function taskNode(room,task){const li=document.createElement('li'),who=room.members[task.assignee]?.display_name||task.assignee;li.append(make('span',t(task.state)||task.state,'status-pill status-'+task.state),make('span',who+' · '+(t(task.purpose)||task.purpose),'task-name'));li.append(make('span',t('attemptLabel')+': '+task.attempt+' · '+t('generationLabel')+': '+task.generation+(task.state==='completed'?' · '+t('storedCompletion'):''),'task-meta'));return li;}
 function toneOf(value){let hash=0;for(const ch of String(value||''))hash=(hash*31+ch.charCodeAt(0))>>>0;return hash%6;}
 const TONE_HUES = [168, 262, 206, 38, 330, 132];
-
-const ACTOR_SEATS = [[450, 300], [338, 452], [562, 452], [262, 392], [640, 392], [450, 500]];
-const WALK_POINTS = [[450, 300], [360, 452], [540, 452], [300, 350], [600, 350], [420, 500], [500, 300], [380, 300], [520, 470]];
+const TABLE = { x: 450, y: 372, rx: 166, ry: 88 };
+const BASE_VIEW = { x: 70, y: 24, w: 760, h: 556 };
 let stageAnimation = null;
+
 function stopStageAnimation() {
   if (stageAnimation && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(stageAnimation.raf);
   stageAnimation = null;
+}
+function pointOnRing(angle, radiusScale = 1) {
+  return {
+    x: TABLE.x + Math.cos(angle) * TABLE.rx * radiusScale,
+    y: TABLE.y + Math.sin(angle) * TABLE.ry * radiusScale
+  };
+}
+function shortAngle(from, to) {
+  let delta = (to - from) % (Math.PI * 2);
+  if (delta > Math.PI) delta -= Math.PI * 2;
+  if (delta < -Math.PI) delta += Math.PI * 2;
+  return delta;
 }
 function actorElement(member, tone) {
   const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
   g.setAttribute('class', 'ch');
   g.dataset.tone = String(tone);
   g.dataset.id = String(member.id || '');
+  const variant = Number.parseInt(tone, 10) % 3;
+  const hair = [
+    'M-13,-1 q12,-17 25,-1 q-5,-12 -13,-12 q-8,0 -12,13z',
+    'M-14,0 q2,-18 14,-18 q13,0 14,17 q-8,-9 -28,1z',
+    'M-13,2 q-2,-18 12,-18 q15,0 15,18 q-6,-12 -27,0z'
+  ][variant];
   g.innerHTML = `<g class="ch-flip">` +
-    `<path d="M-34,34 q0,-46 34,-46 q34,0 34,46 l-10,6 q-24,-14 -48,0 z" fill="#233b38"/>` +
-    `<ellipse cx="0" cy="40" rx="30" ry="11" fill="#000" opacity=".28"/>` +
-    `<path class="ch-body" d="M-21,38 q0,-32 21,-32 q21,0 21,32 z"/>` +
-    `<circle class="ch-head" cx="0" cy="2" r="13"/>` +
-    `<path class="ch-hair" d="M-13,-1 q12,-17 25,-1 q-5,-12 -13,-12 q-8,0 -12,13z"/>` +
-    `<path class="ch-arm" d="M-21,14 q-9,6 -8,16" /><path class="ch-arm" d="M21,14 q9,6 8,16"/>` +
+    `<path d="M-36,36 q0,-48 36,-48 q36,0 36,48 l-12,6 q-24,-14 -48,0 z" fill="#1f3431"/>` +
+    `<ellipse cx="0" cy="42" rx="30" ry="11" fill="#000" opacity=".3"/>` +
+    `<path class="ch-body" d="M-22,40 q0,-34 22,-34 q22,0 22,34 z"/>` +
+    `<path class="ch-collar" d="M-8,8 q8,7 8,14 q0,-7 8,-14 q-8,3 -16,0z"/>` +
+    `<circle class="ch-head" cx="0" cy="1" r="13"/>` +
+    `<path class="ch-hair" d="${hair}"/>` +
+    `<path class="ch-arm" d="M-22,15 q-9,7 -8,17"/><path class="ch-arm" d="M22,15 q9,7 8,17"/>` +
     `</g>` +
-    `<g class="ch-bubble"><rect x="-16" y="-58" width="32" height="20" rx="10"/><circle cx="-6" cy="-48" r="2.2"/><circle cx="0" cy="-48" r="2.2"/><circle cx="6" cy="-48" r="2.2"/></g>` +
-    `<text x="0" y="62" text-anchor="middle" class="plate">${String(member.display_name || member.id || '?').trim().slice(0, 12)}</text>`;
+    `<g class="ch-bubble"><rect x="-17" y="-60" width="34" height="21" rx="10.5"/>` +
+    `<circle cx="-6" cy="-49.5" r="2.2"/><circle cx="0" cy="-49.5" r="2.2"/><circle cx="6" cy="-49.5" r="2.2"/></g>` +
+    `<text x="0" y="64" text-anchor="middle" class="plate">${String(member.display_name || member.id || '?').trim().slice(0, 12)}</text>`;
   return g;
 }
 function startStageAnimation(room) {
   stopStageAnimation();
   const host = el('room-stage');
   const group = host && host.querySelector ? host.querySelector('.actors') : null;
-  if (!group || typeof requestAnimationFrame !== 'function' || typeof document.createElementNS !== 'function') return;
+  const svg = group && group.ownerSVGElement;
+  if (!group || !svg || typeof requestAnimationFrame !== 'function' || typeof document.createElementNS !== 'function') return;
+
   const members = Object.entries(room.members || {}).slice(0, 6);
-  const lastAgent = [...room.messages].reverse().find(m => m.actor_kind === 'agent');
+  const messages = [...room.messages].reverse();
+  const lastAgent = messages.find(m => m.actor_kind === 'agent');
+  const speakCutoff = (Date.now() / 1000) - 120;
+  const activeSpeaker = lastAgent && lastAgent.created_at > speakCutoff ? lastAgent.actor_id : null;
+  const spot = svg.querySelector('.spot');
+
   const actors = members.map(([id, member], index) => {
-    const seat = ACTOR_SEATS[index] || ACTOR_SEATS[0];
+    const angle = -Math.PI / 2 + (index * Math.PI * 2) / members.length;
     const node = actorElement({ ...member, id }, toneOf(id));
     group.append(node);
-    const speaking = !!lastAgent && lastAgent.actor_id === id;
+    const speaking = activeSpeaker === id;
     if (speaking) node.classList.add('speaking');
     return {
-      node, id, seat, x: seat[0], y: seat[1],
-      target: speaking ? { x: seat[0], y: seat[1] } : { x: seat[0] + (index % 2 ? 26 : -26), y: seat[1] - 18 },
-      idleUntil: speaking ? Infinity : performance.now() + 1500 + index * 900,
-      speed: 16 + (index % 3) * 5, speaking, facing: 1
+      node, id, angle,
+      radius: speaking ? 0.94 : 1.04 + (index % 2) * 0.06,
+      targetAngle: angle, targetRadius: 1.04 + (index % 2) * 0.06,
+      idleUntil: speaking ? Infinity : performance.now() + 1200 + index * 800,
+      speed: 0.5 + (index % 3) * 0.12,
+      speaking, facing: 1, bob: Math.random() * Math.PI * 2
     };
   });
+
   let last = performance.now();
+  let view = { ...BASE_VIEW };
   const frame = now => {
     if (!stageAnimation) return;
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
+    const speaker = actors.find(a => a.speaking);
     for (const actor of actors) {
       if (!actor.speaking && now > actor.idleUntil) {
-        const point = WALK_POINTS[Math.floor(Math.random() * WALK_POINTS.length)];
-        actor.target = { x: point[0] + (Math.random() * 30 - 15), y: point[1] + (Math.random() * 18 - 9) };
-        actor.idleUntil = now + 1800 + Math.random() * 2600;
+        actor.targetAngle = actor.angle + (Math.random() * 1.6 - 0.8);
+        actor.targetRadius = 1.0 + Math.random() * 0.12;
+        actor.idleUntil = now + 1600 + Math.random() * 2800;
       }
-      const dx = actor.target.x - actor.x, dy = actor.target.y - actor.y;
-      const distance = Math.hypot(dx, dy);
-      if (distance > 2) {
-        const step = Math.min(distance, actor.speed * dt * (0.9 + (actor.y - 260) / 400));
-        actor.x += dx / distance * step;
-        actor.y += dy / distance * step;
-        actor.node.classList.add('walking');
-        if (Math.abs(dx) > 3) {
-          const facing = dx < 0 ? -1 : 1;
-          if (facing !== actor.facing) {
-            actor.facing = facing;
-            actor.node.querySelector('.ch-flip').setAttribute('transform', `scale(${facing} 1)`);
-          }
+      const deltaAngle = shortAngle(actor.angle, actor.targetAngle);
+      const moving = Math.abs(deltaAngle) > 0.012 || Math.abs(actor.radius - actor.targetRadius) > 0.01;
+      if (moving) {
+        const step = Math.min(Math.abs(deltaAngle), actor.speed * dt);
+        actor.angle += Math.sign(deltaAngle) * step;
+        actor.radius += (actor.targetRadius - actor.radius) * Math.min(1, dt * 1.6);
+        const next = pointOnRing(actor.angle, actor.radius);
+        const facing = Math.cos(actor.angle) >= 0 ? 1 : -1;
+        if (facing !== actor.facing) {
+          actor.facing = facing;
+          const flip = actor.node.querySelector('.ch-flip');
+          if (flip) flip.setAttribute('transform', `scale(${facing} 1)`);
         }
+        actor.node.classList.add('walking');
+        void next;
       } else {
         actor.node.classList.remove('walking');
       }
-      const scale = Math.max(0.72, Math.min(1.06, 0.8 + (actor.y - 260) / 560));
-      actor.node.setAttribute('transform', `translate(${actor.x.toFixed(1)} ${actor.y.toFixed(1)}) scale(${scale.toFixed(3)})`);
+      const point = pointOnRing(actor.angle, actor.radius);
+      const scale = 0.78 + (point.y - 260) / 700;
+      actor.node.setAttribute('transform',
+        `translate(${point.x.toFixed(1)} ${point.y.toFixed(1)}) scale(${scale.toFixed(3)})`);
+      actor.x = point.x;
+      actor.y = point.y;
     }
+
+    if (spot) {
+      if (speaker) {
+        spot.setAttribute('cx', speaker.x.toFixed(1));
+        spot.setAttribute('cy', (speaker.y - 6).toFixed(1));
+        spot.setAttribute('opacity', '1');
+      } else {
+        spot.setAttribute('opacity', '0');
+      }
+    }
+
+    const zoomW = BASE_VIEW.w * 0.82, zoomH = BASE_VIEW.h * 0.82;
+    const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
+    const target = speaker
+      ? {
+          x: clamp(speaker.x - zoomW / 2, BASE_VIEW.x, BASE_VIEW.x + BASE_VIEW.w - zoomW),
+          y: clamp(speaker.y - 60 - zoomH / 2, BASE_VIEW.y, BASE_VIEW.y + BASE_VIEW.h - zoomH),
+          w: zoomW, h: zoomH
+        }
+      : BASE_VIEW;
+    const ease = speaker ? 0.045 : 0.02;
+    for (const key of ['x', 'y', 'w', 'h']) view[key] += (target[key] - view[key]) * ease;
+    svg.setAttribute('viewBox', `${view.x.toFixed(1)} ${view.y.toFixed(1)} ${view.w.toFixed(1)} ${view.h.toFixed(1)}`);
+
     stageAnimation.raf = requestAnimationFrame(frame);
   };
   stageAnimation = { raf: 0 };
   stageAnimation.raf = requestAnimationFrame(frame);
 }
+const MOTES = [[210, 250, 1.6], [300, 200, 1.2], [380, 280, 1.9], [520, 230, 1.3], [600, 300, 1.7], [700, 250, 1.1], [260, 340, 1.4], [480, 320, 1.2], [640, 360, 1.5], [340, 380, 1.1]];
+function modeProps(mode) {
+  if (mode === 'co_creation') {
+    return `<g class="prop prop-board"><polygon points="560,250 780,365 780,250 560,135" fill="#0e1719" stroke="#5a6d70" stroke-width="5"/>` +
+      `<polygon points="574,252 766,356 766,262 574,158" fill="#e9eeea"/>` +
+      `<path d="M600,250 l40,22 M600,264 l56,31" stroke="#3f7d6d" stroke-width="4"/>` +
+      `<path d="M652,300 l30,-16 M660,312 l34,-18" stroke="#b06a5a" stroke-width="4"/>` +
+      `<rect x="700" y="270" width="22" height="22" rx="3" fill="#e8c66a" transform="skewY(26)"/>` +
+      `<rect x="726" y="284" width="22" height="22" rx="3" fill="#7ec8a8" transform="skewY(26)"/></g>` +
+      `<g class="prop"><rect x="418" y="322" width="34" height="22" rx="2" fill="#22323a"/><rect x="422" y="326" width="26" height="14" rx="1" fill="#6fd6c0"/></g>`;
+  }
+  if (mode === 'free_discussion') {
+    return `<g class="prop prop-sofa"><ellipse cx="270" cy="470" rx="86" ry="30" fill="#000" opacity=".22"/>` +
+      `<path d="M188,452 q0,-34 30,-34 l104,0 q30,0 30,34 l0,26 q-84,26 -164,0z" fill="#3b5d63"/>` +
+      `<path d="M196,430 q0,-22 22,-22 l100,0 q22,0 22,22 l-8,10 q-64,-16 -128,0z" fill="#47707a"/>` +
+      `<rect x="206" y="446" width="44" height="26" rx="8" fill="#5a8a92"/><rect x="258" y="446" width="44" height="26" rx="8" fill="#5a8a92"/></g>` +
+      `<g class="prop prop-lights"><path d="M96,214 q180,-58 344,-8 q170,52 348,-4" fill="none" stroke="#4a5a5d" stroke-width="2.5"/>` +
+      `<g fill="#ffd9a0"><circle cx="150" cy="196" r="4"/><circle cx="230" cy="184" r="4"/><circle cx="320" cy="182" r="4"/>` +
+      `<circle cx="420" cy="190" r="4"/><circle cx="520" cy="200" r="4"/><circle cx="610" cy="204" r="4"/><circle cx="700" cy="198" r="4"/></g></g>` +
+      `<g class="prop"><ellipse cx="500" cy="360" rx="14" ry="7" fill="#e9e2d4"/><rect x="488" y="348" width="24" height="11" rx="3" fill="#e9e2d4"/></g>`;
+  }
+  return `<g class="prop prop-board"><polygon points="560,252 780,366 780,258 560,144" fill="#13201d" stroke="#4d6157" stroke-width="5"/>` +
+    `<path d="M590,254 l60,32 M590,272 l40,21 M660,300 l46,24" stroke="#8fb7a5" stroke-width="4" opacity=".8"/>` +
+    `<path d="M596,318 l50,26" stroke="#c9a86a" stroke-width="4" opacity=".7"/></g>` +
+    `<g class="prop"><rect x="470" y="336" width="40" height="12" rx="2" fill="#7d5a3a"/><rect x="474" y="326" width="34" height="10" rx="2" fill="#3f6b63"/></g>`;
+}
 function stageMarkup(room) {
   const members = Object.entries(room.members || {});
   const label = (t('participants') || 'participants') + ': ' + Object.keys(room.members || {}).length;
-  return `<svg viewBox="70 24 760 556" class="stage" preserveAspectRatio="xMidYMax meet" role="img" aria-label="${label}" xmlns="http://www.w3.org/2000/svg">` +
+  return `<svg viewBox="70 24 760 556" class="stage" data-set="${room.mode}" preserveAspectRatio="xMidYMax meet" role="img" aria-label="${label}" xmlns="http://www.w3.org/2000/svg">` +
     `<defs><linearGradient id="st-sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#a8ddff"/><stop offset="1" stop-color="#ffe8c9"/></linearGradient>` +
     `<linearGradient id="st-wl" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#31454a"/><stop offset="1" stop-color="#1a292c"/></linearGradient>` +
     `<linearGradient id="st-wr" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#28393d"/><stop offset="1" stop-color="#142024"/></linearGradient>` +
     `<radialGradient id="st-lamp" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#ffd9a0" stop-opacity=".95"/><stop offset="1" stop-color="#ffd9a0" stop-opacity="0"/></radialGradient>` +
-    `<radialGradient id="st-pool" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#ffcf8f" stop-opacity=".42"/><stop offset="1" stop-color="#ffcf8f" stop-opacity="0"/></radialGradient></defs>` +
+    `<radialGradient id="st-pool" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#ffcf8f" stop-opacity=".42"/><stop offset="1" stop-color="#ffcf8f" stop-opacity="0"/></radialGradient>` +
+    `<radialGradient id="st-spot" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#000" stop-opacity="0"/><stop offset=".55" stop-color="#000" stop-opacity=".05"/><stop offset="1" stop-color="#000" stop-opacity=".55"/></radialGradient></defs>` +
     `<polygon points="450,190 830,380 450,570 70,380" fill="#2a3534"/><polygon points="450,190 830,380 450,570 70,380" fill="none" stroke="#435250" stroke-width="2"/>` +
     `<g stroke="#3a4746" stroke-width="1.4" opacity=".9"><path d="M110,360 L450,530 M170,330 L450,480 M230,300 L450,430 M290,270 L450,380 M350,240 L450,330"/>` +
     `<path d="M790,360 L450,530 M730,330 L450,480 M670,300 L450,430 M610,270 L450,380 M550,240 L450,330"/></g>` +
@@ -145,24 +233,23 @@ function stageMarkup(room) {
     `<g><polygon points="150,314 330,222 330,120 150,212" fill="#0c1518" stroke="#52656a" stroke-width="7"/>` +
     `<polygon points="162,304 318,224 318,134 162,214" fill="url(#st-sky)"/>` +
     `<line x1="240" y1="264" x2="240" y2="174" stroke="#52656a" stroke-width="5"/><line x1="162" y1="259" x2="318" y2="179" stroke="#52656a" stroke-width="5"/></g>` +
-    `<g><polygon points="560,300 770,410 770,368 560,258" fill="#3a2a22"/><polygon points="560,258 770,368 770,358 560,248" fill="#4d382b"/>` +
-    `<ellipse cx="672" cy="300" rx="24" ry="24" fill="#243338" stroke="#5d7276" stroke-width="3"/><line x1="672" y1="300" x2="672" y2="285" stroke="#9fd8c8" stroke-width="2.5"/><line x1="672" y1="300" x2="683" y2="306" stroke="#9fd8c8" stroke-width="2.5"/></g>` +
-    `<g><polygon points="592,318 640,344 640,300 592,274" fill="#7d5a3a"/><polygon points="646,347 680,365 680,321 646,303" fill="#3f6b63"/>` +
-    `<polygon points="686,368 716,384 716,340 686,324" fill="#8a4a4a"/><polygon points="732,392 762,408 762,364 732,348" fill="#5b4a7a"/></g>` +
+    `${modeProps(room.mode)}` +
     `<polygon class="rug" points="450,310 690,430 450,550 210,430" stroke-width="3"/>` +
     `<polygon class="rug-inner" points="450,340 640,435 450,530 260,435" fill="none" stroke-width="2" opacity=".65"/>` +
     `<path d="M450,26 L450,128" stroke="#4a5a5d" stroke-width="3"/><ellipse cx="450" cy="136" rx="46" ry="18" fill="#3a4a4d"/><ellipse cx="450" cy="132" rx="46" ry="18" fill="#5b7175"/>` +
     `<ellipse cx="450" cy="370" rx="220" ry="112" fill="url(#st-pool)"/>` +
+    `<ellipse class="spot" cx="450" cy="300" rx="260" ry="180" fill="url(#st-spot)" opacity="0"/>` +
     `<g><ellipse cx="450" cy="376" rx="104" ry="52" fill="#6b4a33"/><ellipse cx="450" cy="370" rx="104" ry="52" fill="#8a6344"/>` +
     `<ellipse cx="450" cy="368" rx="92" ry="45" fill="#a3764f"/><ellipse cx="450" cy="366" rx="74" ry="36" fill="#b3855c" opacity=".7"/>` +
     `<g transform="translate(450 352)"><path d="M-26,-14 l52,0 l-4,22 l-44,0 z" fill="#2b3a3e"/><path class="screen" d="M-22,-11 l44,0 l-3,16 l-38,0 z" opacity=".85"/><path d="M-30,10 l60,0 l-4,6 l-52,0 z" fill="#26343a"/></g>` +
     `<ellipse cx="532" cy="366" rx="10" ry="5" fill="#e9e2d4"/><rect x="522" y="356" width="20" height="9" rx="3" fill="#e9e2d4"/>` +
     `<ellipse cx="372" cy="386" rx="10" ry="5" fill="#e9e2d4"/><rect x="362" y="376" width="20" height="9" rx="3" fill="#e9e2d4"/></g>` +
-    `<g><path d="M176,412 l10,44 l44,0 l10,-44 z" fill="#8a5a3c"/><path d="M184,414 l38,0" stroke="#a06a48" stroke-width="4"/>` +
-    `<g fill="#3f8a63"><ellipse cx="196" cy="396" rx="10" ry="24" transform="rotate(-20 196 396)"/><ellipse cx="218" cy="390" rx="10" ry="26" transform="rotate(12 218 390)"/><ellipse cx="208" cy="402" rx="9" ry="20"/></g></g>` +
+    `<g><path d="M126,392 l10,44 l44,0 l10,-44 z" fill="#8a5a3c"/><path d="M134,394 l38,0" stroke="#a06a48" stroke-width="4"/>` +
+    `<g fill="#3f8a63"><ellipse cx="146" cy="376" rx="10" ry="24" transform="rotate(-20 146 376)"/><ellipse cx="168" cy="370" rx="10" ry="26" transform="rotate(12 168 370)"/><ellipse cx="158" cy="382" rx="9" ry="20"/></g></g>` +
     `<g><path d="M764,340 L764,462" stroke="#55676a" stroke-width="5"/><ellipse cx="764" cy="464" rx="26" ry="11" fill="#3a4a4d"/>` +
     `<path d="M736,340 l56,0 l-10,-34 l-36,0 z" fill="#5b7073"/><ellipse cx="764" cy="306" rx="18" ry="7" fill="#d9a86a"/>` +
-    `<ellipse cx="764" cy="312" rx="140" ry="66" fill="url(#st-lamp)" opacity=".55"/></g><g class="actors"></g></svg>` +
+    `<ellipse cx="764" cy="312" rx="140" ry="66" fill="url(#st-lamp)" opacity=".55"/></g>` +
+    `<g class="motes">` + MOTES.map(([x, y, r]) => `<circle cx="${x}" cy="${y}" r="${r}"/>`).join("") + `</g><g class="actors"></g></svg>` +
     `<span class="stage-caption">${label}</span>`;
 }
 function planMarkup(room) {
@@ -417,7 +504,7 @@ function renderRoom(room){
  if(onboardingContext?.room.id===room.id){onboardingContext.room=room;const m=room.members[onboardingContext.agent.id],a=agents.find(a=>a.id===onboardingContext.agent.id);onboardingContext.agent={...onboardingContext.agent,connection:m?.connection||a?.connection,runtime_check:m?.runtime_check};renderOnboardingCommands();renderInviteWizard();}
  renderAccess();
  const effective=room.effective_permissions||[];
- el('room-browser').hidden=true;el('agent-registry').hidden=true;el('detail').hidden=false;el('room-title').textContent=room.topic;el('room-state').replaceChildren(pill(room.state),make('span',t(room.mode),'scope-badge'));if(t(room.mode_status)&&room.mode_status!=='running')el('room-state').append(make('span',t(room.mode_status),'scope-badge'));if(room.pending_controls)el('room-state').append(make('span',t('approvalPending')+': '+room.pending_controls,'chip chip--warn'));el('room-stage').innerHTML=stageMarkup(room);startStageAnimation(room);const hud=el('stage-status');if(hud)hud.textContent=t(room.state)+' · '+t(room.mode);
+ el('room-browser').hidden=true;el('agent-registry').hidden=true;el('detail').hidden=false;el('room-title').textContent=room.topic;el('room-state').replaceChildren(pill(room.state),make('span',t(room.mode),'scope-badge'));if(t(room.mode_status)&&room.mode_status!=='running')el('room-state').append(make('span',t(room.mode_status),'scope-badge'));if(room.pending_controls)el('room-state').append(make('span',t('approvalPending')+': '+room.pending_controls,'chip chip--warn'));el('room-stage').dataset.set=room.mode;el('room-stage').innerHTML=stageMarkup(room);startStageAnimation(room);const hud=el('stage-status');if(hud)hud.textContent=t(room.state)+' · '+t(room.mode);
  el('members').replaceChildren(...Object.entries(room.members).map(([id,m])=>{const li=document.createElement('li');li.textContent=(m.display_name||id)+' @'+(m.handle||id)+' · '+m.kind+' · '+m.status;return li;}));
  el('messages').replaceChildren(...room.messages.map(m=>messageNode(room,m)));
  el('tasks').replaceChildren(...room.tasks.map(task=>taskNode(room,task)));
