@@ -48,9 +48,9 @@ pwsh tools/ci_postgres_fixture.ps1 -Action stop -BinDir <postgres>/bin -DataDir 
 | 항목 | 측정값 | 비고 |
 | --- | --- | --- |
 | Python (2차) | **692 passed / 7 failed / 23 skipped** | 실패 7건 중 6건은 `EXCLUDED` 목록의 브라우저·MCP 프로세스 항목(CI에서 제외되는 것과 동일), 1건은 샌드박스 named-pipe 제한(`multiprocessing/connection.py:614` WinError 5). 스킵 23건은 PostgreSQL 픽스처 미제공(22) + POSIX 전용 1 |
-| Python (3차, 서버 측 결함 수정 후) | **703 passed / 4 failed / 23 skipped** | 실패 4건: `EXCLUDED` 브라우저 항목 3건 + 샌드박스 named-pipe 1건. 같은 환경에서 실행마다 브라우저·MCP 픽스처 항목의 성패가 달라지므로(2차 7건 → 3차 4건) **실패 수 자체를 회귀 지표로 쓰지 않는다** |
+| Python (3차·4차, 서버 측 결함 및 문서/한도 어휘 반영 후) | **719 passed / 4 failed / 23 skipped** | 실패 4건: `EXCLUDED` 브라우저 항목 3건 + 샌드박스 named-pipe 1건. 같은 환경에서 실행마다 브라우저·MCP 픽스처 항목의 성패가 달라지므로(2차 7건 → 3차 4건) **실패 수 자체를 회귀 지표로 쓰지 않는다** |
 | Node | 9개 파일 **206 passed** | 신규 `ui-reduced-motion.test.mjs` 9건 포함 |
-| 신규 테스트 | **71건** | escort 7 · storage_health 34 · 승인 8 · stop 플래그 8 · ACP 격리 3 · 첨부 저장소 3 · 스케줄러/ack 8 |
+| 신규 테스트 | **87건** | escort 7 · storage_health 34 · 승인 8 · stop 플래그 8 · ACP 격리 3 · 첨부 저장소 3 · 스케줄러/ack 8 · 문서 계약 7 · 한도 어휘 9 |
 | **CI (표준 러너)** | **통과** — PR #30 head `d5a381b` run [`40206446277`](https://github.com/yjj3019/TalkAbout/actions/runs/40206446277), merge `7e7a0aa` run [`40206504760`](https://github.com/yjj3019/TalkAbout/actions/runs/40206504760) | GitHub Actions가 **표준 러너**(`tools/run_safe_regression.py`)로 guarded Python + **실제 임시 PostgreSQL** + synthetic UI 계약을 실행. 위 로컬 측정은 이 실행을 대체하지 않으며, 이 브랜치의 표준 검증은 CI 통과다 |
 
 - **PostgreSQL 통합은 로컬에서 재실행하지 않았다(NOTRUN).** 다만 위 CI 실행이 실제 임시 PostgreSQL 픽스처를 포함해 통과했으므로, 로컬 미실행은 검증 공백이 아니라 이 환경의 제약이다.
@@ -88,6 +88,11 @@ pwsh tools/ci_postgres_fixture.ps1 -Action stop -BinDir <postgres>/bin -DataDir 
     - **무음 정지 감지**: 배정 가능한 agent가 하나도 없는 active 방은 이제 **유한 대기 후** `room.stalled`(사유 `no_eligible_members`, `mode_status = stalled`)를 1회 기록하고, 그 뒤 닫힙니다(`room.closed`). 대기 시간은 `task_seconds × 2`, 종료는 그 2배입니다. agent가 다시 가능해지면 stall 표시는 해제됩니다. — 설계 문서의 "전원 unavailable이면 bounded 대기 후 close"가 실제로 구현된 것입니다.
     - **재동기화 커서를 배달 증거로 인정하지 않음**: resync(snapshot/rebase) 커서는 응답이 싣지 않은 event를 건너뛰며 offset을 전진시킵니다. 이제 그런 커서에는 `skipped_rooms`가 표시되고, 해당 방의 ack은 `delivery_unproven`(422)으로 거부됩니다. 명시적 `join` 재동기화가 필요합니다. `public_task`는 `_` 접두 키를 일반적으로 숨기도록 정리했습니다(내부 필드 유출 방지).
 
+13. **문서 SSOT gate와 provider 한도 어휘를 추가했습니다(2026-10-26, 합성 검증만).**
+    - **문서 게이트**: `tools/docs_check.py`가 (a) 상대 링크·`#anchor` 해석, (b) 문서가 인용한 저장소 경로의 실존, (c) README/STATUS에서 링크되지 않는 고아 문서를 검사하고, `tests/test_docs_contract.py`가 이를 CI에 묶습니다. 현재 **위반 0건**이며, 검사기 자신이 비어 있지 않음을 시드 위반으로 증명하는 테스트를 포함합니다. 이 과정에서 실제 결함 1건(문서 지도에 빠진 `RUNTIME_IMPLEMENTATION_VALIDATION.md`)을 고쳤고, 검사기 자체의 오탐 2건(한국어 제목 slug 규칙, MCP 메서드명 `tools/list`)도 함께 수정했습니다. 알려진 예외 목록(`KNOWN`)은 **줄어들기만 하는** 방식입니다.
+    - **provider 한도 어휘**: `rate_limit_event`를 닫힌 집합(`rejected` / `allowed` / `unknown`)으로만 분류합니다. `rejected`일 때만 `runtime_usage_limit_reached`로 turn을 중단하고, `allowed`·`unknown`은 turn을 계속합니다. 근거는 `last_diagnostics.usage_limit_events`·`usage_limit_evidence`(상태 토큰·존재 키·`resets_at`만, 자유 텍스트 없음)에 남습니다. codex의 `error`/`turn.failed`도 닫힌 짧은 토큰(`usage_limit_exceeded` 등)만 타입화하고, provider의 자유 텍스트 메시지는 증거로 쓰지 않습니다.
+    - **한계(중요)**: 이 status 어휘는 **실제 공급자 프레임에서 확인한 것이 아니라 닫힌 집합 가정**입니다. 다만 모르는 값은 전부 `unknown`으로 흘려 turn을 계속하므로, 어휘가 틀려도 **건강한 turn을 중단시키지 않습니다**. 실제 시험에서 `usage_limit_evidence`로 어휘를 확정해야 합니다(NOTRUN).
+
 ## 4. 아직 남은 것 (완료로 표시하지 않음)
 
 | 남은 관문 | 왜 남았는가 | 다음 행동 |
@@ -112,6 +117,7 @@ pwsh tools/ci_postgres_fixture.ps1 -Action stop -BinDir <postgres>/bin -DataDir 
 | [RELEASE_GAP_MATRIX.md](RELEASE_GAP_MATRIX.md) | S1~S4 요구사항 대비 격차 |
 | [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) | 날짜별 구현 스냅샷(이력) |
 | [SESSION_LOG.md](SESSION_LOG.md) | 날짜별 세션 이력 |
+| [RUNTIME_IMPLEMENTATION_VALIDATION.md](RUNTIME_IMPLEMENTATION_VALIDATION.md) | 실제 에이전트 연결 구현·검증 기록(2026-10-17 스냅샷) |
 | [validation/](validation/) | 실행별 증거 JSON |
 
 ## English

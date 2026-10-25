@@ -1,3 +1,15 @@
+## 2026-10-26 (4차) — 문서 SSOT gate · provider 한도 어휘 / synthetic-only
+
+**LOCAL PROTOTYPE / NOT DEPLOYED. 실제 공급자 시험 NOTRUN.** 다음 트랙 후보 중 두 개를 반영했다. 근거·한계는 [SESSION_LOG](SESSION_LOG.md) 2026-10-26 00:50 UTC 항목.
+
+| 영역 | 변경 | 검증 |
+| --- | --- | --- |
+| 문서 계약 | `tools/docs_check.py`(링크·앵커·저장소 경로·고아 문서) + `tests/test_docs_contract.py`로 CI 배선 | 문서 계약 7건, 시드 위반 검출 테스트 포함, 현재 위반 0 |
+| provider 한도 | `rate_limit_event`를 닫힌 집합(rejected/allowed/unknown)으로 분류, `rejected`만 `runtime_usage_limit_reached`; 구조 증거를 `last_diagnostics`에 기록 | 한도 어휘 9건 |
+| 문서 정리 | 고아 문서 `RUNTIME_IMPLEMENTATION_VALIDATION.md`를 STATUS 문서 지도에 연결 | 문서 계약이 회귀 감시 |
+
+측정: Python 719 passed / 4 failed(`EXCLUDED` 브라우저 3 + 샌드박스 named-pipe 1) / 23 skipped — 표준 러너가 아닌 동등 명령([STATUS](STATUS.md) §2.1). PostgreSQL·실제 공급자·S2는 재실행하지 않았다. **한도 status 어휘는 실제 프레임 미확인 가정**이며, 모르는 값은 unknown으로 흘려 건강한 turn을 중단시키지 않는다.
+
 ## 2026-10-26 (3차) — 서버 측 결함 수정 / synthetic-only
 
 **LOCAL PROTOTYPE / NOT DEPLOYED. 실제 공급자 시험 NOTRUN.** 분석에서 남겨둔 항목 중 실제 결함 3건만 반영했다. 근거·한계는 [SESSION_LOG](SESSION_LOG.md) 2026-10-26 항목.

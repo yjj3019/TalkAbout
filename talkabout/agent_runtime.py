@@ -12,6 +12,7 @@ code.claude.com/docs/en/cli-reference, docs.x.ai/build/cli/reference,
 agentclientprotocol.com/protocol/v1/session-setup (checked 2026-10-16).
 """
 import json
+import math
 import os
 from pathlib import Path
 import queue
@@ -57,6 +58,41 @@ _CONFIG_OPTIONS = frozenset({
     '--sandbox', '--config', '--json', '--enable', '--disable',
 })
 _CONFIG_TYPES = frozenset({'boolean', 'integer', 'float', 'string', 'sequence', 'map'})
+
+# A usage-limit frame is informational until a closed status token says the limit was
+# enforced. Anything outside this vocabulary stays unknown: guessing either aborts a
+# healthy turn or reports a limit that never applied, and both are worse than waiting.
+_LIMIT_REJECTED = frozenset({
+    'rejected', 'blocked', 'exceeded', 'limit_reached', 'rate_limited',
+    'usage_limit_exceeded', 'rate_limit_exceeded', 'quota_exceeded', 'insufficient_quota',
+})
+_LIMIT_ALLOWED = frozenset({'allowed', 'allowed_warning', 'warning', 'ok', 'under_limit'})
+_LIMIT_EVIDENCE_LIMIT = 4
+_FAILURE_TEXT_KEYS = ('code', 'type', 'reason', 'error_code', 'subtype')
+
+
+def limit_failure_token(event):
+    """Return the closing vocabulary token a failure frame names, or None.
+
+    Only short structured tokens count. A provider's free-text message is never proof:
+    it is unbounded, attacker-influenceable text and it is not retained here.
+    """
+    candidates = []
+    for key in _FAILURE_TEXT_KEYS:
+        value = event.get(key)
+        if isinstance(value, str) and len(value) <= 64:
+            candidates.append(value)
+    error = event.get('error')
+    if isinstance(error, dict):
+        for key in _FAILURE_TEXT_KEYS:
+            value = error.get(key)
+            if isinstance(value, str) and len(value) <= 64:
+                candidates.append(value)
+    for token in candidates:
+        lowered = token.strip().lower()
+        if lowered in _LIMIT_REJECTED:
+            return lowered
+    return None
 
 
 def _safe_stderr_details(raw):
@@ -421,6 +457,8 @@ class StructuredRuntime:
         self._pending = []
         self._stray_responses = []
         self._stray_count = 0
+        self._limit_events = 0
+        self._limit_evidence = []
         self._prompt_sent = False
         self._verified_executable = None
 
@@ -691,6 +729,38 @@ class StructuredRuntime:
             'has_result': 'result' in event,
         })
 
+    def _record_limit_frame(self, event):
+        """Classify a usage-limit frame and keep bounded structural evidence.
+
+        Returns 'rejected', 'allowed' or 'unknown'. Only 'rejected' may abort a turn;
+        the caller keeps parsing on anything else, including unknown.
+        """
+        status = 'unknown'
+        reset_at = None
+        info = event.get('rate_limit_info')
+        for container in (info, event):
+            if not isinstance(container, dict):
+                continue
+            token = container.get('status')
+            if isinstance(token, str):
+                lowered = token.strip().lower()
+                if lowered in _LIMIT_REJECTED:
+                    status = 'rejected'
+                elif lowered in _LIMIT_ALLOWED and status != 'rejected':
+                    status = 'allowed'
+            value = container.get('resetsAt')
+            if type(value) in (int, float) and math.isfinite(value) and value > 0 and reset_at is None:
+                reset_at = int(value)
+        self._limit_events += 1
+        if len(self._limit_evidence) < _LIMIT_EVIDENCE_LIMIT:
+            entry = {'status': status,
+                     'present_keys': sorted(key for key in ('rate_limit_info', 'status', 'resetsAt', 'limit_type')
+                                            if key in event or (isinstance(info, dict) and key in info))}
+            if reset_at is not None:
+                entry['resets_at'] = reset_at
+            self._limit_evidence.append(entry)
+        return status
+
     def _receive(self):
         event = self._transport.receive(self._cancel, self._deadline)
         if self.kind == 'grok' and event.get('jsonrpc') != '2.0':
@@ -813,6 +883,8 @@ class StructuredRuntime:
                 self._transport.wait_success(self._cancel, self._deadline)
                 return self._bounded_parts(completed)
             elif kind in {'error', 'turn.failed'}:
+                if limit_failure_token(event) is not None:
+                    raise AdapterError('runtime_usage_limit_reached')
                 raise AdapterError('runtime_failed')
             else:
                 raise AdapterError('runtime_protocol_mismatch')
@@ -969,7 +1041,11 @@ class StructuredRuntime:
                     raise AdapterError('runtime_session_mismatch')
                 self.session_id = expected
                 return _text(event.get('result'))
-            elif kind not in {'system', 'rate_limit_event'}:
+            elif kind == 'rate_limit_event':
+                # Informational unless the closed status token says the limit was enforced.
+                if self._record_limit_frame(event) == 'rejected':
+                    raise AdapterError('runtime_usage_limit_reached')
+            elif kind != 'system':
                 raise AdapterError('runtime_protocol_mismatch')
 
     def _grok(self, prompt):
@@ -1139,6 +1215,8 @@ class StructuredRuntime:
             self._pending = []
             self._stray_responses = []
             self._stray_count = 0
+            self._limit_events = 0
+            self._limit_evidence = []
             self._turn_id = None
             self._prompt_sent = False
             self.last_diagnostics = None
@@ -1195,11 +1273,14 @@ class StructuredRuntime:
                 raise AdapterError('runtime_cleanup_unconfirmed') from None
             finally:
                 diagnostics = transport.diagnostics() if transport and hasattr(transport, 'diagnostics') else {}
-                # Stray settled frames are the evidence a protocol-mismatch trial previously
-                # could not capture: shape only, never provider text.
+                # Stray settled frames and usage-limit frames are the evidence a failed
+                # trial previously could not capture: shape and closed tokens only, never
+                # provider text.
                 self.last_diagnostics = {**diagnostics,
                                          'stray_response_frames': self._stray_count,
-                                         'stray_response_shapes': list(self._stray_responses)}
+                                         'stray_response_shapes': list(self._stray_responses),
+                                         'usage_limit_events': self._limit_events,
+                                         'usage_limit_evidence': list(self._limit_evidence)}
                 with self._state_lock:
                     self._transport = None
                     self._supervisor = None
