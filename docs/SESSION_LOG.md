@@ -32,7 +32,7 @@
 
 - Python **719 passed / 4 failed / 23 skipped** — 실패 4건은 `EXCLUDED` 브라우저 항목 3 + 이 세션 샌드박스 named-pipe 1.
 - 신규 테스트 **16건**: 문서 계약 7 · 한도 어휘 9(`tests/test_agent_runtime.py`).
-- 표준 러너는 CI에서만 완주한다([STATUS](STATUS.md) §2.1). 이번 변경도 PR CI로 확인한다.
+- 표준 러너는 CI에서만 완주한다([STATUS](STATUS.md) §2.1). 이번 변경은 PR #31 CI로 확인했다: head `33bd91d` run `40208480239` **success**, merge `66075d1` run `40208764352` **success** (guarded Python + 실제 임시 PostgreSQL + synthetic UI 계약).
 
 ## 2026-10-26 00:20 UTC — 서버 측 결함 3건 수정 / server-side correctness fixes
 
