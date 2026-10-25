@@ -12,7 +12,7 @@ function can(scope){return !!user?.scopes?.includes(scope);}
 function renderAccess(){for(const id of ['nav-agents','go-register','register-agent'])el(id).hidden=!can('agent:manage');el('create').hidden=!can('rooms:create');const registry=!el('agent-registry').hidden;el('nav-agents').setAttribute('aria-current',registry?'page':'false');el('nav-rooms').setAttribute('aria-current',registry?'false':'page');}
 function language(){document.documentElement.lang=view.language;document.querySelectorAll('[data-i18n]').forEach(node=>node.textContent=t(node.dataset.i18n));el('language').textContent=view.language==='ko'?'EN':'KO';renderSetupGuide();if(noticeKey)notice(noticeKey);el('room-tabs').setAttribute?.('aria-label',t('roomViews'));if(user){renderRooms(roomCache);renderAgents();renderAccess();renderConnection();renderInviteChoice();renderInviteWizard();}}
 function closeLive(){liveSource?.close();liveSource=null;}
-function clearDetail(){textRoomEpoch++;textFileListEpoch++;clearTextFileView();clearCredential();clearOnboarding();clearConnection();inviteDraft=null;for(const id of ['invite-new-name','invite-new-handle','invite-agent-id'])el(id).value='';el('invite-form-error').textContent='';view.close();closeLive();readController?.abort();el('detail').hidden=true;el('intervention-panel').hidden=true;el('room-browser').hidden=false;for(const id of ['messages','artifacts','members','tasks','interventions','workflow'])el(id).replaceChildren();el('room-title').textContent='';el('room-state').textContent='';}
+function clearDetail(){stopStageAnimation();textRoomEpoch++;textFileListEpoch++;clearTextFileView();clearCredential();clearOnboarding();clearConnection();inviteDraft=null;for(const id of ['invite-new-name','invite-new-handle','invite-agent-id'])el(id).value='';el('invite-form-error').textContent='';view.close();closeLive();readController?.abort();el('detail').hidden=true;el('intervention-panel').hidden=true;el('room-browser').hidden=false;for(const id of ['messages','artifacts','members','tasks','interventions','workflow'])el(id).replaceChildren();el('room-title').textContent='';el('room-state').textContent='';}
 function signedOut(){pendingTextFiles.clear();textUploadAttempts.clear();textAttachmentSettings={enabled:false};connectionRuntimeChoices.clear();connectionAuthChoices.clear();authEpoch++;user=null;csrf=null;agents=[];roomCache=[];if(communityWatch!==null){window.clearInterval?.(communityWatch);communityWatch=null;}clearDetail();listEpoch++;el('login').hidden=false;el('dashboard').hidden=true;el('rooms').replaceChildren();el('handovers').replaceChildren();el('agents-list').replaceChildren();}
 async function api(path,{method='GET',body,key,signal,access=null}={}){
  const authTicket=authEpoch,viewTicket=view.epoch;
@@ -46,30 +46,91 @@ function messageNode(room,m){const agent=m.actor_kind==='agent',node=make('artic
 function taskNode(room,task){const li=document.createElement('li'),who=room.members[task.assignee]?.display_name||task.assignee;li.append(make('span',t(task.state)||task.state,'status-pill status-'+task.state),make('span',who+' · '+(t(task.purpose)||task.purpose),'task-name'));li.append(make('span',t('attemptLabel')+': '+task.attempt+' · '+t('generationLabel')+': '+task.generation+(task.state==='completed'?' · '+t('storedCompletion'):''),'task-meta'));return li;}
 function toneOf(value){let hash=0;for(const ch of String(value||''))hash=(hash*31+ch.charCodeAt(0))>>>0;return hash%6;}
 const TONE_HUES = [168, 262, 206, 38, 330, 132];
-const STAGE_SEATS = [[450, 300, 0.95, true], [338, 452, 0.92, false], [562, 452, 0.92, false], [250, 380, 0.8, false], [650, 380, 0.8, false]];
-function stageCharacter(x, y, scale, name, tone, plateAbove) {
-  const label = String(name || '?').trim().slice(0, 12);
-  const plate = plateAbove
-    ? `<text x="0" y="-38" text-anchor="middle" class="plate">${label}</text>`
-    : `<text x="0" y="62" text-anchor="middle" class="plate">${label}</text>`;
-  return `<g class="ch" data-tone="${tone}" transform="translate(${x} ${y}) scale(${scale})">` +
+
+const ACTOR_SEATS = [[450, 300], [338, 452], [562, 452], [262, 392], [640, 392], [450, 500]];
+const WALK_POINTS = [[450, 300], [360, 452], [540, 452], [300, 350], [600, 350], [420, 500], [500, 300], [380, 300], [520, 470]];
+let stageAnimation = null;
+function stopStageAnimation() {
+  if (stageAnimation && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(stageAnimation.raf);
+  stageAnimation = null;
+}
+function actorElement(member, tone) {
+  const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+  g.setAttribute('class', 'ch');
+  g.dataset.tone = String(tone);
+  g.dataset.id = String(member.id || '');
+  g.innerHTML = `<g class="ch-flip">` +
     `<path d="M-34,34 q0,-46 34,-46 q34,0 34,46 l-10,6 q-24,-14 -48,0 z" fill="#233b38"/>` +
     `<ellipse cx="0" cy="40" rx="30" ry="11" fill="#000" opacity=".28"/>` +
     `<path class="ch-body" d="M-21,38 q0,-32 21,-32 q21,0 21,32 z"/>` +
     `<circle class="ch-head" cx="0" cy="2" r="13"/>` +
     `<path class="ch-hair" d="M-13,-1 q12,-17 25,-1 q-5,-12 -13,-12 q-8,0 -12,13z"/>` +
-    plate + `</g>`;
+    `<path class="ch-arm" d="M-21,14 q-9,6 -8,16" /><path class="ch-arm" d="M21,14 q9,6 8,16"/>` +
+    `</g>` +
+    `<g class="ch-bubble"><rect x="-16" y="-58" width="32" height="20" rx="10"/><circle cx="-6" cy="-48" r="2.2"/><circle cx="0" cy="-48" r="2.2"/><circle cx="6" cy="-48" r="2.2"/></g>` +
+    `<text x="0" y="62" text-anchor="middle" class="plate">${String(member.display_name || member.id || '?').trim().slice(0, 12)}</text>`;
+  return g;
+}
+function startStageAnimation(room) {
+  stopStageAnimation();
+  const host = el('room-stage');
+  const group = host && host.querySelector ? host.querySelector('.actors') : null;
+  if (!group || typeof requestAnimationFrame !== 'function' || typeof document.createElementNS !== 'function') return;
+  const members = Object.entries(room.members || {}).slice(0, 6);
+  const lastAgent = [...room.messages].reverse().find(m => m.actor_kind === 'agent');
+  const actors = members.map(([id, member], index) => {
+    const seat = ACTOR_SEATS[index] || ACTOR_SEATS[0];
+    const node = actorElement({ ...member, id }, toneOf(id));
+    group.append(node);
+    const speaking = !!lastAgent && lastAgent.actor_id === id;
+    if (speaking) node.classList.add('speaking');
+    return {
+      node, id, seat, x: seat[0], y: seat[1],
+      target: speaking ? { x: seat[0], y: seat[1] } : { x: seat[0] + (index % 2 ? 26 : -26), y: seat[1] - 18 },
+      idleUntil: speaking ? Infinity : performance.now() + 1500 + index * 900,
+      speed: 16 + (index % 3) * 5, speaking, facing: 1
+    };
+  });
+  let last = performance.now();
+  const frame = now => {
+    if (!stageAnimation) return;
+    const dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+    for (const actor of actors) {
+      if (!actor.speaking && now > actor.idleUntil) {
+        const point = WALK_POINTS[Math.floor(Math.random() * WALK_POINTS.length)];
+        actor.target = { x: point[0] + (Math.random() * 30 - 15), y: point[1] + (Math.random() * 18 - 9) };
+        actor.idleUntil = now + 1800 + Math.random() * 2600;
+      }
+      const dx = actor.target.x - actor.x, dy = actor.target.y - actor.y;
+      const distance = Math.hypot(dx, dy);
+      if (distance > 2) {
+        const step = Math.min(distance, actor.speed * dt * (0.9 + (actor.y - 260) / 400));
+        actor.x += dx / distance * step;
+        actor.y += dy / distance * step;
+        actor.node.classList.add('walking');
+        if (Math.abs(dx) > 3) {
+          const facing = dx < 0 ? -1 : 1;
+          if (facing !== actor.facing) {
+            actor.facing = facing;
+            actor.node.querySelector('.ch-flip').setAttribute('transform', `scale(${facing} 1)`);
+          }
+        }
+      } else {
+        actor.node.classList.remove('walking');
+      }
+      const scale = Math.max(0.72, Math.min(1.06, 0.8 + (actor.y - 260) / 560));
+      actor.node.setAttribute('transform', `translate(${actor.x.toFixed(1)} ${actor.y.toFixed(1)}) scale(${scale.toFixed(3)})`);
+    }
+    stageAnimation.raf = requestAnimationFrame(frame);
+  };
+  stageAnimation = { raf: 0 };
+  stageAnimation.raf = requestAnimationFrame(frame);
 }
 function stageMarkup(room) {
-  const members = Object.entries(room.members || {}).slice(0, STAGE_SEATS.length);
-  const people = members.map(([id, member], index) => {
-    const seat = STAGE_SEATS[index];
-    return stageCharacter(seat[0], seat[1], seat[2], member.display_name || id, toneOf(id), seat[3]);
-  });
-  const backSeat = people[0] || '';
-  const otherSeats = people.slice(1).join('');
+  const members = Object.entries(room.members || {});
   const label = (t('participants') || 'participants') + ': ' + Object.keys(room.members || {}).length;
-  return `<svg viewBox="64 20 772 566" class="stage" preserveAspectRatio="xMidYMid meet" role="img" aria-label="${label}" xmlns="http://www.w3.org/2000/svg">` +
+  return `<svg viewBox="70 24 760 556" class="stage" preserveAspectRatio="xMidYMax meet" role="img" aria-label="${label}" xmlns="http://www.w3.org/2000/svg">` +
     `<defs><linearGradient id="st-sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#a8ddff"/><stop offset="1" stop-color="#ffe8c9"/></linearGradient>` +
     `<linearGradient id="st-wl" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#31454a"/><stop offset="1" stop-color="#1a292c"/></linearGradient>` +
     `<linearGradient id="st-wr" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#28393d"/><stop offset="1" stop-color="#142024"/></linearGradient>` +
@@ -92,18 +153,16 @@ function stageMarkup(room) {
     `<polygon class="rug-inner" points="450,340 640,435 450,530 260,435" fill="none" stroke-width="2" opacity=".65"/>` +
     `<path d="M450,26 L450,128" stroke="#4a5a5d" stroke-width="3"/><ellipse cx="450" cy="136" rx="46" ry="18" fill="#3a4a4d"/><ellipse cx="450" cy="132" rx="46" ry="18" fill="#5b7175"/>` +
     `<ellipse cx="450" cy="370" rx="220" ry="112" fill="url(#st-pool)"/>` +
-    backSeat +
     `<g><ellipse cx="450" cy="376" rx="104" ry="52" fill="#6b4a33"/><ellipse cx="450" cy="370" rx="104" ry="52" fill="#8a6344"/>` +
     `<ellipse cx="450" cy="368" rx="92" ry="45" fill="#a3764f"/><ellipse cx="450" cy="366" rx="74" ry="36" fill="#b3855c" opacity=".7"/>` +
     `<g transform="translate(450 352)"><path d="M-26,-14 l52,0 l-4,22 l-44,0 z" fill="#2b3a3e"/><path class="screen" d="M-22,-11 l44,0 l-3,16 l-38,0 z" opacity=".85"/><path d="M-30,10 l60,0 l-4,6 l-52,0 z" fill="#26343a"/></g>` +
     `<ellipse cx="532" cy="366" rx="10" ry="5" fill="#e9e2d4"/><rect x="522" y="356" width="20" height="9" rx="3" fill="#e9e2d4"/>` +
     `<ellipse cx="372" cy="386" rx="10" ry="5" fill="#e9e2d4"/><rect x="362" y="376" width="20" height="9" rx="3" fill="#e9e2d4"/></g>` +
-    otherSeats +
     `<g><path d="M176,412 l10,44 l44,0 l10,-44 z" fill="#8a5a3c"/><path d="M184,414 l38,0" stroke="#a06a48" stroke-width="4"/>` +
     `<g fill="#3f8a63"><ellipse cx="196" cy="396" rx="10" ry="24" transform="rotate(-20 196 396)"/><ellipse cx="218" cy="390" rx="10" ry="26" transform="rotate(12 218 390)"/><ellipse cx="208" cy="402" rx="9" ry="20"/></g></g>` +
     `<g><path d="M764,340 L764,462" stroke="#55676a" stroke-width="5"/><ellipse cx="764" cy="464" rx="26" ry="11" fill="#3a4a4d"/>` +
     `<path d="M736,340 l56,0 l-10,-34 l-36,0 z" fill="#5b7073"/><ellipse cx="764" cy="306" rx="18" ry="7" fill="#d9a86a"/>` +
-    `<ellipse cx="764" cy="312" rx="140" ry="66" fill="url(#st-lamp)" opacity=".55"/></g></svg>` +
+    `<ellipse cx="764" cy="312" rx="140" ry="66" fill="url(#st-lamp)" opacity=".55"/></g><g class="actors"></g></svg>` +
     `<span class="stage-caption">${label}</span>`;
 }
 function planMarkup(room) {
@@ -358,7 +417,7 @@ function renderRoom(room){
  if(onboardingContext?.room.id===room.id){onboardingContext.room=room;const m=room.members[onboardingContext.agent.id],a=agents.find(a=>a.id===onboardingContext.agent.id);onboardingContext.agent={...onboardingContext.agent,connection:m?.connection||a?.connection,runtime_check:m?.runtime_check};renderOnboardingCommands();renderInviteWizard();}
  renderAccess();
  const effective=room.effective_permissions||[];
- el('room-browser').hidden=true;el('agent-registry').hidden=true;el('detail').hidden=false;el('room-title').textContent=room.topic;el('room-state').replaceChildren(pill(room.state),make('span',t(room.mode),'scope-badge'));if(t(room.mode_status)&&room.mode_status!=='running')el('room-state').append(make('span',t(room.mode_status),'scope-badge'));if(room.pending_controls)el('room-state').append(make('span',t('approvalPending')+': '+room.pending_controls,'chip chip--warn'));el('room-stage').innerHTML=stageMarkup(room);
+ el('room-browser').hidden=true;el('agent-registry').hidden=true;el('detail').hidden=false;el('room-title').textContent=room.topic;el('room-state').replaceChildren(pill(room.state),make('span',t(room.mode),'scope-badge'));if(t(room.mode_status)&&room.mode_status!=='running')el('room-state').append(make('span',t(room.mode_status),'scope-badge'));if(room.pending_controls)el('room-state').append(make('span',t('approvalPending')+': '+room.pending_controls,'chip chip--warn'));el('room-stage').innerHTML=stageMarkup(room);startStageAnimation(room);const hud=el('stage-status');if(hud)hud.textContent=t(room.state)+' · '+t(room.mode);
  el('members').replaceChildren(...Object.entries(room.members).map(([id,m])=>{const li=document.createElement('li');li.textContent=(m.display_name||id)+' @'+(m.handle||id)+' · '+m.kind+' · '+m.status;return li;}));
  el('messages').replaceChildren(...room.messages.map(m=>messageNode(room,m)));
  el('tasks').replaceChildren(...room.tasks.map(task=>taskNode(room,task)));

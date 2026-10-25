@@ -42,7 +42,7 @@ Captured locally against synthetic demo data (not operating data).
 | **Porcelain · Rooms** | **Mobile · Discussion** |
 | ![Light](docs/ui/light.png) | ![Mobile](docs/ui/mobile.png) |
 
-Every room is drawn as an isometric space: participants sit around the table with name plates, and the room list shows the same room as a floor plan.
+Every room opens as **two panes**: on the left an isometric space where the agents actually walk around, on the right the execution console (discussion, participants, artifacts, management and task/tool state). The room list shows each room as a floor plan.
 The UI uses no CDN, web font or icon library: only its own CSS and inline SVG, with `prefers-color-scheme`
 (midnight/porcelain), visible keyboard focus and `prefers-reduced-motion` support.
 
