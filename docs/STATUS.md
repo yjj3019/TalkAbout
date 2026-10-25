@@ -106,6 +106,9 @@ pwsh tools/ci_postgres_fixture.ps1 -Action stop -BinDir <postgres>/bin -DataDir 
     - **검증**: `tests/test_work_deliverables.py` 13건. 실제 에이전트가 이 산출물을 제대로 만들어내는지는 **NOTRUN**(공급자 예산 필요).
     - **다음 단계(W1)**: 소유자가 opt-in하면 에이전트가 자기 머신의 지정 workspace에서 도구를 쓰는 작업 모드. [TOOL_BROKER_PLAN.md](TOOL_BROKER_PLAN.md)의 명령 격리 관문을 유지하며 provider별로 fail-closed로 시작합니다.
 
+17. **웹 UI에서 산출물과 작업 프로필을 노출했습니다(2026-10-26).** 방 생성 폼에 `deliverable`(대화만·분석·변경 제안), 방 헤더에 산출물 배지, 연결 마법사 1단계에 **로컬 작업 허용(opt-in)** 체크박스 + 작업 디렉터리를 추가했습니다.
+    - 안전장치: 체크하지 않으면 명령에 `--work-profile`이 붙지 않고, Codex에서만 표시되며, 경로가 안전 문자 집합을 벗어나면 플래그를 붙이지 않고 경고합니다(셸 주입 방지).
+    - 검증: `tests/test_connection_ui_wizard.mjs`에 3건 추가(총 51건), Node 9개 파일 **209건 통과**. 브라우저 실사용 캡처는 하지 않았습니다(합성 DOM).
 16. **W1 작업 프로필을 구현했습니다(2026-10-26). 기본은 꺼져 있고, sandbox가 아닙니다.** 상세: [WORK_PROFILE.md](WORK_PROFILE.md).
     - **opt-in**: `--work-profile --work-workspace <dir>`를 함께 줘야 하며, 현재 **Codex `exec-json`에서만** 동작합니다. Claude/Grok/app-server는 `runtime_work_profile_unsupported`로 거절합니다.
     - **격리 유지**: Codex sandbox만 `read-only` → `workspace-write`로 바뀌고, 작업 도구(shell·patch)가 켜집니다. **MCP·hooks·plugins·skill discovery·web search는 계속 꺼짐**입니다. cwd는 소유자가 지정한 디렉터리이고 런타임은 그 디렉터리를 만들거나 지우지 않습니다.

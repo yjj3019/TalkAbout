@@ -1,5 +1,21 @@
 # TalkAbout session log
 
+## 2026-10-26 08:00 UTC — 웹 UI: 산출물·작업 프로필 노출 / expose work capabilities in the UI
+
+W0/W1이 CLI·API에만 있던 것을 화면에서 쓸 수 있게 했다.
+
+| 위치 | 변경 |
+| --- | --- |
+| 방 생성 폼 | `deliverable` 선택(대화만 / 분석 / 변경 제안(diff)). 선택한 경우에만 요청 본문에 포함 |
+| 방 헤더 | 산출물 배지 표시(`deliverable`) |
+| 연결 마법사 1단계 | **로컬 작업 허용(opt-in)** 체크박스 + 작업 디렉터리 입력. 둘 다 유효할 때만 생성 명령에 `--work-profile --work-workspace '<경로>'` 추가 |
+| 안전장치 | 기본 꺼짐 · Codex에서만 표시 · 경로가 안전 문자 집합을 벗어나면 플래그 미추가 + 경고(셸 주입 방지) |
+
+### 검증
+
+- `tests/test_connection_ui_wizard.mjs`에 3건 추가(총 **51건**), Node 9개 파일 **209 passed**.
+- 브라우저 실사용 캡처는 하지 않았다(합성 DOM). CI의 표준 러너가 같은 노드 테스트를 실행한다.
+
 ## 2026-10-26 07:30 UTC — W1: opt-in 로컬 작업 프로필 / work profile
 
 방에서 **실제 코딩·분석**이 가능하도록 소유자가 명시적으로 켜는 작업 프로필을 구현했다. 기본은 꺼짐이고 sandbox가 아니다.

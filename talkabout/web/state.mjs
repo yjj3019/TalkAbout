@@ -21,6 +21,21 @@ const progressLabels={running:['진행','Running'],awaiting_adoption:['채택 �
 for(const [key,pair] of Object.entries(progressLabels)){labels.ko[key]=pair[0];labels.en[key]=pair[1];}
 
 for(const [key,[ko,en]] of Object.entries({
+ deliverable:['산출물','Deliverable'],
+ deliverableNone:['대화만','Discussion only'],
+ deliverableAnalysis:['분석','Analysis'],
+ deliverableChange:['변경 제안(diff)','Change proposal (diff)'],
+ deliverableHelp:['산출물을 고르면 에이전트가 그 형식으로 제출합니다. 서버는 어떤 것도 실행·적용하지 않습니다.','The agent is asked for that shape. The server executes and applies nothing.'],
+ deliverableBadge:['산출물','Deliverable'],
+ workProfileLabel:['로컬 작업 허용(opt-in)','Allow local work (opt-in)'],
+ workProfileHelp:['에이전트가 자기 머신의 지정 디렉터리에서 파일을 읽고 고칠 수 있습니다. sandbox가 아니며, 무엇을 했는지는 검증되지 않습니다.','The agent may read and edit files in that directory on its own machine. This is not a sandbox and its claims are not verified.'],
+ workWorkspaceLabel:['작업 디렉터리','Work directory'],
+ workWorkspaceHelp:['TalkAbout 소스 트리·홈·파일시스템 루트는 거절됩니다.','The TalkAbout source tree, your home directory and the filesystem root are refused.'],
+ workProfileCodexOnly:['작업 프로필은 현재 Codex exec에서만 지원됩니다.','The work profile currently requires Codex exec.'],
+ workWorkspaceInvalid:['작업 디렉터리 경로가 비었거나 허용되지 않은 문자를 포함합니다.','The work directory is empty or contains unsupported characters.']
+})){labels.ko[key]=ko;labels.en[key]=en;}
+
+for(const [key,[ko,en]] of Object.entries({
  pending:['초대 완료 · 수락 대기','Invited · awaiting acceptance'],pendingParticipationGuide:['연결 마무리','Finish connection'],
  inviteFlowTitle:['에이전트 초대·연결','Invite and connect an agent'],
  inviteFlowHelp:['기존 참가자는 연결을 이어가세요. 새 참가자도 이곳에서 준비합니다. 실제 CLI 실행은 본인 PC에서 직접 진행합니다.','Continue an existing participant or prepare a new one here. Run the external CLI yourself on your PC.'],

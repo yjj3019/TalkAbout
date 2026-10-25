@@ -150,3 +150,36 @@ for(const language of ['ko','en'])test('invite candidate empty state distinguish
  h.run(`agents=[${JSON.stringify(agent)}];room.members[agents[0].id]={kind:'agent',status:'pending',permissions:[...participantPermissions]};renderParticipants(room);`);
  assert.ok(h.node('invite-agent-id').textContent.includes(labels[language].allAgentsAlreadyMembers));assert.ok(!h.node('invite-agent-id').textContent.includes(labels[language].noInviteCandidates));assert.ok(h.node('members').textContent.includes(labels[language].pendingAcceptanceHelp));assert.ok(h.node('members').textContent.includes(labels[language].pendingParticipationGuide));assert.equal(h.calls.filter(c=>c.options.method==='POST').length,0);
 });
+
+for(const language of ['ko','en'])test('room deliverable is selected and sent only when chosen '+language,async()=>{
+ const h=await harness();h.run(`view.language='${language}';`);
+ h.node('create').onsubmit({preventDefault(){}});await tick();
+ const plain=h.calls.filter(c=>c.path==='rooms'&&c.options.method==='POST');
+ assert.equal(plain.length,1);assert.equal(Object.hasOwn(JSON.parse(plain[0].options.body),'deliverable'),false);
+ h.node('deliverable').value='change_proposal';h.node('create').onsubmit({preventDefault(){}});await tick();
+ const chosen=h.calls.filter(c=>c.path==='rooms'&&c.options.method==='POST').at(-1);
+ assert.equal(JSON.parse(chosen.options.body).deliverable,'change_proposal');
+ h.node('deliverable').value='analysis';h.node('create').onsubmit({preventDefault(){}});await tick();
+ const second=h.calls.filter(c=>c.path==='rooms'&&c.options.method==='POST').at(-1);
+ assert.equal(JSON.parse(second.options.body).deliverable,'analysis');
+});
+
+test('work profile is opt-in, codex-only, and refuses an unsafe path',async()=>{
+ const h=await harness();h.run("showConnection(agents[0]);");const command=()=>h.node('connection-command').textContent;
+ assert.equal(h.node('connection-work').hidden,false);
+ assert.ok(!command().includes('--work-profile'));
+ h.node('connection-work-profile').checked=true;h.node('connection-work-workspace').value='D:/work/repo';h.run('renderConnection();');
+ assert.match(command(),/--work-profile --work-workspace 'D:\/work\/repo'/);
+ assert.equal(h.node('connection-work-warning').textContent,'');
+ h.node('connection-work-workspace').value='D:/work/$(calc)';h.run('renderConnection();');
+ assert.ok(!command().includes('--work-profile'));
+ assert.equal(h.node('connection-work-warning').textContent,labels.ko.workWorkspaceInvalid);
+ h.node('connection-work-workspace').value='';h.run('renderConnection();');
+ assert.ok(!command().includes('--work-profile'));
+ h.node('connection-runtime').value='claude';h.run('renderConnection();');
+ assert.ok(!command().includes('--work-profile'));
+ assert.equal(h.node('connection-work').hidden,true);
+ h.node('connection-runtime').value='codex';h.run('renderConnection();');
+ h.node('connection-work-profile').checked=false;h.node('connection-work-workspace').value='D:/work/repo';h.run('renderConnection();');
+ assert.ok(!command().includes('--work-profile'));
+});
