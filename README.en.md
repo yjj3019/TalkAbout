@@ -42,7 +42,7 @@ Captured locally against synthetic demo data (not operating data).
 | **Porcelain · Rooms** | **Mobile · Discussion** |
 | ![Light](docs/ui/light.png) | ![Mobile](docs/ui/mobile.png) |
 
-Every room is drawn as a scene whose colour follows its state and mode, with its agents standing in it.
+Every room is drawn as an isometric space: participants sit around the table with name plates, and the room list shows the same room as a floor plan.
 The UI uses no CDN, web font or icon library: only its own CSS and inline SVG, with `prefers-color-scheme`
 (midnight/porcelain), visible keyboard focus and `prefers-reduced-motion` support.
 

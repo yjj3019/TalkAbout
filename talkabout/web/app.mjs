@@ -45,9 +45,91 @@ function artifactNode(room,a,effective){const node=make('article',undefined,'art
 function messageNode(room,m){const agent=m.actor_kind==='agent',node=make('article',undefined,'message '+(agent?'message--agent':'message--human'));node.append(make('span',(m.display_name||'?').trim().slice(0,1),'avatar'));const body=make('div',undefined,'message-body'),head=make('header',undefined,'message-head');head.append(make('strong',m.display_name||m.actor_id),make('span',t(agent?'agentBadge':'humanBadge'),'badge'+(agent?' badge--agent':'')),make('span',t(m.kind)||m.kind,'message-kind'));const time=clockTime(m.created_at);if(time)head.append(make('time',time));body.append(head,make('p',m.text,'message-text'));const meta=make('footer',undefined,'message-meta');meta.append(make('span',t('storedMessage'),'chip chip--quiet'));if(agent){const evidence=m.execution_evidence==='synthetic_test_only'?['journeySynthetic','chip--warn']:m.execution_evidence==='worker_reported_runtime'?['journeyWorkerEvidence','chip--ok']:['journeyUnverified',''];meta.append(make('span',t(evidence[0]),('chip '+evidence[1]).trim()));}for(const ref of m.attachment_refs||[])meta.append(action(t('viewTextAttachment'),()=>viewTextFile(room.id,ref.file_id)));body.append(meta);node.append(body);return node;}
 function taskNode(room,task){const li=document.createElement('li'),who=room.members[task.assignee]?.display_name||task.assignee;li.append(make('span',t(task.state)||task.state,'status-pill status-'+task.state),make('span',who+' · '+(t(task.purpose)||task.purpose),'task-name'));li.append(make('span',t('attemptLabel')+': '+task.attempt+' · '+t('generationLabel')+': '+task.generation+(task.state==='completed'?' · '+t('storedCompletion'):''),'task-meta'));return li;}
 function toneOf(value){let hash=0;for(const ch of String(value||''))hash=(hash*31+ch.charCodeAt(0))>>>0;return hash%6;}
-function sceneNode(room){const scene=make('div',undefined,'room-scene');scene.dataset.tone=String(toneOf(room.id));const orbit=make('div',undefined,'scene-orbit');scene.append(make('div',undefined,'scene-glow'),make('div',undefined,'scene-floor'),orbit);for(const [id,member] of Object.entries(room.members||{}).slice(0,4)){const avatar=make('span',(member.display_name||id||'?').trim().slice(0,1),'scene-avatar');avatar.dataset.tone=String(toneOf(id));orbit.append(avatar);}return scene;}
-function fillScene(node,room){if(!node)return;node.dataset.tone=String(toneOf(room.id));node.replaceChildren(make('div',undefined,'scene-glow'),make('div',undefined,'scene-floor'));if(node.dataset.orbit==='off')return;const orbit=make('div',undefined,'scene-orbit');node.append(orbit);for(const [id,member] of Object.entries(room.members||{}).slice(0,6)){const avatar=make('span',(member.display_name||id||'?').trim().slice(0,1),'scene-avatar');avatar.dataset.tone=String(toneOf(id));orbit.append(avatar);}}
-function presenceNode(room){const node=make('div',undefined,'presence');const names=Object.entries(room.members||{});for(const [id,member] of names.slice(0,6)){const avatar=make('span',(member.display_name||id||'?').trim().slice(0,1),'presence-avatar');avatar.dataset.tone=String(toneOf(id));avatar.title=(member.display_name||id)+(member.status?' · '+t(member.status):'');node.append(avatar);}node.append(make('span',t('participants')+': '+names.length,'presence-meta'));return node;}
+const TONE_HUES = [168, 262, 206, 38, 330, 132];
+const STAGE_SEATS = [[450, 300, 0.95, true], [338, 452, 0.92, false], [562, 452, 0.92, false], [250, 380, 0.8, false], [650, 380, 0.8, false]];
+function stageCharacter(x, y, scale, name, tone, plateAbove) {
+  const label = String(name || '?').trim().slice(0, 12);
+  const plate = plateAbove
+    ? `<text x="0" y="-38" text-anchor="middle" class="plate">${label}</text>`
+    : `<text x="0" y="62" text-anchor="middle" class="plate">${label}</text>`;
+  return `<g class="ch" data-tone="${tone}" transform="translate(${x} ${y}) scale(${scale})">` +
+    `<path d="M-34,34 q0,-46 34,-46 q34,0 34,46 l-10,6 q-24,-14 -48,0 z" fill="#233b38"/>` +
+    `<ellipse cx="0" cy="40" rx="30" ry="11" fill="#000" opacity=".28"/>` +
+    `<path class="ch-body" d="M-21,38 q0,-32 21,-32 q21,0 21,32 z"/>` +
+    `<circle class="ch-head" cx="0" cy="2" r="13"/>` +
+    `<path class="ch-hair" d="M-13,-1 q12,-17 25,-1 q-5,-12 -13,-12 q-8,0 -12,13z"/>` +
+    plate + `</g>`;
+}
+function stageMarkup(room) {
+  const members = Object.entries(room.members || {}).slice(0, STAGE_SEATS.length);
+  const people = members.map(([id, member], index) => {
+    const seat = STAGE_SEATS[index];
+    return stageCharacter(seat[0], seat[1], seat[2], member.display_name || id, toneOf(id), seat[3]);
+  });
+  const backSeat = people[0] || '';
+  const otherSeats = people.slice(1).join('');
+  const label = (t('participants') || 'participants') + ': ' + Object.keys(room.members || {}).length;
+  return `<svg viewBox="64 20 772 566" class="stage" preserveAspectRatio="xMidYMid meet" role="img" aria-label="${label}" xmlns="http://www.w3.org/2000/svg">` +
+    `<defs><linearGradient id="st-sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#a8ddff"/><stop offset="1" stop-color="#ffe8c9"/></linearGradient>` +
+    `<linearGradient id="st-wl" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#31454a"/><stop offset="1" stop-color="#1a292c"/></linearGradient>` +
+    `<linearGradient id="st-wr" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#28393d"/><stop offset="1" stop-color="#142024"/></linearGradient>` +
+    `<radialGradient id="st-lamp" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#ffd9a0" stop-opacity=".95"/><stop offset="1" stop-color="#ffd9a0" stop-opacity="0"/></radialGradient>` +
+    `<radialGradient id="st-pool" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#ffcf8f" stop-opacity=".42"/><stop offset="1" stop-color="#ffcf8f" stop-opacity="0"/></radialGradient></defs>` +
+    `<polygon points="450,190 830,380 450,570 70,380" fill="#2a3534"/><polygon points="450,190 830,380 450,570 70,380" fill="none" stroke="#435250" stroke-width="2"/>` +
+    `<g stroke="#3a4746" stroke-width="1.4" opacity=".9"><path d="M110,360 L450,530 M170,330 L450,480 M230,300 L450,430 M290,270 L450,380 M350,240 L450,330"/>` +
+    `<path d="M790,360 L450,530 M730,330 L450,480 M670,300 L450,430 M610,270 L450,380 M550,240 L450,330"/></g>` +
+    `<polygon points="70,380 450,190 450,40 70,230" fill="url(#st-wl)"/><polygon points="450,190 830,380 830,230 450,40" fill="url(#st-wr)"/>` +
+    `<polygon points="70,230 450,40 450,26 70,216" fill="#46585c"/><polygon points="450,40 830,230 830,216 450,26" fill="#3a4b4f"/>` +
+    `<polygon points="70,312 450,122 450,108 70,298" fill="#344548"/><polygon points="450,122 830,312 830,298 450,108" fill="#2c3c40"/>` +
+    `<g><polygon points="150,314 330,222 330,120 150,212" fill="#0c1518" stroke="#52656a" stroke-width="7"/>` +
+    `<polygon points="162,304 318,224 318,134 162,214" fill="url(#st-sky)"/>` +
+    `<line x1="240" y1="264" x2="240" y2="174" stroke="#52656a" stroke-width="5"/><line x1="162" y1="259" x2="318" y2="179" stroke="#52656a" stroke-width="5"/></g>` +
+    `<g><polygon points="560,300 770,410 770,368 560,258" fill="#3a2a22"/><polygon points="560,258 770,368 770,358 560,248" fill="#4d382b"/>` +
+    `<ellipse cx="672" cy="300" rx="24" ry="24" fill="#243338" stroke="#5d7276" stroke-width="3"/><line x1="672" y1="300" x2="672" y2="285" stroke="#9fd8c8" stroke-width="2.5"/><line x1="672" y1="300" x2="683" y2="306" stroke="#9fd8c8" stroke-width="2.5"/></g>` +
+    `<g><polygon points="592,318 640,344 640,300 592,274" fill="#7d5a3a"/><polygon points="646,347 680,365 680,321 646,303" fill="#3f6b63"/>` +
+    `<polygon points="686,368 716,384 716,340 686,324" fill="#8a4a4a"/><polygon points="732,392 762,408 762,364 732,348" fill="#5b4a7a"/></g>` +
+    `<polygon class="rug" points="450,310 690,430 450,550 210,430" stroke-width="3"/>` +
+    `<polygon class="rug-inner" points="450,340 640,435 450,530 260,435" fill="none" stroke-width="2" opacity=".65"/>` +
+    `<path d="M450,26 L450,128" stroke="#4a5a5d" stroke-width="3"/><ellipse cx="450" cy="136" rx="46" ry="18" fill="#3a4a4d"/><ellipse cx="450" cy="132" rx="46" ry="18" fill="#5b7175"/>` +
+    `<ellipse cx="450" cy="370" rx="220" ry="112" fill="url(#st-pool)"/>` +
+    backSeat +
+    `<g><ellipse cx="450" cy="376" rx="104" ry="52" fill="#6b4a33"/><ellipse cx="450" cy="370" rx="104" ry="52" fill="#8a6344"/>` +
+    `<ellipse cx="450" cy="368" rx="92" ry="45" fill="#a3764f"/><ellipse cx="450" cy="366" rx="74" ry="36" fill="#b3855c" opacity=".7"/>` +
+    `<g transform="translate(450 352)"><path d="M-26,-14 l52,0 l-4,22 l-44,0 z" fill="#2b3a3e"/><path class="screen" d="M-22,-11 l44,0 l-3,16 l-38,0 z" opacity=".85"/><path d="M-30,10 l60,0 l-4,6 l-52,0 z" fill="#26343a"/></g>` +
+    `<ellipse cx="532" cy="366" rx="10" ry="5" fill="#e9e2d4"/><rect x="522" y="356" width="20" height="9" rx="3" fill="#e9e2d4"/>` +
+    `<ellipse cx="372" cy="386" rx="10" ry="5" fill="#e9e2d4"/><rect x="362" y="376" width="20" height="9" rx="3" fill="#e9e2d4"/></g>` +
+    otherSeats +
+    `<g><path d="M176,412 l10,44 l44,0 l10,-44 z" fill="#8a5a3c"/><path d="M184,414 l38,0" stroke="#a06a48" stroke-width="4"/>` +
+    `<g fill="#3f8a63"><ellipse cx="196" cy="396" rx="10" ry="24" transform="rotate(-20 196 396)"/><ellipse cx="218" cy="390" rx="10" ry="26" transform="rotate(12 218 390)"/><ellipse cx="208" cy="402" rx="9" ry="20"/></g></g>` +
+    `<g><path d="M764,340 L764,462" stroke="#55676a" stroke-width="5"/><ellipse cx="764" cy="464" rx="26" ry="11" fill="#3a4a4d"/>` +
+    `<path d="M736,340 l56,0 l-10,-34 l-36,0 z" fill="#5b7073"/><ellipse cx="764" cy="306" rx="18" ry="7" fill="#d9a86a"/>` +
+    `<ellipse cx="764" cy="312" rx="140" ry="66" fill="url(#st-lamp)" opacity=".55"/></g></svg>` +
+    `<span class="stage-caption">${label}</span>`;
+}
+function planMarkup(room) {
+  const members = Object.entries(room.members || {}).slice(0, 6);
+  const angles = [-90, -30, 30, 90, 150, 210];
+  const seats = angles.map(angle => {
+    const rad = angle * Math.PI / 180;
+    return [160 + Math.cos(rad) * 46, 70 + Math.sin(rad) * 27, angle];
+  });
+  const chairs = seats.map(([x, y, angle]) => `<g transform="translate(${x} ${y}) rotate(${angle + 90})"><rect x="-8" y="-5" width="16" height="10" rx="3" fill="hsl(var(--tone-h) 30% 36%)" stroke="hsl(var(--tone-h) 38% 46%)" stroke-width="1"/></g>`).join('');
+  const dots = members.map(([id, member], index) => {
+    const seat = seats[index], hue = TONE_HUES[toneOf(id)];
+    return `<circle cx="${seat[0]}" cy="${seat[1]}" r="8.5" fill="hsl(${hue} 52% 60%)" stroke="#0a1113" stroke-width="2.5"/>` +
+      `<circle cx="${seat[0]}" cy="${seat[1]}" r="2.8" fill="hsl(${hue} 70% 88%)"/>`;
+  }).join('');
+  return `<svg viewBox="0 0 320 146" preserveAspectRatio="xMidYMid meet" class="plan" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">` +
+    `<rect x="8" y="8" width="304" height="124" rx="16" fill="hsl(var(--tone-h) 26% 17%)"/>` +
+    `<rect x="8" y="8" width="304" height="124" rx="16" fill="none" stroke="hsl(var(--tone-h) 34% 34%)" stroke-width="5"/>` +
+    `<rect x="66" y="34" width="188" height="72" rx="10" fill="hsl(var(--tone-h) 30% 22%)" stroke="hsl(var(--tone-h) 38% 30%)" stroke-width="1"/>` +
+    `<circle cx="160" cy="70" r="30" fill="hsl(var(--tone-h) 34% 36%)" stroke="hsl(var(--tone-h) 44% 48%)" stroke-width="1.5"/>` +
+    `<circle cx="160" cy="70" r="21" fill="hsl(var(--tone-h) 40% 46%)"/>` +
+    `<circle cx="160" cy="70" r="11" fill="hsl(var(--tone-h) 46% 58%)"/>` +
+    chairs + dots +
+    `<rect x="138" y="126" width="44" height="9" rx="3" fill="hsl(var(--tone-h) 40% 50%)"/>` +
+    `<rect x="144" y="128" width="32" height="5" rx="2" fill="#0a1113"/></svg>`;
+}
 function make(tag,text,cls){const node=document.createElement(tag);if(text!==undefined)node.textContent=text;if(cls)node.className=cls;return node;}
 function empty(title,help){const node=make('div',undefined,'empty-state');node.append(make('strong',t(title)),make('p',t(help)));return node;}
 function action(text,callback){const button=make('button',text);button.type='button';button.onclick=callback;return button;}
@@ -93,7 +175,7 @@ function workerReady(member){const c=member.connection;const synthetic=c?.runtim
 function roomParticipantScopes(room){return ['room:read','room:speak','task:claim','task:heartbeat','task:complete','task:skip',...(room.mode==='co_creation'?['room:contribute']:[])];}
 function allParticipantsReady(room){const active=Object.values(room.members).filter(eligibleParticipant);return active.length>0&&active.every(m=>roomParticipantScopes(room).every(scope=>m.permissions?.includes(scope))&&workerReady(m));}
 function startReadiness(room){if(!['room:control','room:approve'].every(p=>room.effective_permissions.includes(p)))return 'startNeedPermission';const members=Object.values(room.members).filter(m=>m.kind==='agent');if(!members.length)return can('agent:manage')?'startNeedInvite':'startNeedRegistry';const active=members.filter(m=>m.status==='active');if(!active.length)return 'startNeedAccept';const candidates=active.filter(eligibleParticipant);if(!candidates.length||candidates.some(m=>!roomParticipantScopes(room).every(scope=>m.permissions?.includes(scope))))return 'startNeedParticipantPermissions';return allParticipantsReady(room)?(candidates.every(m=>m.connection?.runtime==='synthetic')?'startSyntheticReady':'startReady'):'startNeedWorker';}
-function renderRooms(rooms){roomCache=rooms;el('rooms').replaceChildren(...(rooms.length?rooms.map(room=>{const node=make('button',undefined,'room-card');node.type='button';node.dataset.state=room.state;node.dataset.tone=String(toneOf(room.id));node.append(sceneNode(room));const body=make('div',undefined,'room-card-body'),top=make('div',undefined,'card-top');top.append(pill(room.state),make('span',t(room.mode),'scope-badge'));const meta=make('p');meta.append(metaItem('users',t('participants')+': '+Object.keys(room.members).length),metaItem('message',t('published')+': '+room.messages.length));body.append(top,make('h3',room.topic),meta);node.append(body);node.onclick=()=>openRoom(room.id);return node;}):[empty('emptyRooms','emptyRoomsHelp')]));}
+function renderRooms(rooms){roomCache=rooms;el('rooms').replaceChildren(...(rooms.length?rooms.map(room=>{const node=make('button',undefined,'room-card');node.type='button';node.dataset.state=room.state;node.dataset.tone=String(toneOf(room.id));const plan=make('div',undefined,'room-plan');plan.innerHTML=planMarkup(room);node.append(plan);const body=make('div',undefined,'room-card-body'),top=make('div',undefined,'card-top');top.append(pill(room.state),make('span',t(room.mode),'scope-badge'));const meta=make('p');meta.append(metaItem('users',t('participants')+': '+Object.keys(room.members).length),metaItem('message',t('published')+': '+room.messages.length));body.append(top,make('h3',room.topic),meta);node.append(body);node.onclick=()=>openRoom(room.id);return node;}):[empty('emptyRooms','emptyRoomsHelp')]));}
 async function refreshAgents(){if(!can('agent:manage')){agents=[];el('agents-list').replaceChildren();return;}const epoch=++agentReadEpoch,auth=authEpoch,data=await api('agents');if(epoch!==agentReadEpoch||auth!==authEpoch||!user)return;agents=data;renderAgents();if(!connectionAgentId&&!view.selected){const requested=new URLSearchParams(location.search).get('connect'),saved=agents.find(agent=>agent.id===requested);if(saved){el('room-browser').hidden=true;el('agent-registry').hidden=false;showConnection(saved);}}renderConnection();}
 function renderAgents(){if(!user||!can('agent:manage'))return;el('agents-list').replaceChildren(...(agents.length?agents.map(agent=>{const node=make('div',undefined,'member-card');node.append(identityRow(agent),make('p',t('identityRegistered'),'member-evidence'),make('p',t(contactKey(agent)),'member-evidence'),make('p',t(runtimeTestKey(agent)),'member-evidence'),make('p',t(runtimeReady(agent)?'runtimeReady':'runtimeNotReady'),'member-evidence'),make('p',(agent.model?.label||'unknown')+' · '+t('providerUnknown'),'member-evidence'));node.append(action(t('connectAgent'),()=>showConnection(agent)),action(t('editIdentity'),()=>{const name=prompt(t('setupName'),agent.display_name);if(name===null)return;const handle=prompt(t('agentHandle'),agent.handle);if(handle===null)return;if(!validAgentHandle(handle)){notice('agentHandleInvalid');return;}const body={display_name:name,handle,expected_revision:agent.identity_revision};mutate('edit-identity',body,key=>api('agents/'+agent.id+'/identity',{method:'PATCH',body,key}));}));return node;}):[empty('emptyAgents','emptyAgentsHelp')]));}
 function roomTab(tab,focus=false){for(const name of ['discussion','participants','artifacts','management'])el('tab-'+name).hidden=name!==tab;document.querySelectorAll('[data-tab]').forEach(button=>{const selected=button.dataset.tab===tab;button.setAttribute('aria-selected',String(selected));button.tabIndex=selected?0:-1;if(selected&&focus)button.focus();});}
@@ -276,7 +358,7 @@ function renderRoom(room){
  if(onboardingContext?.room.id===room.id){onboardingContext.room=room;const m=room.members[onboardingContext.agent.id],a=agents.find(a=>a.id===onboardingContext.agent.id);onboardingContext.agent={...onboardingContext.agent,connection:m?.connection||a?.connection,runtime_check:m?.runtime_check};renderOnboardingCommands();renderInviteWizard();}
  renderAccess();
  const effective=room.effective_permissions||[];
- el('room-browser').hidden=true;el('agent-registry').hidden=true;el('detail').hidden=false;el('room-title').textContent=room.topic;el('room-state').replaceChildren(pill(room.state),make('span',t(room.mode),'scope-badge'));if(t(room.mode_status)&&room.mode_status!=='running')el('room-state').append(make('span',t(room.mode_status),'scope-badge'));if(room.pending_controls)el('room-state').append(make('span',t('approvalPending')+': '+room.pending_controls,'chip chip--warn'));el('room-scene').dataset.orbit='off';fillScene(el('room-scene'),room);el('room-presence').replaceChildren(presenceNode(room));
+ el('room-browser').hidden=true;el('agent-registry').hidden=true;el('detail').hidden=false;el('room-title').textContent=room.topic;el('room-state').replaceChildren(pill(room.state),make('span',t(room.mode),'scope-badge'));if(t(room.mode_status)&&room.mode_status!=='running')el('room-state').append(make('span',t(room.mode_status),'scope-badge'));if(room.pending_controls)el('room-state').append(make('span',t('approvalPending')+': '+room.pending_controls,'chip chip--warn'));el('room-stage').innerHTML=stageMarkup(room);
  el('members').replaceChildren(...Object.entries(room.members).map(([id,m])=>{const li=document.createElement('li');li.textContent=(m.display_name||id)+' @'+(m.handle||id)+' · '+m.kind+' · '+m.status;return li;}));
  el('messages').replaceChildren(...room.messages.map(m=>messageNode(room,m)));
  el('tasks').replaceChildren(...room.tasks.map(task=>taskNode(room,task)));
