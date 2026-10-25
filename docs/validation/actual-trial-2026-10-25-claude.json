@@ -1,0 +1,67 @@
+{
+  "recorded_at": "2026-10-25",
+  "scope": "actual provider trial, S1, Claude only; Grok blocked",
+  "server": {
+    "kind": "owned loopback fixture (MemoryStore + real create_app)",
+    "room_id": "9c8480e3ae9eb7f8d92f0c2bee440292",
+    "identities": "synthetic (trial owner + trial-claude)",
+    "provider_attestation": false
+  },
+  "claude": {
+    "runtime": "claude",
+    "cli_version": "2.1.310",
+    "auth_mode": "native",
+    "model_starts_this_record": 3,
+    "connection_test": {
+      "attempt_1": {
+        "result": "passed",
+        "receipt_id": "402e86bb-ec10-4e53-a8e4-c773d10d4ecb",
+        "elapsed_seconds": 36.6,
+        "note": "run through a diagnostic harness after fixing a fixture base_url duplication; the first two connect attempts failed before the provider call"
+      },
+      "attempt_2": {
+        "result": "passed",
+        "receipt_id": "3464a252-0410-4f4e-b0ba-2e309260ac02",
+        "verification": "worker_reported_test",
+        "note": "fresh server restart invalidated the earlier receipt, so the check ran again"
+      }
+    },
+    "contribution": {
+      "message_seq": 8,
+      "kind": "contribution",
+      "execution_evidence": "worker_reported_runtime",
+      "runtime_check_id": "3464a252-0410-4f4e-b0ba-2e309260ac02",
+      "text_chars": 806,
+      "task_events": ["claimed", "preflight", "runtime_started", "runtime_completed", "completed"]
+    },
+    "window_seconds": 53.9
+  },
+  "grok": {
+    "cli_version": "1.0.70",
+    "cli_native": {
+      "result": "runtime_auth_mode_unsupported",
+      "model_starts": 0,
+      "reason": "native Grok login remains gated; the adapter refuses before launching the CLI"
+    },
+    "api": {
+      "result": "runtime_auth_required",
+      "model_starts": 0,
+      "reason": "XAI_API_KEY is not present in this environment"
+    }
+  },
+  "budget": {
+    "claude_starts_before": 3,
+    "claude_starts_used": 3,
+    "claude_starts_after": 0,
+    "codex_starts": "unchanged (6/6 lifetime exhausted)"
+  },
+  "changes_made_because_of_this_trial": [
+    "connector connection-check timeout raised from 30s to 90s: the real Claude cold start measured 36.6s, which the old bound turned into runtime_timeout"
+  ],
+  "not_verified": [
+    "Claude second turn or multi-provider S2",
+    "Grok any inference",
+    "provider billing or usage accounting",
+    "vendor attestation of any kind"
+  ]
+}

@@ -81,7 +81,7 @@ def verify_runtime(client, journal, runtime, kind, credential, deadline, retry_u
             raise ConnectionCheckError('connector_stopped')
         response = bounded_call(runtime, {'purpose': 'connection_test', 'room_id': '__runtime_check__',
                                           'prompt': check['prompt'], 'challenge': check['challenge']},
-                                cancel, min(30, max(0, deadline - time.monotonic())))
+                                cancel, min(90, max(0, deadline - time.monotonic())))  # real Claude cold start measured 36.6s
         check_deadline(deadline)
         if journal.stop_requested():
             raise ConnectionCheckError('connector_stopped')
