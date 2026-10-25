@@ -123,19 +123,22 @@ def test_containment_failure_prevents_execution(monkeypatch, tmp_path):
     assert not marker.exists()
 
 
-def test_posix_detached_descendant_program_cannot_launch(monkeypatch, tmp_path):
+def test_posix_execution_path_fails_closed_before_launch(monkeypatch):
+    """The product path stays closed on POSIX until containment is enabled.
+
+    The containment layer itself now has a POSIX implementation (exercised by
+    tests/test_posix_containment.py on Linux), but no product code may reach it until the
+    supervisor-death gap in docs/POSIX_CONTAINMENT_PLAN.md is closed.
+    """
     import talkabout.processes as processes
     calls = []
-    # This program would escape a plain process group. It must never reach Popen.
-    program = "import subprocess,sys; subprocess.Popen([sys.executable,'-c','import time; time.sleep(20)'],start_new_session=True)"
     def forbidden(*args, **kwargs):
         calls.append(args)
-        raise AssertionError('unsupported platform launched a process')
+        raise AssertionError('closed platform launched a process')
     with monkeypatch.context() as patch:
         patch.setattr(processes.os, 'name', 'posix')
         patch.setattr(processes.subprocess, 'Popen', forbidden)
-        with pytest.raises(ProcessCleanupError, match='runtime_containment_unsupported'):
-            ManagedProcess([sys.executable, '-c', program])
         with pytest.raises(AdapterError, match='runtime_containment_unsupported'):
-            execute_bounded([sys.executable, '-c', program], '', threading.Event(), 1)
+            execute_bounded([sys.executable, '-c', 'pass'], '', threading.Event(), 1)
+    assert calls == []
     assert calls == []

@@ -1,3 +1,15 @@
+## 2026-10-26 (5차) — POSIX 격리 계층(C1) + Linux CI 잡 / POSIX still gated
+
+**LOCAL PROTOTYPE / NOT DEPLOYED. 실제 공급자 시험 NOTRUN. POSIX 실행은 여전히 차단.** 근거·한계는 [SESSION_LOG](SESSION_LOG.md) 2026-10-26 06:30 UTC 항목과 [POSIX_CONTAINMENT_PLAN.md](POSIX_CONTAINMENT_PLAN.md).
+
+| 영역 | 변경 | 검증 |
+| --- | --- | --- |
+| POSIX 격리(C1) | `stop_posix_group`: 세션·pgid 격리, 부모→그룹 종료 사다리, 생존자 재확인, PID 재사용 가드, fail-closed | `tests/test_posix_containment.py` 9건 — WSL Linux 3회 연속 통과, Windows skip |
+| CI | `posix-containment`(ubuntu-latest) 잡 추가 — 기존 CI는 `windows-latest` 하나뿐이라 POSIX 코드가 실행되지 않았다 | 워크플로 JSON 검증 + 이 PR의 Linux 잡 |
+| 보류 | P4(supervisor 사망 시 자식 self-kill) 미구현 → `cli.py`·`adapters.py`의 POSIX 거부 유지 | 계약 테스트 `test_posix_execution_path_fails_closed_before_launch` |
+
+측정(Windows): Python 719 passed / 4 failed(`EXCLUDED` 브라우저 3 + 샌드박스 named-pipe 1) / 32 skipped(PostgreSQL 22 + POSIX 10). 표준 러너가 아닌 동등 명령([STATUS](STATUS.md) §2.1).
+
 ## 2026-10-26 (4차) — 문서 SSOT gate · provider 한도 어휘 / synthetic-only
 
 **LOCAL PROTOTYPE / NOT DEPLOYED. 실제 공급자 시험 NOTRUN.** 다음 트랙 후보 중 두 개를 반영했다. 근거·한계는 [SESSION_LOG](SESSION_LOG.md) 2026-10-26 00:50 UTC 항목.
