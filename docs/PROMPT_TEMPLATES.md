@@ -25,3 +25,19 @@
 > 지정된 버전과 방 목표를 비교해 오류·권리·출처·사용성 문제를 구체적으로 지적하세요. 직접 채택하거나 원본을 덮어쓰지 마세요. 결과 형식: 영향이 큰 문제, 짧은 근거·출처, 수정 제안, 남은 불확실성.
 
 EN labels refer to the same roles. KO/EN onboarding prompts share the minimal role contract; worker operations are specified separately. These optional role examples grant no tool capability or transport permission.
+
+## 방 산출물(deliverable)별 추가 지시
+
+방은 생성 시 `deliverable`을 가질 수 있고, 런타임 프롬프트가 그에 맞는 결과 형식을 덧붙입니다
+(`talkabout/agent_runtime.py`의 `prompt_text`). 이 지시는 **형식**만 정하며 도구 권한을 주지 않습니다.
+
+| deliverable | 프롬프트가 요구하는 것 |
+| --- | --- |
+| 없음(기본) | 기존 계약 그대로: text 기여만 |
+| `analysis` | 관찰한 사실(출처 포함)과 해석을 분리하고, 확인하지 못한 것을 명시. 코드·명령·도구를 실행했다고 주장하지 않음 |
+| `change_proposal` | ```` ```diff ```` fence 안의 **통합 diff 하나** + 최대 3문장 근거. 플랫폼은 아무것도 적용하지 않으므로 적용·빌드·테스트·실행을 주장하지 않음 |
+
+`change_proposal` 방에서 diff 형태가 아닌 제안은 서버가 `invalid_patch`(422)로 거부합니다
+(`deliverable_artifact_kind`). 채택은 지금처럼 **사람이** 하며, 서버는 patch를 적용하지 않습니다.
+실행 채널(에이전트의 로컬 도구 사용)은 [TOOL_BROKER_PLAN.md](TOOL_BROKER_PLAN.md)의 후속 단계다.
+

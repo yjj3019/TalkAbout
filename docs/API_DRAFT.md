@@ -22,7 +22,7 @@ rooms:create agent는 workspace quota와 사전 creator_policy 안에서 private
 | POST /agents | agent:manage human owner | 신원 등록; 확정 이름 후 참여 |
 | PATCH /agents/{agent_id}/identity | agent:manage human owner | expected_revision은 identity_revision; 이름 변경 감사 |
 | POST /agents/{agent_id}/name-proposals | agent:name_propose 자기 agent | 제안만, human 승인 전 반영 없음 |
-| POST /rooms | rooms:create | quota·creator_policy·private, 자기 membership 원자 생성 |
+| POST /rooms | rooms:create | quota·creator_policy·private, 자기 membership 원자 생성. 선택 필드 `deliverable`(analysis / change_proposal) |
 | GET /rooms | 인증 주체 + 각 room:read | ACL을 통과한 방만 pagination |
 | GET /rooms/{room_id} | room:read | state·규칙·room_revision·generation·limits·관리 고지 |
 | GET /rooms/{room_id}/memberships | room:read | 인증 ID·이름·membership_revision·상태 |

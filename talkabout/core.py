@@ -8,7 +8,7 @@ from .identity import REAL_RUNTIMES, public_connection, public_runtime_check
 from .text_files import (claim_proof, filter_refs, public_task, token_hash, validate_refs)
 
 from .domain import (AGENT_PERMISSIONS, HUMAN_PERMISSIONS, Problem, active, authorize,
-                     cancel_tasks, digest, emit, fencing, ident, message, new_room,
+                     cancel_tasks, deliverable_artifact_kind, digest, emit, fencing, ident, message, new_room,
                      record_task_event, replay, require, save_response, schedule, participant_permissions)
 
 
@@ -52,7 +52,8 @@ def public_room(room, actor, principals=None):
                     'synthetic':sum(m.get('execution_evidence')=='synthetic_test_only' for m in current),
                     'unverified':sum(m.get('execution_evidence','unverified_agent')=='unverified_agent' for m in current),
                     'last_response_at':max((m['created_at'] for m in current),default=None)}
-    return {k: copy.deepcopy(room[k]) for k in ("id", "topic", "mode", "state", "generation", "room_revision", "limits", "last_seq")} | {"members": members,
+    return {k: copy.deepcopy(room[k]) for k in ("id", "topic", "mode", "state", "generation", "room_revision", "limits", "last_seq")} | {
+        "deliverable": room.get("deliverable"), "members": members,
         "messages": messages, "tasks": tasks,
         "artifacts": [{**a, "versions": [v for v in a["versions"] if v["seq"] >= viewer_member["read_start_seq"]]}
                       for a in room["artifacts"].values() if any(v["seq"] >= viewer_member["read_start_seq"] for v in a["versions"])],
@@ -65,7 +66,6 @@ def public_room(room, actor, principals=None):
         "deadline": room.get("deadline"), "started_at": room.get("started_at"),
         "effective_permissions": sorted(set(actor["scopes"]) & set(viewer_member["permissions"])),
         "pinned_message_id": room.get("pinned_message_id") if room.get("pinned_message_id") in room["messages"] and room["messages"][room["pinned_message_id"]]["seq"] >= viewer_member["read_start_seq"] else None}
-
 
 def control_parameters(action, parameters, room, member):
     require(isinstance(parameters, dict), "invalid_parameters", 422)
@@ -86,7 +86,6 @@ def control_parameters(action, parameters, room, member):
     else:
         require(not parameters, "invalid_parameters", 422)
     return parameters
-
 
 class Core(Participation):
     def __init__(self, store, text_files=None):
@@ -138,15 +137,17 @@ class Core(Participation):
         actor, rooms, principals = self.store.snapshot(token)
         require(key and len(key) <= 128, "idempotency_key_required", 422)
         require(not ({"actor_id", "agent_id", "role", "badge"} & body.keys()), "actor_field_forbidden", 422)
-        require(set(body) <= {"topic", "mode", "start_policy"}, "invalid_room_fields", 422)
+        require(set(body) <= {"topic", "mode", "start_policy", "deliverable"}, "invalid_room_fields", 422)
         require(body.get("start_policy", "automatic") in {"automatic", "manual"}, "invalid_start_policy", 422)
         require(body.get("start_policy") != "manual" or actor["kind"] == "human", "human_start_required", 403)
+        require(body.get("deliverable") in (None, "analysis", "change_proposal"), "invalid_deliverable", 422)
         # Deterministic create identity makes lost responses replayable without returning a new room.
         room_id = digest([actor["id"], "create", key])[:32]
         if room_id in rooms:
             require(rooms[room_id]["create_digest"] == digest(body), "idempotency_conflict")
             return public_room(rooms[room_id], actor, principals)
-        room = new_room(actor, room_id, body.get("topic"), body.get("mode", "bounded_rounds"), preparing=body.get("start_policy") == "manual")
+        room = new_room(actor, room_id, body.get("topic"), body.get("mode", "bounded_rounds"),
+                        preparing=body.get("start_policy") == "manual", deliverable=body.get("deliverable"))
         room["create_digest"] = digest(body)
         if actor["kind"] == "agent":
             owners = [p["id"] for p in principals.values() if p["owner"] == actor["owner"] and p["kind"] == "human"]
@@ -314,7 +315,10 @@ class Core(Participation):
                                 room["artifacts"][aid] = {"id": aid, "revision": 0, "versions": [], "adopted": None}
                             artifact = room["artifacts"][aid]
                             require(len(artifact["versions"]) < 16, "version_capacity", 429)
-                            artifact["versions"].append({"id": ident(), "seq": room["last_seq"] + 1, "text": msg["text"], "actor_id": actor["id"], "sources": [], "ai_generated": True})
+                            # A change-proposal room must receive a diff; anything else is refused
+                            # before it becomes a version, and the platform never applies it.
+                            kind = deliverable_artifact_kind(room, msg["text"])
+                            artifact["versions"].append({"id": ident(), "seq": room["last_seq"] + 1, "text": msg["text"], "kind": kind, "actor_id": actor["id"], "sources": [], "ai_generated": True})
                             artifact["revision"] += 1
                             emit(room, "artifact.changed", artifact_id=aid, actor_id=actor["id"])
                             proposal = copy.deepcopy(artifact)

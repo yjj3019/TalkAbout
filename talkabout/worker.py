@@ -377,11 +377,14 @@ class Worker:
                     self.journal.stop_state("stopped")
                     return "stopped"
                 context = {"room_id": rid, "generation": task["generation"], "membership_revision": task["membership_revision"], "agent_id": self.actor_id, "display_name": self.actor["display_name"], "role": task.get("role", "participant"),
-                           "topic": room["topic"], "purpose": task["purpose"], "inputs": room["messages"][-8:]}
+                           "topic": room["topic"], "purpose": task["purpose"], "inputs": room["messages"][-8:],
+                           "deliverable": room.get("deliverable")}
                 context.update(task_id=tid,task_attempt=task['attempt'])
                 context["phase"] = task.get("phase")
                 context["round"] = task.get("round")
-                context["artifact_proposals"] = [{"artifact_id": a["id"], "text": a["versions"][-1]["text"]} for a in room["artifacts"] if a["versions"]][-4:]
+                context["artifact_proposals"] = [{"artifact_id": a["id"], "kind": a["versions"][-1].get("kind", "text"),
+                                                  "text": a["versions"][-1]["text"]}
+                                                 for a in room["artifacts"] if a["versions"]][-4:]
                 claimed=payload['task']
                 if claimed.get('attachment_refs'):
                     require_proof=claimed.get('lease_proof')
