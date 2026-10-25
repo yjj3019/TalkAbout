@@ -12,7 +12,7 @@ function can(scope){return !!user?.scopes?.includes(scope);}
 function renderAccess(){for(const id of ['nav-agents','go-register','register-agent'])el(id).hidden=!can('agent:manage');el('create').hidden=!can('rooms:create');const registry=!el('agent-registry').hidden;el('nav-agents').setAttribute('aria-current',registry?'page':'false');el('nav-rooms').setAttribute('aria-current',registry?'false':'page');}
 function language(){document.documentElement.lang=view.language;document.querySelectorAll('[data-i18n]').forEach(node=>node.textContent=t(node.dataset.i18n));el('language').textContent=view.language==='ko'?'EN':'KO';renderSetupGuide();if(noticeKey)notice(noticeKey);el('room-tabs').setAttribute?.('aria-label',t('roomViews'));if(user){renderRooms(roomCache);renderAgents();renderAccess();renderConnection();renderInviteChoice();renderInviteWizard();}}
 function closeLive(){liveSource?.close();liveSource=null;}
-function clearDetail(){stopStageAnimation();textRoomEpoch++;textFileListEpoch++;clearTextFileView();clearCredential();clearOnboarding();clearConnection();inviteDraft=null;for(const id of ['invite-new-name','invite-new-handle','invite-agent-id'])el(id).value='';el('invite-form-error').textContent='';view.close();closeLive();readController?.abort();el('detail').hidden=true;el('intervention-panel').hidden=true;el('room-browser').hidden=false;for(const id of ['messages','artifacts','members','tasks','interventions','workflow'])el(id).replaceChildren();el('room-title').textContent='';el('room-state').textContent='';}
+function clearDetail(){stopStageAnimation();const hud=document.getElementById('room-stage');if(hud)hideStageProfile(hud);textRoomEpoch++;textFileListEpoch++;clearTextFileView();clearCredential();clearOnboarding();clearConnection();inviteDraft=null;for(const id of ['invite-new-name','invite-new-handle','invite-agent-id'])el(id).value='';el('invite-form-error').textContent='';view.close();closeLive();readController?.abort();el('detail').hidden=true;el('intervention-panel').hidden=true;el('room-browser').hidden=false;for(const id of ['messages','artifacts','members','tasks','interventions','workflow'])el(id).replaceChildren();el('room-title').textContent='';el('room-state').textContent='';}
 function signedOut(){pendingTextFiles.clear();textUploadAttempts.clear();textAttachmentSettings={enabled:false};connectionRuntimeChoices.clear();connectionAuthChoices.clear();authEpoch++;user=null;csrf=null;agents=[];roomCache=[];if(communityWatch!==null){window.clearInterval?.(communityWatch);communityWatch=null;}clearDetail();listEpoch++;el('login').hidden=false;el('dashboard').hidden=true;el('rooms').replaceChildren();el('handovers').replaceChildren();el('agents-list').replaceChildren();}
 async function api(path,{method='GET',body,key,signal,access=null}={}){
  const authTicket=authEpoch,viewTicket=view.epoch;
@@ -113,44 +113,115 @@ function actorElement(member, tone) {
   const [outfit, outfitDark] = OUTFITS[index];
   const accent = `hsl(${hue} 58% 62%)`;
   const shirt = '#e9e4d8';
-  const skinShade = 'rgba(0,0,0,.12)';
+  const skinShade = 'rgba(0, 0, 0, .12)';
 
   g.innerHTML = `<g class="ch-flip">` +
     `<ellipse class="ch-shadow" cx="0" cy="47" rx="19" ry="6" fill="#000" opacity=".3"/>` +
-    `<g class="ch-legs">` +
+    `<g class="ch-chair">` +
+      `<rect x="-15" y="20" width="30" height="5.5" rx="2.6" fill="#3b2f26"/>` +
+      `<path d="M-14,21 l0,-15 q0,-4 4,-4 l20,0 q4,0 4,4 l0,15" fill="#4b3a2e"/>` +
+      `<rect x="-11" y="6" width="22" height="3" rx="1.5" fill="#5d4838" opacity=".8"/>` +
+    `</g>` +
+    `<g class="ch-legs ch-legs-stand">` +
       `<g class="leg leg--l"><rect x="-9.5" y="18" width="7.5" height="26" rx="3.6" fill="${outfitDark}"/><ellipse cx="-6.5" cy="44.5" rx="6" ry="3.2" fill="#151d1d"/></g>` +
       `<g class="leg leg--r"><rect x="2" y="18" width="7.5" height="26" rx="3.6" fill="${outfitDark}"/><ellipse cx="5.5" cy="44.5" rx="6" ry="3.2" fill="#151d1d"/></g>` +
     `</g>` +
-    `<g class="ch-torso">` +
-      `<path d="M-15,-13 q15,-6 30,0 l2,28 q0,7 -7,7 h-20 q-7,0 -7,-7z" fill="${outfit}"/>` +
-      `<path d="M-15,-13 q15,-6 30,0 l0.4,6 q-15,-6 -30.4,0z" fill="${outfitDark}" opacity=".55"/><path d="M-14.6,-12.6 q14.6,-5.6 29.2,0" fill="none" stroke="#ffffff" stroke-opacity=".22" stroke-width="1.6" stroke-linecap="round"/>` +
-      `<path d="M-6.5,-13.5 l6.5,11 l6.5,-11 q-6.5,3 -13,0z" fill="${shirt}"/>` +
-      `<path d="M-7,-12.5 l7,12 l7,-12" fill="none" stroke="${outfitDark}" stroke-width="1.8"/>` +
-      `<circle cx="9.5" cy="3" r="3" fill="${accent}"/>` +
-      `<path d="M-9,20 h18" stroke="${outfitDark}" stroke-width="1.4" opacity=".7"/>` +
+    `<g class="ch-legs ch-legs-sit">` +
+      `<path d="M-6,20 q-1,10 6,11 l6,0" fill="none" stroke="${outfitDark}" stroke-width="7" stroke-linecap="round"/>` +
+      `<path d="M6,20 q1,10 -6,11 l-6,0" fill="none" stroke="${outfitDark}" stroke-width="7" stroke-linecap="round"/>` +
+      `<ellipse cx="-8" cy="34" rx="5" ry="2.6" fill="#151d1d"/><ellipse cx="8" cy="34" rx="5" ry="2.6" fill="#151d1d"/>` +
     `</g>` +
-    `<g class="arm arm--l"><rect x="-21" y="-10" width="7" height="23" rx="3.5" fill="${outfitDark}"/>` +
-      `<circle cx="-17.5" cy="15.5" r="4.2" fill="${profile.skin}"/></g>` +
-    `<g class="arm arm--r"><rect x="14" y="-10" width="7" height="23" rx="3.5" fill="${outfitDark}"/>` +
-      `<circle cx="17.5" cy="15.5" r="4.2" fill="${profile.skin}"/></g>` +
-    `<g class="ch-head">` +
-      `${hairBack(profile.hair, profile.hairColor)}` +
-      `<rect x="-4.2" y="-21" width="8.4" height="9" rx="3.4" fill="${profile.skin}"/>` +
-      `<rect x="-4.2" y="-21" width="8.4" height="3.4" rx="1.7" fill="${skinShade}"/>` +
-      `<circle cx="0" cy="-30" r="11.8" fill="${profile.skin}"/>` +
-      `<circle cx="-12.2" cy="-29" r="2.6" fill="${profile.skin}"/><circle cx="12.2" cy="-29" r="2.6" fill="${profile.skin}"/>` +
-      `${hairFront(profile.hair, profile.hairColor)}` +
-      `<g class="ch-eyes"><rect x="-6.6" y="-33.5" width="3.2" height="4.2" rx="1.6" fill="#20302d"/>` +
-        `<rect x="3.4" y="-33.5" width="3.2" height="4.2" rx="1.6" fill="#20302d"/></g>` +
-      `<path d="M-7.5,-37.5 q2.4,-1.4 4.6,-.4 M3,-37.9 q2.2,-1 4.6,.4" fill="none" stroke="${profile.hairColor}" stroke-width="1.3" opacity=".75"/>` +
-      `<path d="M-2.8,-24.6 q2.8,2.4 5.6,0" fill="none" stroke="#9a5f4f" stroke-width="1.5" stroke-linecap="round"/>` +
-      `${accessoryMarkup(profile.accessory, accent, outfitDark)}` +
+    `<g class="ch-upper">` +
+      `<g class="ch-torso">` +
+        `<path d="M-15,-13 q15,-6 30,0 l2,28 q0,7 -7,7 h-20 q-7,0 -7,-7z" fill="${outfit}"/>` +
+        `<path d="M-15,-13 q15,-6 30,0 l0.4,6 q-15,-6 -30.4,0z" fill="${outfitDark}" opacity=".55"/>` +
+        `<path d="M-14.6,-12.6 q14.6,-5.6 29.2,0" fill="none" stroke="#ffffff" stroke-opacity=".22" stroke-width="1.6" stroke-linecap="round"/>` +
+        `<path d="M-6.5,-13.5 l6.5,11 l6.5,-11 q-6.5,3 -13,0z" fill="${shirt}"/>` +
+        `<path d="M-7,-12.5 l7,12 l7,-12" fill="none" stroke="${outfitDark}" stroke-width="1.8"/>` +
+        `<circle cx="9.5" cy="3" r="3" fill="${accent}"/>` +
+        `<path d="M-9,20 h18" stroke="${outfitDark}" stroke-width="1.4" opacity=".7"/>` +
+      `</g>` +
+      `<g class="arm arm--l"><rect x="-21" y="-10" width="7" height="23" rx="3.5" fill="${outfitDark}"/>` +
+        `<circle cx="-17.5" cy="15.5" r="4.2" fill="${profile.skin}"/></g>` +
+      `<g class="arm arm--r"><rect x="14" y="-10" width="7" height="23" rx="3.5" fill="${outfitDark}"/>` +
+        `<circle cx="17.5" cy="15.5" r="4.2" fill="${profile.skin}"/></g>` +
+      `<g class="ch-head">` +
+        `${hairBack(profile.hair, profile.hairColor)}` +
+        `<rect x="-4.2" y="-21" width="8.4" height="9" rx="3.4" fill="${profile.skin}"/>` +
+        `<rect x="-4.2" y="-21" width="8.4" height="3.4" rx="1.7" fill="${skinShade}"/>` +
+        `<circle cx="0" cy="-30" r="11.8" fill="${profile.skin}"/>` +
+        `<circle cx="-11.5" cy="-29" r="2.5" fill="${profile.skin}"/><circle cx="11.5" cy="-29" r="2.5" fill="${profile.skin}"/>` +
+        `${hairFront(profile.hair, profile.hairColor)}` +
+        `<g class="ch-eyes"><rect x="-6.4" y="-33.5" width="3.2" height="4.2" rx="1.6" fill="#20302d"/>` +
+          `<rect x="3.2" y="-33.5" width="3.2" height="4.2" rx="1.6" fill="#20302d"/></g>` +
+        `<path d="M-7.5,-37.5 q2.4,-1.4 4.6,-.4 M3,-37.9 q2.2,-1 4.6,.4" fill="none" stroke="${profile.hairColor}" stroke-width="1.3" opacity=".75"/>` +
+        `<g class="ch-mouth"><path class="mouth-idle" d="M-2.8,-24.6 q2.8,2.4 5.6,0" fill="none" stroke="#9a5f4f" stroke-width="1.5" stroke-linecap="round"/>` +
+          `<ellipse class="mouth-talk" cx="0" cy="-23.6" rx="2.5" ry="1.9" fill="#8a4a3e" stroke="#3a2320" stroke-width=".6"/></g>` +
+        `${accessoryMarkup(profile.accessory, accent, outfitDark)}` +
+      `</g>` +
     `</g>` +
     `</g>` +
     `<g class="ch-bubble"><rect x="-17" y="-88" width="34" height="21" rx="10.5"/>` +
       `<circle cx="-6" cy="-77.5" r="2.2"/><circle cx="0" cy="-77.5" r="2.2"/><circle cx="6" cy="-77.5" r="2.2"/></g>` +
     `<text x="0" y="-50" text-anchor="middle" class="plate">${String(member.display_name || member.id || '?').trim().slice(0, 12)}</text>`;
   return g;
+}
+function stageProfile(host) {
+  const panel = host.closest ? host.closest('.room-stage-panel') : null;
+  if (!panel) return null;
+  let card = panel.querySelector('.stage-profile');
+  if (!card) {
+    card = make('aside', undefined, 'stage-profile');
+    card.hidden = true;
+    card.setAttribute('role', 'group');
+    card.setAttribute('aria-live', 'polite');
+    const close = make('button', '×', 'stage-profile-close');
+    close.type = 'button';
+    close.setAttribute('aria-label', 'close');
+    close.onclick = () => { card.hidden = true; };
+    card.append(close);
+    panel.append(card);
+  }
+  return card;
+}
+function hideStageProfile(host) {
+  const card = stageProfile(host);
+  if (card) card.hidden = true;
+}
+function showStageProfile(room, actorId, event, host) {
+  const card = stageProfile(host);
+  if (!card) return;
+  const member = room.members[actorId] || { id: actorId };
+  const agent = (typeof agents !== 'undefined' ? agents : []).find(a => a.id === actorId);
+  const profile = agent || member;
+  const messages = room.messages.filter(m => m.actor_id === actorId);
+  const last = messages[messages.length - 1];
+  card.replaceChildren();
+  const close = make('button', '×', 'stage-profile-close');
+  close.type = 'button';
+  close.setAttribute('aria-label', 'close');
+  close.onclick = () => { card.hidden = true; };
+  card.append(close);
+  card.append(make('h3', profile.display_name || actorId));
+  card.append(make('p', '@' + (profile.handle || actorId), 'stage-profile-handle'));
+  const badges = make('div', undefined, 'stage-profile-badges');
+  badges.append(pill(member.status || 'active'));
+  badges.append(make('span', t(member.kind === 'agent' ? 'agentBadge' : 'humanBadge'), 'chip'));
+  card.append(badges);
+  const list = make('dl');
+  list.append(make('dt', t('published')), make('dd', String(messages.length)));
+  if (last) list.append(make('dt', t('lastContribution')), make('dd', clockTime(last.created_at)));
+  if (member.connection) list.append(make('dt', t('connection')), make('dd', t(contactKey(member))));
+  if (member.runtime_check) list.append(make('dt', t('runtimeTest')), make('dd', t(runtimeTestKey(member))));
+  card.append(list);
+  card.hidden = false;
+  const panel = host.closest('.room-stage-panel');
+  const rect = panel.getBoundingClientRect();
+  const width = card.offsetWidth || 232;
+  const x = Math.min(rect.width - width - 10, Math.max(10, event.clientX - rect.left - width / 2));
+  const y = Math.max(10, event.clientY - rect.top - (card.offsetHeight || 180) - 16);
+  card.style.left = x + 'px';
+  card.style.top = y + 'px';
 }
 function startStageAnimation(room) {
   stopStageAnimation();
@@ -165,26 +236,33 @@ function startStageAnimation(room) {
   const speakCutoff = (Date.now() / 1000) - 120;
   const activeSpeaker = lastAgent && lastAgent.created_at > speakCutoff ? lastAgent.actor_id : null;
   const spot = svg.querySelector('.spot');
-
   const usedTones = new Set();
+
   const actors = members.map(([id, member], index) => {
-    const angle = -Math.PI / 2 + (index * Math.PI * 2) / members.length;
+    const seatAngle = -Math.PI / 2 + (index * Math.PI * 2) / members.length;
     let tone = toneOf(id);
     while (usedTones.has(tone)) tone = (tone + 1) % 6;
     usedTones.add(tone);
     const node = actorElement({ ...member, id }, tone);
     group.append(node);
     const speaking = activeSpeaker === id;
+    node.classList.add('seated');
     if (speaking) node.classList.add('speaking');
     return {
-      node, id, angle,
-      radius: speaking ? 0.94 : 1.04 + (index % 2) * 0.06,
-      targetAngle: angle, targetRadius: 1.04 + (index % 2) * 0.06,
-      idleUntil: speaking ? Infinity : performance.now() + 1200 + index * 800,
-      speed: 0.5 + (index % 3) * 0.12,
-      speaking, facing: 1, bob: Math.random() * Math.PI * 2
+      node, id, seatAngle, angle: seatAngle, radius: 0.94,
+      targetAngle: seatAngle, targetRadius: 0.94,
+      state: 'seated', phase: 'out',
+      nextChange: speaking ? Infinity : performance.now() + 4000 + index * 2600 + Math.random() * 4000,
+      speed: 0.42 + (index % 3) * 0.1,
+      speaking, facing: 1, x: 0, y: 0
     };
   });
+
+  host.onclick = event => {
+    const target = event.target.closest ? event.target.closest('.ch') : null;
+    if (target && target.dataset.id) showStageProfile(room, target.dataset.id, event, host);
+    else hideStageProfile(host);
+  };
 
   let last = performance.now();
   let view = { ...BASE_VIEW };
@@ -193,30 +271,49 @@ function startStageAnimation(room) {
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
     const speaker = actors.find(a => a.speaking);
+
     for (const actor of actors) {
-      if (!actor.speaking && now > actor.idleUntil) {
-        actor.targetAngle = actor.angle + (Math.random() * 1.6 - 0.8);
-        actor.targetRadius = 1.0 + Math.random() * 0.12;
-        actor.idleUntil = now + 1600 + Math.random() * 2800;
-      }
-      const deltaAngle = shortAngle(actor.angle, actor.targetAngle);
-      const moving = Math.abs(deltaAngle) > 0.012 || Math.abs(actor.radius - actor.targetRadius) > 0.01;
-      if (moving) {
-        const step = Math.min(Math.abs(deltaAngle), actor.speed * dt);
-        actor.angle += Math.sign(deltaAngle) * step;
-        actor.radius += (actor.targetRadius - actor.radius) * Math.min(1, dt * 1.6);
-        const next = pointOnRing(actor.angle, actor.radius);
-        const facing = Math.cos(actor.angle) >= 0 ? 1 : -1;
-        if (facing !== actor.facing) {
-          actor.facing = facing;
-          const flip = actor.node.querySelector('.ch-flip');
-          if (flip) flip.setAttribute('transform', `scale(${facing} 1)`);
+      if (actor.speaking) {
+        actor.angle = actor.seatAngle; actor.radius = 0.94;
+      } else if (actor.state === 'seated') {
+        actor.angle = actor.seatAngle; actor.radius = 0.94;
+        if (now > actor.nextChange) {
+          actor.state = 'walking'; actor.phase = 'out';
+          actor.targetAngle = actor.seatAngle + (Math.random() * 1.5 - 0.75);
+          actor.targetRadius = 1.08 + Math.random() * 0.08;
+          actor.node.classList.remove('seated');
         }
-        actor.node.classList.add('walking');
-        void next;
       } else {
-        actor.node.classList.remove('walking');
+        const deltaAngle = shortAngle(actor.angle, actor.targetAngle);
+        const deltaRadius = actor.targetRadius - actor.radius;
+        const moving = Math.abs(deltaAngle) > 0.02 || Math.abs(deltaRadius) > 0.012;
+        if (moving) {
+          actor.angle += Math.sign(deltaAngle) * Math.min(Math.abs(deltaAngle), actor.speed * dt);
+          actor.radius += Math.sign(deltaRadius) * Math.min(Math.abs(deltaRadius), dt * 0.09);
+          actor.node.classList.add('walking');
+          const facing = Math.cos(actor.angle) >= 0 ? 1 : -1;
+          if (facing !== actor.facing) {
+            actor.facing = facing;
+            const flip = actor.node.querySelector('.ch-flip');
+            if (flip) flip.setAttribute('transform', `scale(${facing} 1)`);
+          }
+        } else {
+          actor.node.classList.remove('walking');
+          if (actor.phase === 'out') {
+            actor.phase = 'back';
+            actor.targetAngle = actor.seatAngle;
+            actor.targetRadius = 0.94;
+            actor.nextChange = now + 1200;
+          } else {
+            actor.state = 'seated';
+            actor.angle = actor.seatAngle;
+            actor.radius = 0.94;
+            actor.node.classList.add('seated');
+            actor.nextChange = now + 9000 + Math.random() * 12000;
+          }
+        }
       }
+
       const point = pointOnRing(actor.angle, actor.radius);
       const scale = 0.78 + (point.y - 260) / 700;
       actor.node.setAttribute('transform',
@@ -569,7 +666,7 @@ function renderRoom(room){
  if(onboardingContext?.room.id===room.id){onboardingContext.room=room;const m=room.members[onboardingContext.agent.id],a=agents.find(a=>a.id===onboardingContext.agent.id);onboardingContext.agent={...onboardingContext.agent,connection:m?.connection||a?.connection,runtime_check:m?.runtime_check};renderOnboardingCommands();renderInviteWizard();}
  renderAccess();
  const effective=room.effective_permissions||[];
- el('room-browser').hidden=true;el('agent-registry').hidden=true;el('detail').hidden=false;el('room-title').textContent=room.topic;el('room-state').replaceChildren(pill(room.state),make('span',t(room.mode),'scope-badge'));if(t(room.mode_status)&&room.mode_status!=='running')el('room-state').append(make('span',t(room.mode_status),'scope-badge'));if(room.pending_controls)el('room-state').append(make('span',t('approvalPending')+': '+room.pending_controls,'chip chip--warn'));el('room-stage').dataset.set=room.mode;el('room-stage').innerHTML=stageMarkup(room);startStageAnimation(room);const hud=el('stage-status');if(hud)hud.textContent=t(room.state)+' · '+t(room.mode);
+ el('room-browser').hidden=true;el('agent-registry').hidden=true;el('detail').hidden=false;el('room-title').textContent=room.topic;el('room-state').replaceChildren(pill(room.state),make('span',t(room.mode),'scope-badge'));if(t(room.mode_status)&&room.mode_status!=='running')el('room-state').append(make('span',t(room.mode_status),'scope-badge'));if(room.pending_controls)el('room-state').append(make('span',t('approvalPending')+': '+room.pending_controls,'chip chip--warn'));try{el('room-stage').dataset.set=room.mode;el('room-stage').innerHTML=stageMarkup(room);startStageAnimation(room);}catch(error){window.__stageError=String(error&&error.stack||error);}const hud=el('stage-status');if(hud)hud.textContent=t(room.state)+' · '+t(room.mode);
  el('members').replaceChildren(...Object.entries(room.members).map(([id,m])=>{const li=document.createElement('li');li.textContent=(m.display_name||id)+' @'+(m.handle||id)+' · '+m.kind+' · '+m.status;return li;}));
  el('messages').replaceChildren(...room.messages.map(m=>messageNode(room,m)));
  el('tasks').replaceChildren(...room.tasks.map(task=>taskNode(room,task)));

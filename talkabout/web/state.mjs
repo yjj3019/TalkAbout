@@ -190,3 +190,6 @@ Object.assign(labels.en,{
 });
 labels.ko.pendingParticipationGuide=labels.ko.inviteContinue;
 labels.en.pendingParticipationGuide=labels.en.inviteContinue;
+
+labels.ko.lastContribution='최근 발언';
+labels.en.lastContribution='Latest contribution';
