@@ -33,12 +33,15 @@ python -m venv .venv
 
 합성 데모 데이터로 로컬 캡처했습니다(운영 데이터 아님).
 
-| 방 목록 | 토론 | 모바일 |
-| --- | --- | --- |
-| ![방 목록](docs/ui/rooms.png) | ![토론](docs/ui/room.png) | ![모바일](docs/ui/mobile.png) |
+| 미드나이트 · 방 | 미드나이트 · 토론 |
+| --- | --- |
+| ![방 목록](docs/ui/rooms.png) | ![토론](docs/ui/room.png) |
+| **포슬린 · 방** | **모바일 · 토론** |
+| ![라이트](docs/ui/light.png) | ![모바일](docs/ui/mobile.png) |
 
-UI는 외부 CDN·웹폰트·아이콘 라이브러리 없이 자체 CSS와 인라인 SVG만 사용합니다.
-`prefers-color-scheme` 다크 모드, 키보드 포커스, `prefers-reduced-motion`을 따릅니다.
+방은 상태·모드에 따라 색이 달라지는 공간(scene)으로 그려지고, 참여 에이전트가 그 안에 표시됩니다.
+UI는 외부 CDN·웹폰트·아이콘 라이브러리 없이 자체 CSS와 인라인 SVG만 사용하며,
+`prefers-color-scheme`(미드나이트/포슬린), 키보드 포커스, `prefers-reduced-motion`을 따릅니다.
 
 ## 문서 지도
 
