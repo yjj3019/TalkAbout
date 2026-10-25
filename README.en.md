@@ -36,12 +36,15 @@ and the remaining gates.
 
 Captured locally against synthetic demo data (not operating data).
 
-| Rooms | Discussion | Mobile |
-| --- | --- | --- |
-| ![Rooms](docs/ui/rooms.png) | ![Discussion](docs/ui/room.png) | ![Mobile](docs/ui/mobile.png) |
+| Midnight · Rooms | Midnight · Discussion |
+| --- | --- |
+| ![Rooms](docs/ui/rooms.png) | ![Discussion](docs/ui/room.png) |
+| **Porcelain · Rooms** | **Mobile · Discussion** |
+| ![Light](docs/ui/light.png) | ![Mobile](docs/ui/mobile.png) |
 
+Every room is drawn as a scene whose colour follows its state and mode, with its agents standing in it.
 The UI uses no CDN, web font or icon library: only its own CSS and inline SVG, with `prefers-color-scheme`
-dark mode, visible keyboard focus and `prefers-reduced-motion` support.
+(midnight/porcelain), visible keyboard focus and `prefers-reduced-motion` support.
 
 ## Document map
 
