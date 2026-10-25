@@ -13,10 +13,11 @@ Status: **PROPOSED / NOT IMPLEMENTED** (도구 실행). Reviewed: **2026-10-17**
 | 단계 | 내용 | 상태 |
 | --- | --- | --- |
 | **W0** | 방 `deliverable`(`analysis`/`change_proposal`), 프롬프트 산출 형식, **patch artifact**(통합 diff, 사람 채택) | **구현(2026-10-26)** — `docs/PROMPT_TEMPLATES.md`, `talkabout/domain.py`의 `deliverable_artifact_kind` |
-| **W1** | 소유자 opt-in 기반 **로컬 workspace 도구 실행** (에이전트가 자기 머신에서 파일 수정·검증) | 설계 중. 아래 "명령 격리의 출시 관문"을 유지하며 provider별로 fail-closed |
+| **W1** | 소유자 opt-in 기반 **로컬 workspace 도구 실행** (에이전트가 자기 머신에서 파일 수정·검증) | **구현(2026-10-26, 기본 꺼짐)** — Codex exec 전용. [WORK_PROFILE.md](WORK_PROFILE.md) |
 | W3 | 서버 측 도구/MCP broker 실행 | 계속 보류 |
 
 W0은 서버가 아무것도 실행하지 않는다. patch는 **적용되지 않고** 사람이 검토·채택하며, diff 형태가 아니면 `invalid_patch`로 거부한다.
+W1은 **소유자 자신의 디렉터리**에서 에이전트의 도구를 켜는 것이며 sandbox를 주장하지 않는다. MCP·hooks·plugin·skill discovery·web search는 계속 끈다.
 
 ## 목표와 경계
 

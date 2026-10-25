@@ -1,3 +1,16 @@
+## 2026-10-26 (7차) — W1 opt-in 로컬 작업 프로필 / work profile, default off
+
+**LOCAL PROTOTYPE / NOT DEPLOYED. 실제 공급자 작업 턴 NOTRUN. sandbox 아님.** 근거·사용법은 [WORK_PROFILE.md](WORK_PROFILE.md), [SESSION_LOG](SESSION_LOG.md) 2026-10-26 07:30 UTC 항목.
+
+| 영역 | 변경 | 검증 |
+| --- | --- | --- |
+| 런타임 | `work_profile`/`work_workspace` 옵션, Codex exec `--sandbox workspace-write`, 작업 도구만 on(MCP·hooks·plugin·web search off) | `tests/test_work_profile.py` 17 |
+| workspace 검증 | 없음·파일·symlink·홈·루트·플랫폼 트리 겹침·쓰기 불가 거절 | 동 파일 |
+| CLI | `--work-profile` + `--work-workspace` 강제 동반, Codex exec 전용, synthetic/POSIX 거절 | `tests/test_work_profile_cli.py` 5 |
+| 프롬프트 | 작업 디렉터리 한정·"플랫폼은 적용하지 않는다" 명시 | 동 파일 |
+
+측정(Windows): Python 754 passed / 4 failed(`EXCLUDED` 브라우저 3 + 샌드박스 named-pipe 1) / 33 skipped. **실제 공급자 작업 턴은 NOTRUN.**
+
 ## 2026-10-26 (6차) — W0 방 산출물·patch artifact / work deliverables, no execution
 
 **LOCAL PROTOTYPE / NOT DEPLOYED. 실제 공급자 시험 NOTRUN. 실행 채널은 열지 않았다.** 근거는 [SESSION_LOG](SESSION_LOG.md) 2026-10-26 07:00 UTC 항목.

@@ -1,5 +1,24 @@
 # TalkAbout session log
 
+## 2026-10-26 07:30 UTC — W1: opt-in 로컬 작업 프로필 / work profile
+
+방에서 **실제 코딩·분석**이 가능하도록 소유자가 명시적으로 켜는 작업 프로필을 구현했다. 기본은 꺼짐이고 sandbox가 아니다.
+
+| 항목 | 내용 |
+| --- | --- |
+| CLI | `--work-profile --work-workspace <dir>` 함께 필요. 현재 **Codex `exec-json` 전용**, Claude/Grok/app-server는 거절 |
+| 격리 | Codex sandbox `read-only` → `workspace-write`. shell·patch 도구만 켜고 **MCP·hooks·plugin·skill discovery·web search는 계속 끔** |
+| cwd | 소유자 지정 디렉터리. 런타임은 생성·삭제하지 않음(`_FixedWorkspace`) |
+| 거절 | 없음 / 파일 / symlink / 홈 / 파일시스템 루트 / TalkAbout 소스 트리(조상·자손) / 쓰기 불가 |
+| 프롬프트 | 작업 디렉터리 경로와 "그 밖은 건드리지 말 것, 플랫폼은 아무것도 적용하지 않는다"를 앞에 붙임 |
+| 증거 | 서버는 무엇도 검증하지 못한다. 기여는 `worker_reported_runtime`으로만 남고 채택은 사람이 한다 |
+
+### 검증 (합성만)
+
+- `tests/test_work_profile.py` **17건** + `tests/test_work_profile_cli.py` **5건** 통과.
+- **실제 공급자 작업 턴은 NOTRUN** — 예산·동의 필요. 시험 시에는 변경이 남지 않는 임시 디렉터리를 workspace로 두고 `--max-model-calls`/`--max-seconds`를 작게 잡는다.
+- sandbox·egress 제한은 **미구현**이며 [TOOL_BROKER_PLAN.md](TOOL_BROKER_PLAN.md)의 관문을 그대로 유지한다.
+
 ## 2026-10-26 07:00 UTC — W0: 방 산출물·patch artifact / work deliverables without execution
 
 방이 단순 채팅이 아니라 **검토 가능한 실제 작업 산출물**을 갖도록 W0을 구현했다. 실행 채널은 열지 않았다.

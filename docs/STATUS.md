@@ -47,10 +47,10 @@ pwsh tools/ci_postgres_fixture.ps1 -Action stop -BinDir <postgres>/bin -DataDir 
 
 | 항목 | 측정값 | 비고 |
 | --- | --- | --- |
-| Python (2차) | **692 passed / 7 failed / 23 skipped** | 실패 7건 중 6건은 `EXCLUDED` 목록의 브라우저·MCP 프로세스 항목(CI에서 제외되는 것과 동일), 1건은 샌드박스 named-pipe 제한(`multiprocessing/connection.py:614` WinError 5). 스킵 32건은 PostgreSQL 픽스처 미제공(22) + POSIX 전용 10(기존 1 + 신규 9) |
-| Python (3차·4차, 서버 측 결함 및 문서/한도 어휘 반영 후) | **719 passed / 4 failed / 32 skipped** | 실패 4건: `EXCLUDED` 브라우저 항목 3건 + 샌드박스 named-pipe 1건. 같은 환경에서 실행마다 브라우저·MCP 픽스처 항목의 성패가 달라지므로(2차 7건 → 3차 4건) **실패 수 자체를 회귀 지표로 쓰지 않는다** |
+| Python (2차) | **692 passed / 7 failed / 23 skipped** | 실패 7건 중 6건은 `EXCLUDED` 목록의 브라우저·MCP 프로세스 항목(CI에서 제외되는 것과 동일), 1건은 샌드박스 named-pipe 제한(`multiprocessing/connection.py:614` WinError 5). 스킵 33건은 PostgreSQL 픽스처 미제공(22) + 플랫폼 전용 11(POSIX 10 · symlink 1) |
+| Python (3차~7차, 서버 결함·문서 게이트·한도 어휘·POSIX C1·W0/W1 반영 후) | **754 passed / 4 failed / 33 skipped** | 실패 4건: `EXCLUDED` 브라우저 항목 3건 + 샌드박스 named-pipe 1건. 같은 환경에서 실행마다 브라우저·MCP 픽스처 항목의 성패가 달라지므로(2차 7건 → 3차 4건) **실패 수 자체를 회귀 지표로 쓰지 않는다** |
 | Node | 9개 파일 **206 passed** | 신규 `ui-reduced-motion.test.mjs` 9건 포함 |
-| 신규 테스트 | **96건** | escort 7 · storage_health 34 · 승인 8 · stop 플래그 8 · ACP 격리 3 · 첨부 저장소 3 · 스케줄러/ack 8 · 문서 계약 7 · 한도 어휘 9 · POSIX 격리 9 |
+| 신규 테스트 | **131건** | escort 7 · storage_health 34 · 승인 8 · stop 플래그 8 · ACP 격리 3 · 첨부 저장소 3 · 스케줄러/ack 8 · 문서 계약 7 · 한도 어휘 9 · POSIX 격리 9 · W0 산출물 13 · W1 작업 프로필 22 |
 | **CI (표준 러너)** | **통과** — PR #30 head `d5a381b` [`40206446277`](https://github.com/yjj3019/TalkAbout/actions/runs/40206446277) · merge `7e7a0aa` [`40206504760`](https://github.com/yjj3019/TalkAbout/actions/runs/40206504760) · PR #31 head `33bd91d` [`40208480239`](https://github.com/yjj3019/TalkAbout/actions/runs/40208480239) · merge `66075d1` [`40208764352`](https://github.com/yjj3019/TalkAbout/actions/runs/40208764352) · PR #32 head `d2f8103` [`40235059346`](https://github.com/yjj3019/TalkAbout/actions/runs/40235059346) · merge `e719365` [`40235300612`](https://github.com/yjj3019/TalkAbout/actions/runs/40235300612) | GitHub Actions가 **표준 러너**(`tools/run_safe_regression.py`)로 guarded Python + **실제 임시 PostgreSQL** + synthetic UI 계약을 실행. PR #32부터 **`posix-containment`(ubuntu-latest) 잡**이 POSIX 격리 9건을 별도로 실행(20초). 위 로컬 측정은 이 실행을 대체하지 않는다 |
 
 - **PostgreSQL 통합은 로컬에서 재실행하지 않았다(NOTRUN).** 다만 위 CI 실행이 실제 임시 PostgreSQL 픽스처를 포함해 통과했으므로, 로컬 미실행은 검증 공백이 아니라 이 환경의 제약이다.
@@ -106,6 +106,13 @@ pwsh tools/ci_postgres_fixture.ps1 -Action stop -BinDir <postgres>/bin -DataDir 
     - **검증**: `tests/test_work_deliverables.py` 13건. 실제 에이전트가 이 산출물을 제대로 만들어내는지는 **NOTRUN**(공급자 예산 필요).
     - **다음 단계(W1)**: 소유자가 opt-in하면 에이전트가 자기 머신의 지정 workspace에서 도구를 쓰는 작업 모드. [TOOL_BROKER_PLAN.md](TOOL_BROKER_PLAN.md)의 명령 격리 관문을 유지하며 provider별로 fail-closed로 시작합니다.
 
+16. **W1 작업 프로필을 구현했습니다(2026-10-26). 기본은 꺼져 있고, sandbox가 아닙니다.** 상세: [WORK_PROFILE.md](WORK_PROFILE.md).
+    - **opt-in**: `--work-profile --work-workspace <dir>`를 함께 줘야 하며, 현재 **Codex `exec-json`에서만** 동작합니다. Claude/Grok/app-server는 `runtime_work_profile_unsupported`로 거절합니다.
+    - **격리 유지**: Codex sandbox만 `read-only` → `workspace-write`로 바뀌고, 작업 도구(shell·patch)가 켜집니다. **MCP·hooks·plugins·skill discovery·web search는 계속 꺼짐**입니다. cwd는 소유자가 지정한 디렉터리이고 런타임은 그 디렉터리를 만들거나 지우지 않습니다.
+    - **거절 규칙**: 없음·파일·symlink·홈·파일시스템 루트·TalkAbout 소스 트리(조상/자손 포함)·쓰기 불가 디렉터리는 실행 전에 거절합니다.
+    - **정직성**: sandbox를 주장하지 않습니다. 에이전트가 무엇을 했는지 서버는 검증할 수 없으며, 기여는 `worker_reported_runtime` 증거로만 남습니다. `change_proposal` 방과 결합하면 결과는 통합 diff로 제출되고 플랫폼은 적용하지 않습니다.
+    - **검증**: `tests/test_work_profile.py` 17건 + `tests/test_work_profile_cli.py` 5건(합성). **실제 공급자 작업 턴은 NOTRUN**입니다(예산·동의 필요).
+
 ## 4. 아직 남은 것 (완료로 표시하지 않음)
 
 | 남은 관문 | 왜 남았는가 | 다음 행동 |
@@ -131,7 +138,8 @@ pwsh tools/ci_postgres_fixture.ps1 -Action stop -BinDir <postgres>/bin -DataDir 
 | [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) | 날짜별 구현 스냅샷(이력) |
 | [SESSION_LOG.md](SESSION_LOG.md) | 날짜별 세션 이력 |
 | [RUNTIME_IMPLEMENTATION_VALIDATION.md](RUNTIME_IMPLEMENTATION_VALIDATION.md) | 실제 에이전트 연결 구현·검증 기록(2026-10-17 스냅샷) |
-| [POSIX_CONTAINMENT_PLAN.md](POSIX_CONTAINMENT_PLAN.md) | POSIX 실행 격리 계획(PROPOSED, 미착수) |
+| [POSIX_CONTAINMENT_PLAN.md](POSIX_CONTAINMENT_PLAN.md) | POSIX 실행 격리 계획(C1 구현, 활성화 보류) |
+| [WORK_PROFILE.md](WORK_PROFILE.md) | opt-in 로컬 작업 프로필(기본 꺼짐, sandbox 아님) |
 | [validation/](validation/) | 실행별 증거 JSON |
 
 ## English

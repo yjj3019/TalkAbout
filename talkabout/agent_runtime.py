@@ -59,6 +59,59 @@ _CONFIG_OPTIONS = frozenset({
 })
 
 
+class _FixedWorkspace:
+    """An owner-declared directory used as-is; the runtime never creates or deletes it."""
+
+    def __init__(self, path):
+        self.name = str(path)
+
+    def cleanup(self):
+        return None
+
+
+def _validated_work_workspace(kind, codex_transport, path):
+    """Resolve the one directory a work-profile turn may read and edit.
+
+    This is a trust transfer to the owner's own directory, not a sandbox: the provider's
+    workspace-write policy bounds writes and the containment layer bounds lifetime. The
+    directory is refused when it would swallow the platform or the whole home tree.
+    """
+    if kind != 'codex' or codex_transport != 'exec-json':
+        raise AdapterError('runtime_work_profile_unsupported')
+    if not isinstance(path, str) or not path.strip():
+        raise AdapterError('runtime_work_workspace_required')
+    candidate = Path(path).expanduser()
+    if candidate.is_symlink():
+        raise AdapterError('runtime_work_workspace_invalid')
+    try:
+        resolved = candidate.resolve(strict=True)
+    except OSError:
+        raise AdapterError('runtime_work_workspace_missing') from None
+    if not resolved.is_dir():
+        raise AdapterError('runtime_work_workspace_invalid')
+    home = Path.home().resolve()
+    package = Path(__file__).resolve().parents[1]
+    if resolved == Path(resolved.anchor) or resolved == home:
+        raise AdapterError('runtime_work_workspace_too_broad')
+    if resolved == package or package in resolved.parents or resolved in package.parents:
+        raise AdapterError('runtime_work_workspace_overlaps_platform')
+    if not os.access(resolved, os.W_OK):
+        raise AdapterError('runtime_work_workspace_not_writable')
+    return resolved
+
+
+def work_prompt_text(workspace):
+    """Instruction prepended for a work-profile turn.
+
+    The directory is the agent's own machine path; the platform applies nothing, so any
+    report of a change stays worker-reported evidence.
+    """
+    return ('Work profile (owner opt-in): you may inspect and edit files inside this directory only: '
+            '%s\nUse your own tools there. Do not touch anything outside it, do not modify the '
+            'TalkAbout platform, and do not add network access. Report a unified diff of what you '
+            'changed and what you actually verified. The platform applies nothing.\n' % workspace)
+
+
 def prompt_text(context):
     """Build the one bounded instruction a runtime receives for a turn.
 
@@ -423,7 +476,7 @@ class StructuredRuntime:
     """
     def __init__(self, kind, executable=None, platform_credential=None,
                  credential_env='TALKABOUT_TOKEN', run_deadline=None, auth_mode='native', codex_transport='exec-json', observer=None,
-             grok_profile=None):
+             grok_profile=None, work_profile=False, work_workspace=None):
         if observer is not None and not callable(observer):
             raise AdapterError('invalid_runtime_observer')
         self.observer = observer
@@ -469,6 +522,11 @@ class StructuredRuntime:
         self._supervisor = None
         self._transport = None
         self._workspace = None
+        # Owner opt-in: the agent may use its own tools inside one declared directory.
+        # This is lifetime-scoped trust transfer, not a sandbox claim.
+        self.work_profile = bool(work_profile)
+        self.work_workspace = (_validated_work_workspace(kind, codex_transport, work_workspace)
+                               if self.work_profile else None)
         self._claude_new_id = str(uuid.uuid4())
         self._request_id = 0
         self._turn_id = None
@@ -606,6 +664,23 @@ class StructuredRuntime:
 
     def command(self):
         if self.kind == 'codex':
+            if self.work_profile:
+                # Same isolation, one difference: the agent's own working tools stay on and
+                # writes are bounded by the provider's workspace-write policy. MCP, hooks,
+                # plugins, skill discovery and web search stay off.
+                command = [self.executable, 'exec', '--sandbox', 'workspace-write']
+                if self.session_id:
+                    command += ['resume', self.session_id]
+                command += ['--ignore-user-config', '--strict-config', '--ignore-rules',
+                            '--skip-git-repo-check', '--json', '-c', 'approval_policy="never"']
+                for option in ('features.multi_agent=false', 'features.hooks=false',
+                               'features.remote_plugin=false', 'features.skill_mcp_dependency_install=false',
+                               'features.view_image=false', 'features.plugins=false',
+                               'features.plugin_hooks=false', 'features.apps=false',
+                               'features.tool_search=false', 'features.skip_host_skill_discovery=true',
+                               'skills.include_instructions=false', 'web_search="disabled"'):
+                    command += ['-c', option]
+                return command + ['-']
             if self.codex_transport == 'exec-json':
                 command = [self.executable, 'exec', '--sandbox', 'read-only']
                 if self.session_id:
@@ -1203,6 +1278,8 @@ class StructuredRuntime:
             raise AdapterError('runtime_room_required')
         try:
             prompt = prompt_text(context)
+            if self.work_profile:
+                prompt = work_prompt_text(self.work_workspace) + prompt
         except (TypeError, ValueError, RecursionError):
             raise AdapterError('invalid_runtime_context') from None
         if any(secret in prompt for secret in self.blocked_values):
@@ -1227,9 +1304,15 @@ class StructuredRuntime:
                 raise AdapterError(probe['reason'])
             self._room_id = room_id
             if self._workspace is None:
-                self._observe('workspace_preparing')
-                self._workspace = tempfile.TemporaryDirectory(prefix='talkabout-agent-')
-                self._observe('workspace_ready')
+                if self.work_workspace is not None:
+                    # The owner's directory is used as-is and never deleted by us.
+                    self._observe('workspace_preparing')
+                    self._workspace = _FixedWorkspace(self.work_workspace)
+                    self._observe('workspace_ready')
+                else:
+                    self._observe('workspace_preparing')
+                    self._workspace = tempfile.TemporaryDirectory(prefix='talkabout-agent-')
+                    self._observe('workspace_ready')
             self._cancel = cancel
             self._pending = []
             self._stray_responses = []
