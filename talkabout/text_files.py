@@ -39,7 +39,15 @@ class PrivateTextStorage:
         web=Path(__file__).parent/'web'
         require(self.root!=web and web not in self.root.parents,'invalid_storage_root',422)
         self._check_parents()
-        if create:self.root.mkdir(parents=True,exist_ok=True,mode=0o700)
+        if create:
+            # POSIX enforces 0o700. Windows ignores the mode value, and forwarding it can
+            # still leave a directory the creating token cannot use when the process runs
+            # under a restricted token (sandbox, AppContainer, service identity). Containment
+            # on Windows therefore stays an operator duty, as the class docstring says.
+            if os.name == 'nt':
+                self.root.mkdir(parents=True,exist_ok=True)
+            else:
+                self.root.mkdir(parents=True,exist_ok=True,mode=0o700)
         require(self.root.is_dir(),'attachment_storage_unavailable',503)
         self._check_parents()
 
@@ -90,7 +98,9 @@ def migrate_room(room):
 
 
 def public_task(task):
-    return {k:copy.deepcopy(v) for k,v in task.items() if not k.startswith('_file_')}
+    # Private task bookkeeping (lease hashes, started-attempt evidence) never leaves the
+    # server; the previous filter hid only the file-lease keys.
+    return {k:copy.deepcopy(v) for k,v in task.items() if not k.startswith('_')}
 
 
 def claim_proof(token,room_id,task,key):

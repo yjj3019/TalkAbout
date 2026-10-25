@@ -419,6 +419,8 @@ class StructuredRuntime:
         self._cancel = None
         self._deadline = None
         self._pending = []
+        self._stray_responses = []
+        self._stray_count = 0
         self._prompt_sent = False
         self._verified_executable = None
 
@@ -670,6 +672,25 @@ class StructuredRuntime:
         self._send(reply)
         raise AdapterError('runtime_tool_policy_violation')
 
+    def _quarantine_response(self, event):
+        """Drop a settled frame that answers no pending request, and describe its shape.
+
+        A late or duplicated response for an earlier request does not prove the protocol
+        is broken, and treating it as proof destroys the turn. It is counted and described
+        structurally (id type and field names only) so a later trial can report what
+        arrived without this process retaining provider text.
+        """
+        self._stray_count += 1
+        if len(self._stray_responses) >= 8:
+            return
+        raw_id = event.get('id')
+        self._stray_responses.append({
+            'id_type': 'null' if raw_id is None else ('bool' if isinstance(raw_id, bool) else type(raw_id).__name__),
+            'shape': sorted(key for key in ('id', 'jsonrpc', 'error', 'result') if key in event),
+            'has_error': 'error' in event,
+            'has_result': 'result' in event,
+        })
+
     def _receive(self):
         event = self._transport.receive(self._cancel, self._deadline)
         if self.kind == 'grok' and event.get('jsonrpc') != '2.0':
@@ -686,7 +707,9 @@ class StructuredRuntime:
             event = self._receive()
             if 'id' in event:
                 if event['id'] != request_id:
-                    raise AdapterError('runtime_protocol_mismatch')
+                    # Not this request's answer: keep waiting under the existing deadline.
+                    self._quarantine_response(event)
+                    continue
                 if 'error' in event:
                     raise AdapterError('runtime_rpc_error')
                 return _object(event.get('result'))
@@ -995,7 +1018,9 @@ class StructuredRuntime:
         for event in self._events():
             if 'id' in event:
                 if event['id'] != request_id:
-                    raise AdapterError('runtime_protocol_mismatch')
+                    # Same rule as _rpc: a stray settled frame is evidence, not a verdict.
+                    self._quarantine_response(event)
+                    continue
                 if 'error' in event:
                     raise AdapterError('runtime_rpc_error')
                 result = _object(event.get('result'))
@@ -1112,6 +1137,8 @@ class StructuredRuntime:
                 self._observe('workspace_ready')
             self._cancel = cancel
             self._pending = []
+            self._stray_responses = []
+            self._stray_count = 0
             self._turn_id = None
             self._prompt_sent = False
             self.last_diagnostics = None
@@ -1167,8 +1194,12 @@ class StructuredRuntime:
                 self.last_outcome = 'unknown'
                 raise AdapterError('runtime_cleanup_unconfirmed') from None
             finally:
-                if transport and hasattr(transport, 'diagnostics'):
-                    self.last_diagnostics = transport.diagnostics()
+                diagnostics = transport.diagnostics() if transport and hasattr(transport, 'diagnostics') else {}
+                # Stray settled frames are the evidence a protocol-mismatch trial previously
+                # could not capture: shape only, never provider text.
+                self.last_diagnostics = {**diagnostics,
+                                         'stray_response_frames': self._stray_count,
+                                         'stray_response_shapes': list(self._stray_responses)}
                 with self._state_lock:
                     self._transport = None
                     self._supervisor = None

@@ -120,6 +120,10 @@ class ProtocolPeer:
                 if self.behavior == 'tool':
                     transport.put({'method': 'session/update', 'params': {'sessionId': 'grok-one', 'update': {'sessionUpdate': 'tool_call'}}})
                     return
+                if self.behavior == 'stray_response':
+                    # A settled frame that answers no pending request: an earlier request's
+                    # late answer, or a duplicate. It must not destroy this turn.
+                    transport.put({'id': 'late-earlier-request', 'result': {'sessionId': 'grok-one'}})
                 self.grok_chunk(transport, 'Answer ' + str(self.turns), self.behavior == 'wrong_room')
                 if self.behavior == 'truncated':
                     transport.events.put(None)
@@ -620,20 +624,32 @@ def test_prompt_request_rpc_error_is_not_a_terminal_success(monkeypatch, kind):
     {'id': 947, 'result': {'stopReason': 'end_turn'}},
     {'id': 2, 'error': {'code': -1, 'message': 'synthetic'}},
 ])
-def test_grok_unexpected_prompt_response_id_fails_closed(monkeypatch, unexpected):
+def test_grok_unexpected_prompt_response_id_is_quarantined_not_fatal(monkeypatch, unexpected):
+    """A settled frame that answers no pending request is evidence, not a verdict.
+
+    This used to fail the turn as runtime_protocol_mismatch, which destroyed a real
+    contribution over a late or duplicated frame and left no record of what arrived.
+    The frame is now counted, described by shape, and skipped; the turn's own request
+    still owns the deadline.
+    """
     adapter, peer = runtime(monkeypatch, 'grok')
     original = peer.respond
     def response(transport, event):
         if event.get('method') == 'session/prompt':
             transport.put(unexpected)
-            original(transport, event)
-        else:
-            original(transport, event)
+        original(transport, event)
     peer.respond = response
-    with pytest.raises(AdapterError, match='^runtime_protocol_mismatch$'):
-        adapter.run({'room_id': 'room-one'}, threading.Event())
-    assert adapter.last_outcome == 'unknown'
-    assert peer.transports[0].closed
+    assert adapter.run({'room_id': 'room-one'}, threading.Event()) == 'Answer 1'
+    diagnostics = adapter.last_diagnostics
+    assert diagnostics['stray_response_frames'] == 1
+    assert diagnostics['stray_response_shapes'] == [{
+        'id_type': 'int',
+        'shape': sorted(['id', 'jsonrpc', 'error'] if 'error' in unexpected else ['id', 'jsonrpc', 'result']),
+        'has_error': 'error' in unexpected,
+        'has_result': 'result' in unexpected,
+    }]
+    # The stray frame's payload is never retained.
+    assert 'synthetic' not in json.dumps(diagnostics)
     adapter.shutdown()
 
 
@@ -932,7 +948,8 @@ def test_runtime_preserves_safe_diagnostics_after_failed_transport_cleanup(monke
     monkeypatch.setattr('talkabout.agent_runtime._JSONLTransport', factory)
     with pytest.raises(AdapterError, match='runtime_outcome_unknown'):
         adapter.run({'room_id': 'room-one'}, threading.Event())
-    assert adapter.last_diagnostics == {'cleanup_confirmed': True, 'stdout_frames': 3}
+    assert adapter.last_diagnostics == {'cleanup_confirmed': True, 'stdout_frames': 3,
+                                       'stray_response_frames': 0, 'stray_response_shapes': []}
     assert adapter.calls == 1 and adapter.last_outcome == 'unknown'
     with pytest.raises(AdapterError, match='runtime_outcome_unknown'):
         adapter.run({'room_id': 'room-one'}, threading.Event())
@@ -1092,3 +1109,40 @@ def test_grok_api_key_uses_the_api_auth_method(monkeypatch):
     auth = [event for event in peer.transports[0].sent if event.get('method') == 'authenticate']
     assert auth and auth[0]['params']['methodId'] == 'xai.api_key'
     adapter.shutdown()
+
+
+def test_stray_settled_frame_does_not_destroy_the_turn(monkeypatch):
+    """A late or duplicate response is now evidence, not a verdict."""
+    adapter, peer = runtime(monkeypatch, 'grok', 'stray_response')
+    try:
+        assert adapter.run({'room_id': 'room-one'}, threading.Event()) == 'Answer 1'
+        diagnostics = adapter.last_diagnostics
+        assert diagnostics['stray_response_frames'] == 1
+        assert diagnostics['stray_response_shapes'] == [
+            {'id_type': 'str', 'shape': ['id', 'jsonrpc', 'result'], 'has_error': False, 'has_result': True}]
+    finally:
+        adapter.shutdown()
+
+
+def test_stray_frame_shape_never_carries_provider_text(monkeypatch):
+    adapter, _peer = runtime(monkeypatch, 'grok', 'stray_response')
+    try:
+        adapter.run({'room_id': 'room-one'}, threading.Event())
+        rendered = json.dumps(adapter.last_diagnostics)
+        assert 'late-earlier-request' not in rendered
+        assert 'synthetic' not in rendered.lower()
+    finally:
+        adapter.shutdown()
+
+
+def test_quarantine_is_bounded_and_counts_every_stray():
+    adapter = StructuredRuntime('grok', executable=sys.executable, auth_mode='api_key',
+                                platform_credential='synthetic-platform-value')
+    try:
+        for index in range(12):
+            adapter._quarantine_response({'id': 1000 + index, 'result': {'text': 'answer'}})
+        assert adapter._stray_count == 12
+        assert len(adapter._stray_responses) == 8
+        assert {entry['id_type'] for entry in adapter._stray_responses} == {'int'}
+    finally:
+        adapter.shutdown()

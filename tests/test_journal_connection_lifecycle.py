@@ -80,8 +80,21 @@ def test_repeated_stop_helper_has_no_connection_accumulation(journal, tracked, o
         assert journal.setting('stop_state') == '99'
 
 
-@pytest.mark.parametrize('operation', ['read', 'write'])
-def test_stop_helper_closes_after_query_error(journal, tracked, monkeypatch, operation):
+def test_stop_read_closes_after_query_error_without_claiming_a_stop(journal, tracked, monkeypatch):
+    retained, counts, connection_type = tracked
+
+    def fail(*args, **kwargs):
+        raise sqlite3.OperationalError('synthetic query failure')
+
+    monkeypatch.setattr(connection_type, 'execute', fail)
+    # A failing read is not a stop request. It used to raise, and the recovery path
+    # treated that as "stop" and committed a live turn as cancelled.
+    assert journal.stop_requested() is False
+    assert counts == {'created': 1, 'live': 0, 'peak': 1}
+    assert_closed(retained[0])
+
+
+def test_stop_write_keeps_propagating_query_errors(journal, tracked, monkeypatch):
     retained, counts, connection_type = tracked
 
     def fail(*args, **kwargs):
@@ -89,10 +102,7 @@ def test_stop_helper_closes_after_query_error(journal, tracked, monkeypatch, ope
 
     monkeypatch.setattr(connection_type, 'execute', fail)
     with pytest.raises(sqlite3.OperationalError, match='synthetic query failure'):
-        if operation == 'read':
-            journal.stop_requested()
-        else:
-            journal.stop_state('must-not-persist')
+        journal.stop_state('must-not-persist')
     assert counts == {'created': 1, 'live': 0, 'peak': 1}
     assert_closed(retained[0])
     assert journal.setting('stop_state') is None

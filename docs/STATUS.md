@@ -10,7 +10,7 @@
 | 항목 | 상태 | 근거 |
 | --- | --- | --- |
 | API·도메인·worker·GUI 코드 | 구현됨 | `talkabout/`, `tests/` |
-| 합성(synthetic) 회귀 | **통과** (2026-10-25: Python 636 · Node 196) | 아래 §2 |
+| 합성(synthetic) 회귀 | **통과** (2026-10-25: Python 636 · Node 196 / 2차 측정 690 · 206 — §2.1) | 아래 §2 |
 | 실제 PostgreSQL 통합 19건 | **통과** (2026-10-25, 임시 18.6 클러스터) | 아래 §2 |
 | CI(GitHub Actions) 동일 명령 | **통과** — run `40142129438` 636 passed / 3 skipped | 아래 §2 |
 | 실제 공급자 S1 (Codex·Claude·Grok) | **각각 통과** — 소유 루프백 픽스처에서 연결 시험과 기여 기록. Grok 반복 턴·기본 20초 lease는 미검증 | [Codex](validation/actual-trial-2026-10-25.json) · [Claude](validation/actual-trial-2026-10-25-claude.json) · [Grok](validation/actual-trial-2026-10-25-grok.json) |
@@ -41,6 +41,20 @@ pwsh tools/ci_postgres_fixture.ps1 -Action stop -BinDir <postgres>/bin -DataDir 
 - `--postgres-config`는 저장소 내부 경로를 거부합니다. 픽스처 설정에는 일회용 자격증명만 들어갑니다.
 - 3번 실행의 스킵 3건: Chrome fixture 2건, POSIX 전용 1건.
 
+## 2.1 2026-10-25 (2차) 개선 반영 후 로컬 측정 — 표준 러너 아님
+
+아래 수치는 **표준 러너(`tools/run_safe_regression.py`)의 출력이 아니다.** 이 세션의 Windows 샌드박스에서 (a) 기존 `.ci-results`가 이전 샌드박스 실행이 만든 0o700 DACL 때문에 읽히지 않고, (b) `tempfile.mkdtemp`/`TemporaryDirectory`가 만든 디렉터리에 접근할 수 없으며, (c) `node --test`가 자식 프로세스 파이프를 열지 못한다(`spawn EPERM`). 그래서 **동일 pytest 플래그**(`-q -ra tests -p no:cacheprovider`, `ci_guard` 설치, `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1`)를 로컬 전용 `sitecustomize`(Windows에서 무시되는 `mkdir` mode 인자 제거)와 함께 쓰고, Node는 `node <file>` 인프로세스로 실행했다. CI의 표준 명령과 그 의미는 바뀌지 않았다.
+
+| 항목 | 측정값 | 비고 |
+| --- | --- | --- |
+| Python (2차) | **692 passed / 7 failed / 23 skipped** | 실패 7건 중 6건은 `EXCLUDED` 목록의 브라우저·MCP 프로세스 항목(CI에서 제외되는 것과 동일), 1건은 샌드박스 named-pipe 제한(`multiprocessing/connection.py:614` WinError 5). 스킵 23건은 PostgreSQL 픽스처 미제공(22) + POSIX 전용 1 |
+| Python (3차, 서버 측 결함 수정 후) | **703 passed / 4 failed / 23 skipped** | 실패 4건: `EXCLUDED` 브라우저 항목 3건 + 샌드박스 named-pipe 1건. 같은 환경에서 실행마다 브라우저·MCP 픽스처 항목의 성패가 달라지므로(2차 7건 → 3차 4건) **실패 수 자체를 회귀 지표로 쓰지 않는다** |
+| Node | 9개 파일 **206 passed** | 신규 `ui-reduced-motion.test.mjs` 9건 포함 |
+| 신규 테스트 | **71건** | escort 7 · storage_health 34 · 승인 8 · stop 플래그 8 · ACP 격리 3 · 첨부 저장소 3 · 스케줄러/ack 8 |
+
+- **PostgreSQL 통합은 재실행하지 않았다(NOTRUN).** §2의 19건 기록은 그대로 유효하며, 이번 측정에는 포함되지 않았다.
+- §2의 618/196 기록과 직접 비교하지 않는다. 그 사이 테스트가 추가되어 기준선 자체가 달라졌으므로, PostgreSQL 픽스처가 있는 환경에서 표준 러너로 다시 측정해야 한다.
+
 ## 3. 이번 확인에서 달라진 점 (2026-10-25)
 
 1. `connect` 기본 상한(`--max-model-calls 1`)이 연결 시험에 전부 소모될 때, 더 이상 `model_call_budget_exhausted`만 남기고 끝나지 않습니다.
@@ -58,12 +72,26 @@ pwsh tools/ci_postgres_fixture.ps1 -Action stop -BinDir <postgres>/bin -DataDir 
 
 10. **Grok 네이티브 OAuth S1을 통과했습니다.** 격리 프로필(`--grok-profile`)과 `cached_token`으로 연결 시험 `passed`(receipt `fffa7808…`) 후 기여 1건(seq 7, `worker_reported_runtime`)이 task 단계 `claimed → preflight → runtime_started → runtime_completed → completed`로 기록되었습니다. 시험 방 lease는 120초이며 기본 20초 lease·반복 턴은 아직 검증하지 않았습니다. 이전 실패의 ACP 응답 ID 불일치는 원본 프레임을 확보하지 못해 임의로 허용하지 않았습니다. [실증 기록](validation/actual-trial-2026-10-25-grok.json)
 
+11. **외부 3개 저장소(Orca·opencodex·hermes-agent) 분석에서 나온 개선을 반영했습니다(2026-10-25 2차, 합성 검증만).** 실제 공급자 재시험은 하지 않았습니다(NOTRUN). 상세는 [SESSION_LOG](SESSION_LOG.md)에 있고, 관문 판정은 바뀌지 않았습니다.
+    - **ACP 응답 ID 처리**: 대기 중 요청에 속하지 않는 응답을 `runtime_protocol_mismatch`(fatal)로 올리던 것을 **격리**로 바꿨습니다. 개수와 **구조만**(id 타입·필드명·error/result 유무) `last_diagnostics`에 남기므로, 10번 항목의 "원본 프레임 미확보" 문제를 다음 실제 시험에서 반증 가능한 형태로 바꿉니다. **이것은 Grok 관문 통과가 아닙니다.**
+    - **유한 종료**: 타임아웃 탈출로의 `runtime.shutdown()`이 무제한이던 것을 5초 escort로 제한하고, 확인 실패는 `runtime_stopped=False`(미확인)로 남깁니다.
+    - **journal stop 플래그**: 읽기 실패를 정지 요청으로 승격하지 않습니다(BUSY/LOCKED만 유한 재시도, 그 외는 unknown). 폴링 20ms→200ms, 큐 판독 실패 시 `stop_unconfirmed`.
+    - **승인 종료 조건**: `responder_available=False`인 write는 즉시 `denied`(`no_user_can_answer`)이고, `expire_pending()`이 `awaiting_approval`을 요청 만료에서 정리합니다.
+    - **첨부 저장소**: Windows에서 `mkdir(mode=0o700)`을 전달하지 않습니다(제한 토큰에서 쓸 수 없는 DACL이 만들어짐).
+    - **journal SQLite 노출 보고**: 링크된 SQLite 3.50.4가 upstream WAL-reset 버그 영향 범위(3.7.0–3.51.2, 백포트 3.50.7/3.44.6)에 있음을 기동 시 1회 경고합니다(`talkabout/storage_health.py`). **PRAGMA·저장 방식은 바꾸지 않았고**, 해소는 런타임 SQLite를 3.51.3+로 올리는 것입니다.
+    - **웹 접근성**: `prefers-reduced-motion` 블록에 잘못 들어가 있던 pill 규칙을 제거하고 aurora 등 애니메이션 정지를 실제 대상에 적용했습니다.
+
+12. **서버 측 결함 3건을 수정했습니다(2026-10-25 3차, 합성 검증만).** 마찬가지로 실제 공급자 재시험은 NOTRUN입니다.
+    - **모델 호출 예산과 시도(attempt) 예산 분리**: 이제 `attempt`는 claim마다 증가하지만, 만료 판정은 **runtime에 실제로 도달한 시도 수**(`_started_attempts`, heartbeat `runtime_started` 근거)로 합니다. runtime 이전에 실패한 claim(오래된 generation, lease 만료, worker 크래시)은 호출 예산을 쓰지 않습니다. 무한 루프 방지를 위해 `attempt >= attempts × 2` 상한은 유지합니다.
+    - **무음 정지 감지**: 배정 가능한 agent가 하나도 없는 active 방은 이제 **유한 대기 후** `room.stalled`(사유 `no_eligible_members`, `mode_status = stalled`)를 1회 기록하고, 그 뒤 닫힙니다(`room.closed`). 대기 시간은 `task_seconds × 2`, 종료는 그 2배입니다. agent가 다시 가능해지면 stall 표시는 해제됩니다. — 설계 문서의 "전원 unavailable이면 bounded 대기 후 close"가 실제로 구현된 것입니다.
+    - **재동기화 커서를 배달 증거로 인정하지 않음**: resync(snapshot/rebase) 커서는 응답이 싣지 않은 event를 건너뛰며 offset을 전진시킵니다. 이제 그런 커서에는 `skipped_rooms`가 표시되고, 해당 방의 ack은 `delivery_unproven`(422)으로 거부됩니다. 명시적 `join` 재동기화가 필요합니다. `public_task`는 `_` 접두 키를 일반적으로 숨기도록 정리했습니다(내부 필드 유출 방지).
+
 ## 4. 아직 남은 것 (완료로 표시하지 않음)
 
 | 남은 관문 | 왜 남았는가 | 다음 행동 |
 | --- | --- | --- |
 | 실제 2-runtime 대화(S2) | Codex·Claude·Grok 각각 별도 S1을 통과했지만, 같은 방의 동시 토론·pause 복구는 미시험 | 새 예산 승인 후 S2 계획 |
-| Grok 기본 lease·반복 턴 | 격리 OAuth S1은 120초 lease 픽스처에서 통과; 기본 20초 lease와 반복 턴은 미검증 | 별도 예산·시간 한도와 간헐적 ACP 응답 ID 원인 확인 후 시험 |
+| Grok 기본 lease·반복 턴 | 격리 OAuth S1은 120초 lease 픽스처에서 통과; 기본 20초 lease와 반복 턴은 미검증. ACP 비매칭 응답은 이제 격리·기록되므로 다음 시험에서 원인 프레임의 구조를 확보할 수 있다(원인 자체는 미확인) | 별도 예산·시간 한도와 격리 진단(`last_diagnostics.stray_response_shapes`)을 함께 기록하며 시험 |
 | 운영 배포 | 대상·TLS·백업·보존 정책 미결정 | [DEPLOYMENT_RUNBOOK.md](DEPLOYMENT_RUNBOOK.md) |
 | 운영 계정·MFA·분산 rate limit | private loopback 프로토타입 범위 | 정책 결정 후 |
 | paging/archival/disk quota | P0 상한(방 64, 이벤트 2048 등)만 존재 | 운영 정책 결정 |

@@ -117,7 +117,14 @@ def schedule(room, principals, now=None):
     for task in room["tasks"].values():
         if task["state"] not in {"queued", "leased"}:
             continue
-        if now >= task["deadline"] or (task["state"] == "leased" and now >= task["lease_expires_at"] and task["attempt"] >= room["limits"]["attempts"]):
+        # The model-call budget counts only attempts that reached the runtime. A claim
+        # lost before the call (stale generation, expired lease, crashed worker) costs a
+        # claim, not a paid call, so it must not spend the budget; a hard ceiling still
+        # bounds a worker that never starts, so nothing spins forever.
+        started = len(task.get("_started_attempts") or ())
+        exhausted = (started >= room["limits"]["attempts"]
+                     or task["attempt"] >= room["limits"]["attempts"] * 2)
+        if now >= task["deadline"] or (task["state"] == "leased" and now >= task["lease_expires_at"] and exhausted):
             task["state"] = "expired"
             emit(room, "task.expired", task_id=task["id"])
         elif task["state"] == "leased" and now >= task["lease_expires_at"]:
@@ -128,7 +135,28 @@ def schedule(room, principals, now=None):
     eligible = sorted(pid for pid, m in room["members"].items() if m["status"] == "active"
                       and principals[pid]["kind"] == "agent" and participant_permissions(room['mode']) <= set(m["permissions"]))
     if not eligible:
+        # No agent can be dispatched. The design closes such a room after a bounded wait
+        # instead of leaving it active forever with nothing to do; the stall is reported
+        # first so a human can tell "waiting" from "stuck".
+        idle = room.setdefault("dispatch_idle", {"since": now, "reported": False})
+        waited = now - idle["since"]
+        bound = max(1, room["limits"]["task_seconds"]) * 2
+        if waited < bound:
+            return
+        if not idle["reported"]:
+            idle["reported"] = True
+            room["mode_status"] = "stalled"
+            emit(room, "room.stalled", actor_id="system", reason="no_eligible_members")
+            return
+        room["state"] = "closed"
+        room["generation"] += 1
+        room["room_revision"] += 1
+        cancel_tasks(room)
+        emit(room, "room.closed", actor_id="system", reason="no_eligible_members")
         return
+    room.pop("dispatch_idle", None)
+    if room.get("mode_status") == "stalled":
+        room["mode_status"] = "running"
     turn = next_turn(room, eligible)
     if turn is None:
         if room.get("mode_status") == "round_limit":
@@ -188,10 +216,18 @@ TASK_EVENT_STAGES = {
 def record_task_event(room, task_id, stage, now):
     """Append one bounded worker-reported execution stage to the task."""
     require(isinstance(stage, str) and stage in TASK_EVENT_STAGES, "invalid_event_stage", 422)
+    task = room["tasks"].get(task_id)
+    attempt = task["attempt"] if task else None
     events = room.setdefault("task_events", {}).setdefault(task_id, [])
-    events.append({"stage": stage, "at": now})
+    events.append({"stage": stage, "at": now, "attempt": attempt})
     if len(events) > 24:
         del events[:-24]
+    if stage == "runtime_started" and task is not None:
+        # A claim that never reached the runtime is not a failed model call. Only
+        # attempts that actually started one may spend the model-call budget.
+        started = task.setdefault("_started_attempts", [])
+        if attempt not in started:
+            started.append(attempt)
 
 
 def message(room, actor, body, now, task=None, fingerprint=None):

@@ -1,5 +1,61 @@
 # TalkAbout session log
 
+## 2026-10-26 00:20 UTC — 서버 측 결함 3건 수정 / server-side correctness fixes
+
+같은 분석에서 남겨둔 항목 중 **실제 결함으로 확인된 3건**만 반영했다. 합성 검증만 했고 실제 공급자 재시험은 하지 않았다(NOTRUN).
+
+| 결함 | 이전 동작 | 수정 |
+| --- | --- | --- |
+| runtime 이전 실패가 모델 호출 예산을 소모 | `attempt`(claim마다 +1)로 만료를 판정해, 한 번도 호출하지 못한 task 3회 claim 후 `expired` | 만료는 **runtime 도달 시도 수**(`_started_attempts`)로 판정. claim만 반복한 task는 다시 `queued`로 돌아가고, `attempt >= attempts×2` 상한에서만 종료 |
+| 전원 unavailable 방의 무음 정지 | `eligible`이 비면 `schedule()`이 조용히 `return` → 방이 active인 채 영구 대기 | `task_seconds×2` 대기 후 `room.stalled`(1회, `mode_status=stalled`), 그 2배에서 `room.closed`. agent 복귀 시 stall 해제 |
+| resync 커서를 배달 증거로 인정 | snapshot/rebase 커서의 offset 점프를 그대로 `delivered_seq`/`read_seq`로 기록 | 커서에 `skipped_rooms`를 남기고, 해당 방 ack은 `delivery_unproven`(422). 명시적 `join` 재동기화 필요 |
+
+- `record_task_event`는 이제 각 stage에 `attempt`를 기록하고 `_started_attempts`를 추적한다(중복 heartbeat stage는 1회만 계산).
+- `public_task`가 `_` 접두 키를 일반적으로 숨긴다(내부 lease/증거 필드 유출 방지).
+- 새 이벤트 타입 `room.stalled` 추가 — `emit`은 타입을 검증하지 않으므로 additive이며, 클라이언트는 모르는 타입을 무시한다.
+
+### 검증 (합성만)
+
+- Python **703 passed / 4 failed / 23 skipped**. 실패 4건은 `EXCLUDED` 브라우저 항목 3건 + 이 세션 샌드박스의 named-pipe 제한 1건. **같은 환경에서 실행마다 브라우저·MCP 픽스처 항목의 성패가 달라지므로**(직전 실행 7건 실패) 실패 수를 회귀 지표로 쓰지 않는다.
+- 신규 테스트 **8건**(`tests/test_scheduler_bounds.py`): 예산 분리 4 · stall 2 · ack 증거 2.
+- 검증 하네스는 직전 커밋과 동일한 비표준 방식이다([STATUS](STATUS.md) §2.1).
+
+### 하지 않은 것 (NOTRUN)
+
+실제 공급자 재시험, PostgreSQL 통합, S2 2-runtime 대화, POSIX 실행 격리, quota 4분류·인증 3값·구조적 로깅, 문서 SSOT gate.
+
+## 2026-10-25 23:40 UTC — 3-저장소 분석 기반 개선 반영 / improvements from external review
+
+외부 저장소 3개(Orca · opencodex · hermes-agent) 정밀 분석에서 도출한 개선안 중 **합성 검증이 가능한 항목만** 반영했다. 실제 공급자 시험은 하지 않았다(NOTRUN).
+
+### 반영한 것 (코드)
+
+| 영역 | 변경 | 근거 |
+| --- | --- | --- |
+| ACP 클라이언트 | 대기 중 요청에 속하지 않는 응답 프레임을 fatal(`runtime_protocol_mismatch`)이 아니라 **격리**로 처리. 개수와 **구조만**(id 타입·필드명·error/result 유무) 진단에 남기고 turn은 계속한다 | `talkabout/agent_runtime.py` `_quarantine_response` |
+| 유한 종료 | 타임아웃 탈출로가 `runtime.shutdown()`을 **무제한** 대기하던 것을 5초 escort로 제한. 확인 못 하면 `runtime_stopped=False`(=미확인) | `talkabout/runtime.py` `bounded_shutdown` |
+| journal stop 플래그 | 읽기 실패를 stop으로 승격하지 않는다: BUSY/LOCKED만 유한 재시도, 손상·기타 오류는 **unknown**(=정지 아님). 폴링 20ms→200ms. 큐를 못 읽으면 `stop_unconfirmed` | `talkabout/worker.py` `_stop_flag` |
+| 승인 종료 조건 | `responder_available=False`인 write는 `awaiting_approval`로 세우지 않고 **즉시 denied**(`no_user_can_answer`). `expire_pending()`으로 `awaiting_approval`이 요청 만료를 넘기지 못하게 한다 | `talkabout/tool_broker.py` |
+| 첨부 저장소 | Windows에서 `mode=0o700`을 전달하지 않는다. Windows는 mode를 무시하는데, 제한 토큰에서는 그 값이 **쓸 수 없는 디렉터리**를 만든다 | `talkabout/text_files.py:36-48` |
+| journal SQLite | `storage_health`로 링크된 SQLite의 WAL-reset 취약 범위를 판정하고 프로세스당 1회 경고. **PRAGMA는 바꾸지 않는다** | 신규 `talkabout/storage_health.py` |
+| 웹 접근성 | `prefers-reduced-motion` 블록 안에 잘못 들어가 있던 `.stage-caption` pill 규칙 제거, `body::before`·`.motes`·`.prop-lights`·`.live-dot` 애니메이션 정지 | `talkabout/web/style.css:1692-1700` |
+| 로컬 실행 | 증거 디렉터리를 `TALKABOUT_CI_RESULTS`로 바꿀 수 있게 함(기본값·동작 동일) | `tools/run_safe_regression.py` |
+
+### 검증 (합성만)
+
+- Python: **692 passed / 7 failed / 23 skipped**. 실패 7건 중 6건은 `tools/run_safe_regression.py`의 `EXCLUDED` 목록에 있는 브라우저·MCP 프로세스 항목, 1건은 이 세션 샌드박스의 named-pipe 제한(`multiprocessing/connection.py:614` WinError 5). 스킵 23건 = PostgreSQL 픽스처 미제공 22 + POSIX 전용 1.
+- Node: 9개 파일 **206 passed** (`node <file>` 인프로세스 실행).
+- 신규 테스트 **63건**: escort 7 · storage_health 34 · 승인 8 · stop 플래그 8 · ACP 격리 3 · 첨부 저장소 3.
+- 계약 테스트 2건 갱신: `test_grok_unexpected_prompt_response_id_is_quarantined_not_fatal`(구: `..._fails_closed`), `test_stop_read_closes_after_query_error_without_claiming_a_stop`.
+
+### 검증 환경의 한계 (제품 결함 아님)
+
+`.ci-results`가 이전 샌드박스 실행이 만든 0o700 DACL 때문에 읽히지 않고, 같은 이유로 `tempfile.mkdtemp`/`TemporaryDirectory`가 만든 디렉터리에 접근할 수 없다. `node --test`는 자식 프로세스 파이프가 막혀(`spawn EPERM`) 실행되지 않는다. 그래서 **`tools/run_safe_regression.py`를 그대로 돌리지 못했고**, 동일 pytest 플래그 + 로컬 전용 `sitecustomize`(Windows에서 무시되는 mode 인자 제거)로 우회했다. CI의 표준 명령은 변경되지 않았다.
+
+### 하지 않은 것 (NOTRUN)
+
+실제 Codex/Claude/Grok 재시험, Grok 기본 lease·반복 turn, PostgreSQL 통합 재실행, 2-runtime 대화(S2), POSIX 실행 격리, 문서 SSOT gate, quota 4분류·인증 3값·구조적 로깅 도입. 이 항목들은 [RELEASE_GAP_MATRIX.md](RELEASE_GAP_MATRIX.md)의 관문을 그대로 유지한다.
+
 ## 2026-10-18 22:14 UTC — WIP planning checkpoint / 구현 전 종료
 
 사용자가 오늘 작업을 종료하도록 요청하여 기능 구현과 추가 테스트를 시작하지 않고 이력만 보존했다. 아래 항목은 재개 계획이며 구현 완료를 뜻하지 않는다.
