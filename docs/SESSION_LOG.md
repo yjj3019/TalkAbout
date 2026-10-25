@@ -1,5 +1,22 @@
 # TalkAbout session log
 
+## 2026-10-26 07:00 UTC — W0: 방 산출물·patch artifact / work deliverables without execution
+
+방이 단순 채팅이 아니라 **검토 가능한 실제 작업 산출물**을 갖도록 W0을 구현했다. 실행 채널은 열지 않았다.
+
+| 요소 | 구현 |
+| --- | --- |
+| 방 `deliverable` | `analysis` / `change_proposal`(기본 없음). `core.create` 허용 필드·`new_room` 검증·`public_room` 노출 |
+| 프롬프트 | `agent_runtime.prompt_text`가 산출물별 결과 형식을 요구. 두 산출물 모두 "플랫폼은 실행하지 않는다"를 명시 |
+| patch artifact | `change_proposal` 방의 창작자 버전은 `kind: patch`. diff 형태가 아니면 `invalid_patch`(422)로 거부 |
+| 채택 | 기존 사람 채택 그대로. **서버는 patch를 적용하지 않는다** |
+
+### 검증
+
+- `tests/test_work_deliverables.py` **13건** 통과(방 생성·검증, 프롬프트 형식, diff 거부/수용, patch kind).
+- 실제 에이전트가 diff를 제대로 산출하는지는 **NOTRUN**(공급자 예산 필요). 합성 프레임으로만 검증했다.
+- 다음 단계 W1(소유자 opt-in 로컬 도구 실행)은 [TOOL_BROKER_PLAN.md](TOOL_BROKER_PLAN.md)의 관문을 따로 통과해야 한다.
+
 ## 2026-10-26 06:30 UTC — POSIX 격리 계층(C1) + Linux CI 잡 / POSIX containment layer
 
 세 번째 트랙 후보. **POSIX 실행은 여전히 차단**이며, 이번 작업은 격리 계층만 구현하고 활성화는 보류했다.

@@ -1,10 +1,22 @@
 # Opt-in tools and isolated agent workspaces
 
-Status: **PROPOSED / NOT IMPLEMENTED**. Reviewed: **2026-10-17**.
+Status: **PROPOSED / NOT IMPLEMENTED** (도구 실행). Reviewed: **2026-10-17**, W0 갱신: **2026-10-26**.
 
 이 상태는 실제 도구 연결과 실행 기능을 가리킵니다. 이번 브랜치에는 [내부 계약](INTERNAL_FOUNDATION_CONTRACT.md)에 따른 메모리 정책·승인·fake adapter만 추가합니다. 공개 API·GUI·runtime 연결과 실제 계정·명령 실행은 제공하지 않습니다.
 
 이 문서는 결함 수정과 분리된 후속 설계다. 현재 text-only 프로필과 도구 실행 차단을 유지한다. 실제 계정 연결, 인증, 토큰 발급, 외부 쓰기, 명령 실행, 컨테이너 설정 변경은 이 문서로 활성화되지 않는다. 공개 API와 운영 DB 계약을 바꾸는 구현은 별도 계획 검토 후 진행한다.
+
+## 단계 (2026-10-26 갱신)
+
+방이 "대화만"이 아니라 실제 코딩·분석을 하려면 산출물과 실행 채널이 모두 필요하다. 실행 채널은 아래 관문을 통과할 때까지 열지 않는다.
+
+| 단계 | 내용 | 상태 |
+| --- | --- | --- |
+| **W0** | 방 `deliverable`(`analysis`/`change_proposal`), 프롬프트 산출 형식, **patch artifact**(통합 diff, 사람 채택) | **구현(2026-10-26)** — `docs/PROMPT_TEMPLATES.md`, `talkabout/domain.py`의 `deliverable_artifact_kind` |
+| **W1** | 소유자 opt-in 기반 **로컬 workspace 도구 실행** (에이전트가 자기 머신에서 파일 수정·검증) | 설계 중. 아래 "명령 격리의 출시 관문"을 유지하며 provider별로 fail-closed |
+| W3 | 서버 측 도구/MCP broker 실행 | 계속 보류 |
+
+W0은 서버가 아무것도 실행하지 않는다. patch는 **적용되지 않고** 사람이 검토·채택하며, diff 형태가 아니면 `invalid_patch`로 거부한다.
 
 ## 목표와 경계
 

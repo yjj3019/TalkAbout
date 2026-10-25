@@ -1,3 +1,16 @@
+## 2026-10-26 (6차) — W0 방 산출물·patch artifact / work deliverables, no execution
+
+**LOCAL PROTOTYPE / NOT DEPLOYED. 실제 공급자 시험 NOTRUN. 실행 채널은 열지 않았다.** 근거는 [SESSION_LOG](SESSION_LOG.md) 2026-10-26 07:00 UTC 항목.
+
+| 영역 | 변경 | 검증 |
+| --- | --- | --- |
+| 방 `deliverable` | `analysis` / `change_proposal` 선택 필드, `new_room` 검증, `public_room` 노출 | `tests/test_work_deliverables.py` 4건 |
+| 프롬프트 | `prompt_text`가 산출물별 형식 요구 + "플랫폼은 실행하지 않는다" 명시 | 동 파일 4건 |
+| patch artifact | `change_proposal` 창작자 버전 `kind: patch`, diff 아니면 `invalid_patch`(422) | 동 파일 5건 |
+| 채택 | 사람 채택 유지, 서버는 patch 미적용 | 기존 artifact 채택 테스트 |
+
+측정(Windows): Python 732 passed / 4 failed(`EXCLUDED` 브라우저 3 + 샌드박스 named-pipe 1) / 32 skipped. W1(로컬 도구 실행)은 미착수.
+
 ## 2026-10-26 (5차) — POSIX 격리 계층(C1) + Linux CI 잡 / POSIX still gated
 
 **LOCAL PROTOTYPE / NOT DEPLOYED. 실제 공급자 시험 NOTRUN. POSIX 실행은 여전히 차단.** 근거·한계는 [SESSION_LOG](SESSION_LOG.md) 2026-10-26 06:30 UTC 항목과 [POSIX_CONTAINMENT_PLAN.md](POSIX_CONTAINMENT_PLAN.md).

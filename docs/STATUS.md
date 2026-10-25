@@ -99,6 +99,13 @@ pwsh tools/ci_postgres_fixture.ps1 -Action stop -BinDir <postgres>/bin -DataDir 
     - **CI**: 이 저장소의 CI는 `windows-latest`뿐이라 POSIX 코드가 **어떤 CI에서도 실행되지 않았습니다**. `safe-regression.yml`에 `posix-containment`(ubuntu-latest) 잡을 추가해 이 9건을 실행합니다.
     - **보류(중요)**: supervisor가 SIGKILL로 죽으면 POSIX에는 Job Object 등가물이 없어 자식이 남습니다(P4). 이 구멍이 닫히기 전에는 `cli.py`·`adapters.py`의 POSIX 거부를 해제하지 않았습니다. 따라서 **제품 경로에서 이 계층은 도달 불가능**하며, "POSIX 지원"이 아닙니다.
 
+15. **방이 "대화"를 넘어 검토 가능한 작업 산출물을 갖도록 W0을 구현했습니다(2026-10-26). 실행 채널은 열지 않았습니다.**
+    - **방 산출물(deliverable)**: 방 생성 시 `deliverable`을 `analysis` 또는 `change_proposal`로 지정할 수 있습니다(기본 없음). 런타임 프롬프트(`agent_runtime.prompt_text`)가 그에 맞는 결과 형식을 요구합니다 — analysis는 사실·출처·미확인 분리, change_proposal은 **` ```diff ` fence 안의 통합 diff 하나** + 최대 3문장 근거.
+    - **patch artifact**: `change_proposal` 방에서 co_creation 창작자가 제출한 버전은 `kind: "patch"`로 기록되고, diff 형태가 아니면 서버가 `invalid_patch`(422)로 거부합니다. **서버는 patch를 적용하지 않으며**, 채택은 지금처럼 사람이 합니다.
+    - **정직성**: 두 산출물 모두 프롬프트에 "플랫폼은 실행하지 않는다"를 명시하고, 에이전트가 도구·명령·빌드·테스트를 실행했다고 주장하지 않도록 지시합니다. 서버는 여전히 어떤 것도 실행하지 않습니다.
+    - **검증**: `tests/test_work_deliverables.py` 13건. 실제 에이전트가 이 산출물을 제대로 만들어내는지는 **NOTRUN**(공급자 예산 필요).
+    - **다음 단계(W1)**: 소유자가 opt-in하면 에이전트가 자기 머신의 지정 workspace에서 도구를 쓰는 작업 모드. [TOOL_BROKER_PLAN.md](TOOL_BROKER_PLAN.md)의 명령 격리 관문을 유지하며 provider별로 fail-closed로 시작합니다.
+
 ## 4. 아직 남은 것 (완료로 표시하지 않음)
 
 | 남은 관문 | 왜 남았는가 | 다음 행동 |

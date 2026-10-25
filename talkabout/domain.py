@@ -78,14 +78,19 @@ def active(room):
     require(room["state"] == "active", "room_not_active")
 
 
-def new_room(actor, room_id, topic, mode="bounded_rounds", now=None, preparing=False):
+DELIVERABLES = (None, "analysis", "change_proposal")
+
+
+def new_room(actor, room_id, topic, mode="bounded_rounds", now=None, preparing=False, deliverable=None):
     require("rooms:create" in actor["scopes"] and not actor.get("room_id"), "forbidden", 403)
     require(mode in {"bounded_rounds", "free_discussion", "co_creation"}, "invalid_mode", 422)
+    require(deliverable in DELIVERABLES, "invalid_deliverable", 422)
     require(isinstance(topic, str) and 1 <= len(topic) <= 2000, "invalid_topic", 422)
     perms = (AGENT_PERMISSIONS if actor["kind"] == "agent" else HUMAN_PERMISSIONS) & set(actor["scopes"])
     if actor["kind"] == "agent":
         require((AGENT_PERMISSIONS - {"room:contribute"}) <= perms, "creator_scope_insufficient", 403)
-    room = {"id": room_id, "owner": actor["owner"], "topic": topic, "mode": mode, "state": "preparing" if preparing else "active",
+    room = {"id": room_id, "owner": actor["owner"], "topic": topic, "mode": mode, "deliverable": deliverable,
+            "state": "preparing" if preparing else "active",
             "room_revision": 1, "generation": 1, "last_seq": 0, "next_slot": 0, "next_agent": 0,
             "deadline": None if preparing else (now or time.time()) + 900, "started_at": None if preparing else (now or time.time()),
             "duration_seconds": 900, "limits": {"messages": 40, "attempts": 3, "lease": 20, "task_seconds": 60, "rounds": 1},
@@ -94,6 +99,22 @@ def new_room(actor, room_id, topic, mode="bounded_rounds", now=None, preparing=F
             "events": [], "tasks": {}, "messages": {}, "artifacts": {}, "controls": {}, "keys": {}, "client_ids": {}}
     emit(room, "room.created", actor_id=actor["id"])
     return room
+
+
+def patch_like(text):
+    """True when a change proposal carries a unified diff, not just prose.
+
+    This is a shape check, not an application: the platform never applies the patch.
+    """
+    return isinstance(text, str) and '--- ' in text and '+++ ' in text
+
+
+def deliverable_artifact_kind(room, text):
+    """Classify a co-creation version. A change proposal that is not a diff is refused."""
+    if room.get("deliverable") != "change_proposal":
+        return "text"
+    require(patch_like(text), "invalid_patch", 422)
+    return "patch"
 
 
 def cancel_tasks(room, principal=None):
