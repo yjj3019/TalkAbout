@@ -10,7 +10,7 @@ import time
 import pytest
 
 from talkabout.adapters import AdapterError
-from talkabout.agent_runtime import StructuredRuntime, _JSONLTransport, runtime_environment, MAX_LINE
+from talkabout.agent_runtime import (MAX_LINE, StructuredRuntime, _JSONLTransport, limit_failure_token, runtime_environment)
 
 
 class ProtocolPeer:
@@ -110,6 +110,13 @@ class ProtocolPeer:
                 if self.behavior == 'tool':
                     transport.put({'type': 'assistant', 'session_id': session, 'message': {'content': [{'type': 'tool_use', 'name': 'Bash'}]}})
                     return
+                limit_status = {'limit_rejected': 'rejected',
+                                'limit_warning': 'allowed_warning',
+                                'limit_unknown': 'surprising-status'}.get(self.behavior)
+                if limit_status is not None:
+                    transport.put({'type': 'rate_limit_event', 'session_id': session,
+                                   'rate_limit_info': {'status': limit_status, 'resetsAt': 1893456000,
+                                                       'limit_type': 'synthetic'}})
                 transport.put({'type': 'stream_event', 'session_id': session, 'event': {'type': 'content_block_delta', 'delta': {'type': 'text_delta', 'text': 'Answer ' + str(self.turns)}}})
                 if self.behavior == 'truncated':
                     transport.events.put(None)
@@ -949,7 +956,8 @@ def test_runtime_preserves_safe_diagnostics_after_failed_transport_cleanup(monke
     with pytest.raises(AdapterError, match='runtime_outcome_unknown'):
         adapter.run({'room_id': 'room-one'}, threading.Event())
     assert adapter.last_diagnostics == {'cleanup_confirmed': True, 'stdout_frames': 3,
-                                       'stray_response_frames': 0, 'stray_response_shapes': []}
+                                       'stray_response_frames': 0, 'stray_response_shapes': [],
+                                       'usage_limit_events': 0, 'usage_limit_evidence': []}
     assert adapter.calls == 1 and adapter.last_outcome == 'unknown'
     with pytest.raises(AdapterError, match='runtime_outcome_unknown'):
         adapter.run({'room_id': 'room-one'}, threading.Event())
@@ -1146,3 +1154,53 @@ def test_quarantine_is_bounded_and_counts_every_stray():
         assert {entry['id_type'] for entry in adapter._stray_responses} == {'int'}
     finally:
         adapter.shutdown()
+
+
+def test_rejected_usage_limit_is_typed_not_a_generic_failure(monkeypatch):
+    adapter, _peer = runtime(monkeypatch, 'claude', 'limit_rejected')
+    try:
+        with pytest.raises(AdapterError, match='^runtime_usage_limit_reached$'):
+            adapter.run({'room_id': 'room-one'}, threading.Event())
+        evidence = adapter.last_diagnostics['usage_limit_evidence']
+        assert evidence and evidence[0]['status'] == 'rejected'
+        assert evidence[0]['resets_at'] == 1893456000
+        assert adapter.last_outcome == 'unknown'
+    finally:
+        adapter.shutdown()
+
+
+@pytest.mark.parametrize('behavior, expected', [('limit_warning', 'allowed'),
+                                                ('limit_unknown', 'unknown')])
+def test_informational_limit_frames_do_not_abort_the_turn(monkeypatch, behavior, expected):
+    adapter, _peer = runtime(monkeypatch, 'claude', behavior)
+    try:
+        assert adapter.run({'room_id': 'room-one'}, threading.Event()) == 'Answer 1'
+        diagnostics = adapter.last_diagnostics
+        assert diagnostics['usage_limit_events'] == 1
+        assert diagnostics['usage_limit_evidence'][0]['status'] == expected
+    finally:
+        adapter.shutdown()
+
+
+def test_limit_evidence_keeps_structure_and_never_free_text(monkeypatch):
+    adapter, _peer = runtime(monkeypatch, 'claude', 'limit_rejected')
+    try:
+        with pytest.raises(AdapterError):
+            adapter.run({'room_id': 'room-one'}, threading.Event())
+        rendered = json.dumps(adapter.last_diagnostics)
+        assert 'surprising' not in rendered and 'synthetic' not in rendered.replace('"status"', '')
+        assert set(adapter.last_diagnostics['usage_limit_evidence'][0]) <= {
+            'status', 'present_keys', 'resets_at'}
+    finally:
+        adapter.shutdown()
+
+
+@pytest.mark.parametrize('event, expected', [
+    ({'error': {'code': 'usage_limit_exceeded', 'message': 'free text'}}, 'usage_limit_exceeded'),
+    ({'code': 'quota_exceeded'}, 'quota_exceeded'),
+    ({'error': {'message': 'you exceeded your usage limit'}}, None),
+    ({'error': {'code': 'x' * 200}}, None),
+    ({}, None),
+])
+def test_limit_failure_token_is_closed_and_bounded(event, expected):
+    assert limit_failure_token(event) == expected

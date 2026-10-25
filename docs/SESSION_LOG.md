@@ -1,5 +1,39 @@
 # TalkAbout session log
 
+## 2026-10-26 00:50 UTC — 문서 SSOT gate + provider 한도 어휘 / docs gate and typed limits
+
+다음 트랙 후보 중 **문서 SSOT gate**와 **provider 실패 어휘 타입화**를 반영했다. 합성 검증만 했고 실제 공급자 재시험은 하지 않았다(NOTRUN).
+
+### 1) 문서 SSOT gate
+
+`tools/docs_check.py` — 문서 드리프트를 CI에서 막는다.
+
+| 검사 | 내용 |
+| --- | --- |
+| `link` | README·`docs/*.md`의 상대 링크가 실존하는 파일을 가리키는가 |
+| `anchor` | `file.md#anchor`가 해당 문서의 실제 제목 slug로 해석되는가(GitHub 규칙) |
+| `path` | 문서가 백틱으로 인용한 저장소 경로(`talkabout/…`, `tests/…` 등)가 존재하는가 |
+| `orphan` | 모든 `docs/*.md`가 README 또는 `docs/` 안에서 링크되는가 |
+
+- `tests/test_docs_contract.py`가 게이트를 CI에 묶고, **검사기가 비어 있지 않음을 시드 위반으로 증명**한다(깨진 링크·오래된 경로·없는 앵커 각각).
+- 알려진 예외 목록 `KNOWN`은 **줄어들기만** 한다(현재 0건).
+- 이 작업에서 실제 결함 1건을 고쳤다: `docs/RUNTIME_IMPLEMENTATION_VALIDATION.md`가 문서 지도에 없어 고아였다 → `docs/STATUS.md` §5에 추가.
+- 검사기 오탐 2건도 수정: 한국어 제목의 slug(공백 하나당 하이픈 하나, `/` 제거 후 남는 이중 하이픈 유지), MCP 메서드명 `tools/list`(경로 아님).
+
+### 2) provider 한도·실패 어휘 타입화
+
+- `rate_limit_event`를 **닫힌 집합**으로만 분류한다: `rejected` / `allowed` / `unknown`.
+  `rejected`일 때만 `runtime_usage_limit_reached`로 turn을 중단하고, `allowed`·`unknown`은 turn을 계속한다.
+- 근거는 `last_diagnostics.usage_limit_events`·`usage_limit_evidence`에 남는다(상태 토큰·존재 키·`resets_at`만, 자유 텍스트·provider 메시지 없음).
+- codex `error`/`turn.failed`도 닫힌 짧은 토큰(`usage_limit_exceeded`, `quota_exceeded` 등)만 `runtime_usage_limit_reached`로 타입화한다. 자유 텍스트 메시지는 증거로 쓰지 않는다(`limit_failure_token`은 64자 초과 토큰을 무시).
+- **한계**: status 어휘는 실제 공급자 프레임에서 확인한 값이 아니라 **닫힌 집합 가정**이다. 모르는 값은 전부 `unknown`으로 흘려 turn을 계속하므로 어휘가 틀려도 건강한 turn을 중단시키지 않는다. 어휘 확정은 실제 시험에서 `usage_limit_evidence`로 해야 한다(NOTRUN).
+
+### 검증 (합성만)
+
+- Python **719 passed / 4 failed / 23 skipped** — 실패 4건은 `EXCLUDED` 브라우저 항목 3 + 이 세션 샌드박스 named-pipe 1.
+- 신규 테스트 **16건**: 문서 계약 7 · 한도 어휘 9(`tests/test_agent_runtime.py`).
+- 표준 러너는 CI에서만 완주한다([STATUS](STATUS.md) §2.1). 이번 변경도 PR CI로 확인한다.
+
 ## 2026-10-26 00:20 UTC — 서버 측 결함 3건 수정 / server-side correctness fixes
 
 같은 분석에서 남겨둔 항목 중 **실제 결함으로 확인된 3건**만 반영했다. 합성 검증만 했고 실제 공급자 재시험은 하지 않았다(NOTRUN).
