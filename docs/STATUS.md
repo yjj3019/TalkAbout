@@ -106,15 +106,23 @@ pwsh tools/ci_postgres_fixture.ps1 -Action stop -BinDir <postgres>/bin -DataDir 
     - **검증**: `tests/test_work_deliverables.py` 13건. 실제 에이전트가 이 산출물을 제대로 만들어내는지는 **NOTRUN**(공급자 예산 필요).
     - **다음 단계(W1)**: 소유자가 opt-in하면 에이전트가 자기 머신의 지정 workspace에서 도구를 쓰는 작업 모드. [TOOL_BROKER_PLAN.md](TOOL_BROKER_PLAN.md)의 명령 격리 관문을 유지하며 provider별로 fail-closed로 시작합니다.
 
-17. **웹 UI에서 산출물과 작업 프로필을 노출했습니다(2026-10-26).** 방 생성 폼에 `deliverable`(대화만·분석·변경 제안), 방 헤더에 산출물 배지, 연결 마법사 1단계에 **로컬 작업 허용(opt-in)** 체크박스 + 작업 디렉터리를 추가했습니다.
-    - 안전장치: 체크하지 않으면 명령에 `--work-profile`이 붙지 않고, Codex에서만 표시되며, 경로가 안전 문자 집합을 벗어나면 플래그를 붙이지 않고 경고합니다(셸 주입 방지).
-    - 검증: `tests/test_connection_ui_wizard.mjs`에 3건 추가(총 51건), Node 9개 파일 **209건 통과**. 브라우저 실사용 캡처는 하지 않았습니다(합성 DOM).
 16. **W1 작업 프로필을 구현했습니다(2026-10-26). 기본은 꺼져 있고, sandbox가 아닙니다.** 상세: [WORK_PROFILE.md](WORK_PROFILE.md).
     - **opt-in**: `--work-profile --work-workspace <dir>`를 함께 줘야 하며, 현재 **Codex `exec-json`에서만** 동작합니다. Claude/Grok/app-server는 `runtime_work_profile_unsupported`로 거절합니다.
     - **격리 유지**: Codex sandbox만 `read-only` → `workspace-write`로 바뀌고, 작업 도구(shell·patch)가 켜집니다. **MCP·hooks·plugins·skill discovery·web search는 계속 꺼짐**입니다. cwd는 소유자가 지정한 디렉터리이고 런타임은 그 디렉터리를 만들거나 지우지 않습니다.
     - **거절 규칙**: 없음·파일·symlink·홈·파일시스템 루트·TalkAbout 소스 트리(조상/자손 포함)·쓰기 불가 디렉터리는 실행 전에 거절합니다.
     - **정직성**: sandbox를 주장하지 않습니다. 에이전트가 무엇을 했는지 서버는 검증할 수 없으며, 기여는 `worker_reported_runtime` 증거로만 남습니다. `change_proposal` 방과 결합하면 결과는 통합 diff로 제출되고 플랫폼은 적용하지 않습니다.
     - **검증**: `tests/test_work_profile.py` 17건 + `tests/test_work_profile_cli.py` 5건(합성). **실제 공급자 작업 턴은 NOTRUN**입니다(예산·동의 필요).
+
+17. **웹 UI에서 산출물과 작업 프로필을 노출했습니다(2026-10-26).** 방 생성 폼에 `deliverable`(대화만·분석·변경 제안), 방 헤더에 산출물 배지, 연결 마법사 1단계에 **로컬 작업 허용(opt-in)** 체크박스 + 작업 디렉터리를 추가했습니다.
+    - 안전장치: 체크하지 않으면 명령에 `--work-profile`이 붙지 않고, Codex에서만 표시되며, 경로가 안전 문자 집합을 벗어나면 플래그를 붙이지 않고 경고합니다(셸 주입 방지).
+    - 검증: `tests/test_connection_ui_wizard.mjs`에 3건 추가(총 51건), Node 9개 파일 **209건 통과**. 브라우저 실사용 캡처는 하지 않았습니다(합성 DOM).
+
+18. **공유 입력 컨텍스트 경계를 재구현했습니다(2026-10-26).** 상세: [COLLABORATION_CONTEXT.md](COLLABORATION_CONTEXT.md).
+    - **경계**: worker가 `shared_context`로 입력을 고르고 UTF-8 경계에서 자르며, `add_file_sources`로 첨부 발췌·누락 개수를 기록하고, `fit_context`가 실제 직렬화 크기를 `MAX_INPUT` 이하로 줄입니다(메타데이터는 버리지 않고, 불가하면 dispatch 전에 실패).
+    - **검증**: `validate_manifest`가 room 범위·참조 실재·`seq`/`actor_id`/`revision`·UTF-8 경계·중복/위조 source를 재확인하고, 통과한 것만 `worker_reported_server_validated_refs_not_model_read_receipt`로 기록합니다. 생략한 구형 worker는 `legacy_input_unverified`로 남습니다. 검증 실패 시 방 상태는 바뀌지 않습니다.
+    - **한도**: 텍스트 72,000 bytes, 메시지 8건, 버전 4건, 첨부 4건.
+    - **검증 결과**: `tests/test_collaboration_context.py` 10건.
+    - **주장하지 않음**: 모델이 읽었다는 증거가 아닙니다. 원본 WIP의 runner 예약·원장·vault·bridge는 미구현이며 [STATUS.md](STATUS.md) §4의 별도 트랙입니다.
 
 ## 4. 아직 남은 것 (완료로 표시하지 않음)
 
@@ -127,7 +135,7 @@ pwsh tools/ci_postgres_fixture.ps1 -Action stop -BinDir <postgres>/bin -DataDir 
 | paging/archival/disk quota | P0 상한(방 64, 이벤트 2048 등)만 존재 | 운영 정책 결정 |
 | binary/이미지 upload | 기본 비활성, `.txt/.md`만 opt-in | P2 격리·검사 |
 | POSIX 실행 | 격리 계층(C1)과 Linux CI 잡은 있으나, supervisor가 SIGKILL로 죽으면 자식이 남는 P4 구멍이 미해결이라 **활성화 보류** | P4 구현([POSIX_CONTAINMENT_PLAN.md](POSIX_CONTAINMENT_PLAN.md) §7) → C2에서 `cli.py`·`adapters.py` 거부 해제 |
-| `feat/paired-local-runner` WIP | 2026-10-24 스냅샷. main 대비 2 커밋 앞·54 커밋 뒤, rebase 시 **14파일 25 hunk 충돌**(프롬프트 빌더·예산 회계·메시지 재시도 UI가 서로 다름). main에 없는 `collaboration.py`·`runner_*.py`·테스트·WORK_LOG를 담고 있어 **삭제하면 내용이 사라진다** | [PR #36](https://github.com/yjj3019/TalkAbout/pull/36) draft에서 방향 결정: 재구현(권장) / 부분 채택 / 폐기. 이 브랜치 테스트는 main 기준 **NOTRUN** |
+| `feat/paired-local-runner` WIP | **collaboration 부분은 재구현 완료**([COLLABORATION_CONTEXT.md](COLLABORATION_CONTEXT.md)). 남은 것은 runner 예약(`runner/reservations`)·원장·DPAPI vault·loopback bridge로, DB 스키마·공개 API를 바꾸는 별도 트랙 | runner 트랙은 설계 검토 후 착수. 원본 스냅샷은 브랜치 + [PR #36](https://github.com/yjj3019/TalkAbout/pull/36) diff로 보존 |
 
 ## 5. 문서 지도
 
@@ -144,6 +152,7 @@ pwsh tools/ci_postgres_fixture.ps1 -Action stop -BinDir <postgres>/bin -DataDir 
 | [RUNTIME_IMPLEMENTATION_VALIDATION.md](RUNTIME_IMPLEMENTATION_VALIDATION.md) | 실제 에이전트 연결 구현·검증 기록(2026-10-17 스냅샷) |
 | [POSIX_CONTAINMENT_PLAN.md](POSIX_CONTAINMENT_PLAN.md) | POSIX 실행 격리 계획(C1 구현, 활성화 보류) |
 | [WORK_PROFILE.md](WORK_PROFILE.md) | opt-in 로컬 작업 프로필(기본 꺼짐, sandbox 아님) |
+| [COLLABORATION_CONTEXT.md](COLLABORATION_CONTEXT.md) | 공유 입력 경계·manifest·서버 참조 검증 |
 | [validation/](validation/) | 실행별 증거 JSON |
 
 ## English

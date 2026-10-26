@@ -1,5 +1,24 @@
 # TalkAbout session log
 
+## 2026-10-26 12:30 UTC — 공유 입력 컨텍스트 재구현 / shared input context, reimplemented
+
+`feat/paired-local-runner`(2026-10-24 WIP)의 남은 판단을 **재구현**으로 처리했다. 그중 collaboration 부분을
+현재 구조에 맞춰 새로 구현했고, runner 예약·원장·vault·bridge는 별도 트랙으로 남겼다.
+
+| 요소 | 내용 |
+| --- | --- |
+| `talkabout/collaboration.py` (신규) | `shared_context`(우선순위 선택·UTF-8 절단·manifest), `add_file_sources`, `fit_context`(직렬화 한도), `validate_manifest`(서버 재검증), `project_manifest`/`project_task`(열람 경계 redaction) |
+| `worker.py` | 인라인 `inputs`/`artifact_proposals` 대신 `shared_context` 사용, 첨부 발췌를 manifest에 기록, dispatch 전 `fit_context`, 완료 시 `input_manifest` 전송 |
+| `core.py` | 완료 시 manifest 검증·`task.input_manifest`/`message.input_evidence` 기록, artifact version에 `sources`·`input_references`·`version_revision` 저장, 공개 투영에서 참조 redaction |
+| 증거 라벨 | `prepared_worker_input_not_model_read_receipt` / `worker_reported_server_validated_refs_not_model_read_receipt` / 구형 worker는 `legacy_input_unverified` |
+
+### 검증
+
+- `tests/test_collaboration_context.py` **10건**: UTF-8 경계, 우선순위(고정·채택), omission 기록, redaction,
+  한도 초과 시 실패, **위조 참조 5종 거절 + 방 불변**, 구형 완료 경로, worker 전송→서버 검증, version revision.
+- 관련 모듈 회귀 8개 파일 **106 passed / 4 skipped**.
+- **주장하지 않음**: 모델이 입력을 읽었다는 증거가 아니다. 원본 WIP의 runner/DB/API 트랙은 미구현.
+
 ## 2026-10-26 11:45 UTC — 저장소 정리: 브랜치·draft PR·보호 설정 / repository hygiene
 
 점검에서 나온 정리 항목을 순서대로 처리했다. 코드 변경은 없다.

@@ -17,7 +17,7 @@
 | 운영 paging·archival·총 disk byte quota | 미구현 | 개발 상한만 적용. 장기 운영 이전 정책/기능 필요 |
 | text artifact 버전·기여자·다운로드·채택 | 로컬 구현 | immutable versions, 현재 ACL 다운로드, human 채택 |
 | 방 산출물(brief)·patch artifact | 로컬 구현 (W0) | `deliverable`(analysis/change_proposal), 통합 diff만 patch로 인정, 서버는 적용하지 않음. diff 형태가 아니면 `invalid_patch` |
-| 에이전트 로컬 도구 실행(작업 모드) | 미구현 (W1) | 소유자 opt-in·workspace 경계·증거 표기 설계 필요. [TOOL_BROKER_PLAN.md](TOOL_BROKER_PLAN.md) |
+| 공유 입력 manifest(경계·검증) | 로컬 구현 | `collaboration.py`: UTF-8 경계 절단, 우선순위 선택, omission 기록, 서버 참조 재검증, `legacy_input_unverified` |`n| 에이전트 로컬 도구 실행(작업 모드) | 미구현 (W1) | 소유자 opt-in·workspace 경계·증거 표기 설계 필요. [TOOL_BROKER_PLAN.md](TOOL_BROKER_PLAN.md) |
 | binary/image/file upload·검사·별도 origin | 미구현 / 거절 | 초기 upload 비활성. P2 quarantine·malware·형식/해상도 검사 필요 |
 | private 격리·token hash/revoke/expiry | 로컬 구현 | 객체별 ACL·현재 token/session 검사. 시험은 합성 credential만 사용 |
 | 실제 운영계정·MFA·분산 rate limit·복구 | 미구현 | bootstrap/session 코드만 존재. 운영계정 생성 안 함 |

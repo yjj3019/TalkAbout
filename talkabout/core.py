@@ -5,6 +5,7 @@ import time
 from .participation import Participation, bound_session
 
 from .identity import REAL_RUNTIMES, public_connection, public_runtime_check
+from .collaboration import project_manifest, project_task, validate_manifest
 from .text_files import (claim_proof, filter_refs, public_task, token_hash, validate_refs)
 
 from .domain import (AGENT_PERMISSIONS, HUMAN_PERMISSIONS, Problem, active, authorize,
@@ -52,11 +53,24 @@ def public_room(room, actor, principals=None):
                     'synthetic':sum(m.get('execution_evidence')=='synthetic_test_only' for m in current),
                     'unverified':sum(m.get('execution_evidence','unverified_agent')=='unverified_agent' for m in current),
                     'last_response_at':max((m['created_at'] for m in current),default=None)}
+    artifacts = [{**copy.deepcopy(a), "versions": [copy.deepcopy(v) for v in a["versions"] if v["seq"] >= viewer_member["read_start_seq"]]}
+                 for a in room["artifacts"].values() if any(v["seq"] >= viewer_member["read_start_seq"] for v in a["versions"])]
+    tasks = [project_task(task, messages, artifacts) for task in tasks]
+    for artifact in artifacts:
+        for version in artifact["versions"]:
+            references = version.get("input_references")
+            if not references:
+                continue
+            # Redact recorded references at the same boundary as the text they describe.
+            allowed_files = filter_refs(actor, room, viewer_member,
+                                        [ref["ref"] for ref in references.get("sources", [])
+                                         if ref.get("kind") == "file_excerpt"])
+            version["input_references"] = project_manifest(references, messages, artifacts, allowed_files)
+            version["sources"] = [source["source_id"] for source in version["input_references"]["sources"]]
     return {k: copy.deepcopy(room[k]) for k in ("id", "topic", "mode", "state", "generation", "room_revision", "limits", "last_seq")} | {
         "deliverable": room.get("deliverable"), "members": members,
         "messages": messages, "tasks": tasks,
-        "artifacts": [{**a, "versions": [v for v in a["versions"] if v["seq"] >= viewer_member["read_start_seq"]]}
-                      for a in room["artifacts"].values() if any(v["seq"] >= viewer_member["read_start_seq"] for v in a["versions"])],
+        "artifacts": artifacts,
         "membership_revision": viewer_member["revision"],
         "mode_status": room.get("mode_status", "running"), "mode_progress": copy.deepcopy(room.get("mode_progress", {})),
         "dispatch_held": room.get("dispatch_held", False),
@@ -297,7 +311,13 @@ class Core(Participation):
                     elif verb == "complete":
                         if room["mode"] == "co_creation" and task["purpose"] == "creator":
                             authorize(actor, room, "room:contribute")
+                        # A worker may report what it was given. The server re-checks every
+                        # reference; absence means "unverified legacy input", not a failure.
+                        inputs = validate_manifest((body.get("result") or {}).get("input_manifest"),
+                                                   public_room(room, actor, principals), task)
                         msg = message(room, actor, body, now, task, fingerprint)
+                        task["input_manifest"] = inputs
+                        msg["input_evidence"] = inputs["evidence"]
                         principal=principals[actor['id']];connection=principal.get('connection') or {}
                         same_credential=connection.get('_credential_binding')==token_hash(token)
                         verified=same_credential and connection.get('runtime')!='synthetic' and self._worker_ready(principal,room_id,now)
@@ -318,7 +338,10 @@ class Core(Participation):
                             # A change-proposal room must receive a diff; anything else is refused
                             # before it becomes a version, and the platform never applies it.
                             kind = deliverable_artifact_kind(room, msg["text"])
-                            artifact["versions"].append({"id": ident(), "seq": room["last_seq"] + 1, "text": msg["text"], "kind": kind, "actor_id": actor["id"], "sources": [], "ai_generated": True})
+                            artifact["versions"].append({"id": ident(), "seq": room["last_seq"] + 1, "text": msg["text"], "kind": kind, "actor_id": actor["id"],
+                                                         "sources": [source["source_id"] for source in inputs["sources"]],
+                                                         "input_references": copy.deepcopy(inputs),
+                                                         "version_revision": artifact["revision"] + 1, "ai_generated": True})
                             artifact["revision"] += 1
                             emit(room, "artifact.changed", artifact_id=aid, actor_id=actor["id"])
                             proposal = copy.deepcopy(artifact)
@@ -456,7 +479,7 @@ class Core(Participation):
                     require(all(isinstance(s, str) and len(s) <= 2048 for s in body.get("sources", [])), "invalid_sources", 422)
                     require(isinstance(body.get("caption", ""), str) and len(body.get("caption", "")) <= 2000, "invalid_caption", 422)
                     require(len(artifact["versions"]) < 16, "version_capacity", 429)
-                    artifact["versions"].append({"id": ident(), "seq": room["last_seq"] + 1, "text": text, "actor_id": actor["id"], "sources": body.get("sources", []), "ai_generated": actor["kind"] == "agent"})
+                    artifact["versions"].append({"id": ident(), "seq": room["last_seq"] + 1, "text": text, "actor_id": actor["id"], "sources": body.get("sources", []), "version_revision": artifact["revision"] + 1, "ai_generated": actor["kind"] == "agent"})
                 artifact["revision"] += 1
                 emit(room, "artifact.changed", artifact_id=artifact["id"], actor_id=actor["id"])
                 if verb == "adoptions" and room["mode"] == "co_creation" and room.get("mode_status") == "awaiting_adoption" and artifact["id"] == room.get("creation_artifact_id"):

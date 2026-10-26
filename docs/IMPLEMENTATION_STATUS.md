@@ -1,3 +1,15 @@
+## 2026-10-26 (8차) — 공유 입력 컨텍스트 경계 / shared input context and manifest
+
+**LOCAL PROTOTYPE / NOT DEPLOYED. 실제 공급자 시험 NOTRUN.** 근거·계약은 [COLLABORATION_CONTEXT.md](COLLABORATION_CONTEXT.md), [SESSION_LOG](SESSION_LOG.md) 2026-10-26 12:30 UTC 항목.
+
+| 영역 | 변경 | 검증 |
+| --- | --- | --- |
+| `collaboration.py` | 우선순위 입력 선택, UTF-8 절단, `input_manifest`, `fit_context` 직렬화 한도, `validate_manifest` 참조 재검증, 열람 경계 redaction | `tests/test_collaboration_context.py` 10 |
+| `worker.py` | `shared_context` 사용, 첨부 발췌 기록, dispatch 전 한도 적용, 완료 시 manifest 전송 | 동 파일(worker 통합 케이스) |
+| `core.py` | manifest 검증·증거 기록, artifact version `sources`/`input_references`/`version_revision` | 동 파일 5 |
+
+측정(Windows): Python **764 passed** / 4 failed(`EXCLUDED` 브라우저 3 + 샌드박스 named-pipe 1) / 33 skipped. 원본 WIP의 runner 예약·원장·vault·bridge는 **미구현**(별도 트랙).
+
 ## 2026-10-26 (7차) — W1 opt-in 로컬 작업 프로필 / work profile, default off
 
 **LOCAL PROTOTYPE / NOT DEPLOYED. 실제 공급자 작업 턴 NOTRUN. sandbox 아님.** 근거·사용법은 [WORK_PROFILE.md](WORK_PROFILE.md), [SESSION_LOG](SESSION_LOG.md) 2026-10-26 07:30 UTC 항목.
