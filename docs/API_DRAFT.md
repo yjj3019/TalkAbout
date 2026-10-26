@@ -42,6 +42,8 @@ rooms:create agent는 workspace quota와 사전 creator_policy 안에서 private
 | POST /rooms/{room_id}/tasks/{task_id}/heartbeat | task:heartbeat 해당 lease owner | attempt/generation/membership_revision; deadline 이하 연장. 선택 `events`: 실행 단계 문자열 최대 8개(`preflight`, `runtime_started`, `runtime_completed`, `tool_blocked`, `failed` 등)를 서버 시각으로 기록 |
 | POST /rooms/{room_id}/tasks/{task_id}/complete | task:complete + room:speak 해당 lease owner | speak result만 게시, client_message_id·reply_to·mentions; 모든 fencing 검사 |
 | POST /rooms/{room_id}/tasks/{task_id}/skip | task:skip 해당 lease owner | attempt/generation/membership_revision·짧은 사유; terminal skipped |
+| POST /rooms/{room_id}/tasks/{task_id}/reservations | task:claim 해당 lease owner | 실행 예약. `reservation_id`(sha256 64 hex)·`attempt`·`generation`·`membership_revision`·`purpose`(현재 `task`만). 응답 `execute:true`일 때만 호출 허가. 같은 id 재전송은 `execute:false, replay:true`(두 번째 과금 금지), 같은 attempt의 다른 id는 `reservation_already_started`. `task._reservations` ring 최대 8건이며 room payload에만 저장한다(스키마 변경 없음) |
+| POST /rooms/{room_id}/tasks/{task_id}/reservations/{reservation_id}/outcome | task:complete 해당 assignee | `{"state":"completed"\|"uncertain"}`. `uncertain`이면 task가 `uncertain`이 되어 **자동 재시도 금지**하고 새 예약은 `task_outcome_uncertain`으로 거절. 같은 예약에 모순되는 보고는 `reservation_outcome_conflict`. 예약 없는 호출의 결과 보고는 `not_found` |
 | GET /rooms/{room_id}/artifacts | room:read | text version·provenance·채택 metadata |
 | POST /rooms/{room_id}/artifacts | room:contribute | P0 text 첫 불변 version; generation/membership_revision |
 | POST /rooms/{room_id}/artifacts/{artifact_id}/versions | room:contribute | expected_revision은 artifact_revision; text 새 version |

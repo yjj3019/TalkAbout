@@ -228,6 +228,72 @@ def fencing(room, member, task, actor, body, now):
             and body.get("membership_revision") == member["revision"] == task["membership_revision"], "stale_attempt")
 
 
+RESERVATION_ID = re.compile(r"[0-9a-f]{64}")
+RESERVATION_STATES = {"reserved", "completed", "uncertain"}
+MAX_RESERVATIONS = 8
+
+
+def grant_reservation(room, task, actor, body, now):
+    """Grant at most one execution permission per task attempt, idempotently.
+
+    The caller must not start a paid call unless `execute` is true. A replay of the same
+    reservation id never becomes a second call, and a second id for an attempt that
+    already holds a reservation is refused rather than double-charged.
+    """
+    active(room)
+    require(not room.get("dispatch_held"), "dispatch_held", 409)
+    require(task and task["assignee"] == actor["id"], "not_found", 404)
+    require(task["state"] == "leased" and now < task["lease_expires_at"] and now < task["deadline"],
+            "stale_attempt", 409)
+    require(type(body.get("attempt")) is int and body["attempt"] == task["attempt"]
+            and body.get("generation") == room["generation"] == task["generation"]
+            and type(body.get("membership_revision")) is int
+            and body["membership_revision"] == task["membership_revision"], "stale_attempt", 409)
+    purpose = body.get("purpose", "task")
+    require(purpose == "task", "invalid_reservation_purpose", 422)
+    reservation_id = body.get("reservation_id")
+    require(isinstance(reservation_id, str) and RESERVATION_ID.fullmatch(reservation_id),
+            "invalid_reservation_id", 422)
+    reservations = task.setdefault("_reservations", [])
+    existing = next((item for item in reservations if item["id"] == reservation_id), None)
+    if existing:
+        return {"execute": False, "reservation_id": reservation_id, "replay": True,
+                "state": existing["state"]}
+    if any(item["attempt"] == task["attempt"] for item in reservations):
+        return {"execute": False, "reservation_id": reservation_id, "reason": "reservation_already_started"}
+    reservations.append({"id": reservation_id, "attempt": task["attempt"], "purpose": purpose,
+                         "state": "reserved", "created_at": now})
+    if len(reservations) > MAX_RESERVATIONS:
+        del reservations[:-MAX_RESERVATIONS]
+    emit(room, "task.execution_reserved", task_id=task["id"], attempt=task["attempt"])
+    return {"execute": True, "reservation_id": reservation_id, "state": "reserved"}
+
+
+def reservation_outcome(room, task, actor, reservation_id, body, now):
+    """Record what happened to a reserved call. A contradiction is refused, not repaired."""
+    active(room)
+    require(task and task["assignee"] == actor["id"], "not_found", 404)
+    require(isinstance(reservation_id, str) and RESERVATION_ID.fullmatch(reservation_id),
+            "not_found", 404)
+    reservations = task.get("_reservations") or []
+    item = next((row for row in reservations if row["id"] == reservation_id), None)
+    require(item, "not_found", 404)
+    state = body.get("state")
+    require(state in {"completed", "uncertain"}, "invalid_reservation_outcome", 422)
+    if item["state"] != "reserved":
+        require(item["state"] == state, "reservation_outcome_conflict", 409)
+        return {"reservation_id": reservation_id, "state": item["state"], "replay": True}
+    item["state"] = state
+    item["reported_at"] = now
+    emit(room, "task.reservation_outcome", task_id=task["id"], attempt=item["attempt"], state=state)
+    if state == "uncertain" and task["state"] in {"queued", "leased"}:
+        # A started call with no outcome must never be retried automatically.
+        task["state"] = "uncertain"
+        task["lease_expires_at"] = 0
+        emit(room, "task.uncertain", task_id=task["id"], attempt=task["attempt"])
+    return {"reservation_id": reservation_id, "state": state}
+
+
 TASK_EVENT_STAGES = {
     "claimed", "preflight", "runtime_started", "prompt_submitted", "runtime_completed",
     "tool_blocked", "completed", "failed", "cancelled", "skipped",

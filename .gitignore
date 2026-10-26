@@ -13,3 +13,4 @@ build/
 dist/
 /.talkabout-fixture-*/
 /.ci-results/
+.tmp-verify/

@@ -31,6 +31,7 @@ for(const [key,[ko,en]] of Object.entries({
  workProfileHelp:['에이전트가 자기 머신의 지정 디렉터리에서 파일을 읽고 고칠 수 있습니다. sandbox가 아니며, 무엇을 했는지는 검증되지 않습니다.','The agent may read and edit files in that directory on its own machine. This is not a sandbox and its claims are not verified.'],
  workWorkspaceLabel:['작업 디렉터리','Work directory'],
  workWorkspaceHelp:['TalkAbout 소스 트리·홈·파일시스템 루트는 거절됩니다.','The TalkAbout source tree, your home directory and the filesystem root are refused.'],
+ uncertain:['결과 불명','Outcome unknown'],
  inputVerified:['입력 참조 검증됨','input refs verified'],
  inputLegacy:['구형 입력(미검증)','legacy input (unverified)'],
  workProfileCodexOnly:['작업 프로필은 현재 Codex exec에서만 지원됩니다.','The work profile currently requires Codex exec.'],

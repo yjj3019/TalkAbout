@@ -341,6 +341,8 @@ def create_app(store, start_scheduler=True, allow_fixture_bearer=False, allowed_
             permitted = operation and (
                 operation in {"messages", "memberships", "controls", "artifacts", "turn-requests"}
                 or re.fullmatch(r"tasks/[^/]+/(claim|heartbeat|complete|skip)", operation)
+                or re.fullmatch(r"tasks/[^/]+/reservations", operation)
+                or re.fullmatch(r"tasks/[^/]+/reservations/[0-9a-f]{64}/outcome", operation)
                 or re.fullmatch(r"controls/[^/]+/approve", operation)
                 or re.fullmatch(r"artifacts/[^/]+/(versions|adoptions)", operation)
                 or (method == "PATCH" and re.fullmatch(r"memberships/[^/]+", operation)))

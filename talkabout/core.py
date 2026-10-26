@@ -9,7 +9,8 @@ from .collaboration import project_manifest, project_task, validate_manifest
 from .text_files import (claim_proof, filter_refs, public_task, token_hash, validate_refs)
 
 from .domain import (AGENT_PERMISSIONS, HUMAN_PERMISSIONS, Problem, active, authorize,
-                     cancel_tasks, deliverable_artifact_kind, digest, emit, fencing, ident, message, new_room,
+                     cancel_tasks, deliverable_artifact_kind, digest, emit, fencing, grant_reservation,
+                     ident, message, new_room, reservation_outcome,
                      record_task_event, replay, require, save_response, schedule, participant_permissions)
 
 
@@ -226,7 +227,11 @@ class Core(Participation):
             target = bits[1] if len(bits) > 1 else None
             verb = bits[-1]
             if bits[0] == "tasks":
-                permission = "task:" + verb
+                if len(bits) > 2 and bits[2] == "reservations":
+                    # A reservation is part of claiming work; its outcome is part of doing it.
+                    permission = "task:claim" if len(bits) == 3 else "task:complete"
+                else:
+                    permission = "task:" + verb
             elif bits[0] == "messages":
                 require(body.get("kind") in {"question", "advice"}, "invalid_kind", 422)
                 permission = "room:" + body["kind"]
@@ -266,6 +271,15 @@ class Core(Participation):
                 emit(room, "turn.requested", actor_id=actor["id"])
                 schedule(room, principals)
                 response = {"accepted": True}
+            elif bits[0] == "tasks" and len(bits) > 2 and bits[2] == "reservations":
+                task = room["tasks"].get(target)
+                require(task and task["assignee"] == actor["id"], "not_found", 404)
+                if len(bits) == 3:
+                    # A task whose call outcome is unknown never receives a new call.
+                    require(task["state"] != "uncertain", "task_outcome_uncertain", 409)
+                    response = grant_reservation(room, task, actor, body, now)
+                else:
+                    response = reservation_outcome(room, task, actor, bits[3], body, now)
             elif bits[0] == "tasks":
                 task = room["tasks"].get(target)
                 require(task and task["assignee"] == actor["id"], "not_found", 404)

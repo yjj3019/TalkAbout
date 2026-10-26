@@ -1,5 +1,39 @@
 # TalkAbout session log
 
+## 2026-10-26 14:05 UTC — 실행 예약 API(R1) 구현 / execution reservations, R1
+
+설계 문서([RUNNER_RESERVATIONS_PLAN.md](RUNNER_RESERVATIONS_PLAN.md))의 R1을 구현했다. 서버 전용이다.
+
+### 계약
+
+| 동작 | 결과 |
+| --- | --- |
+| `POST tasks/{id}/reservations` 첫 호출 | `execute:true` — 이 attempt로 호출해도 되는 유일한 허가 |
+| 같은 `reservation_id` 재전송 | `execute:false, replay:true` — 재전송이 두 번째 과금이 되지 않는다 |
+| 같은 attempt의 다른 `reservation_id` | `execute:false, reservation_already_started` |
+| stale attempt/generation/membership_revision·만료 lease | `stale_attempt`(409), 방 상태 불변 |
+| `dispatch_held` / 비활성 room | `dispatch_held` / `room_not_active` |
+| `POST .../reservations/{rid}/outcome` `completed` | 예약만 종료, task는 계속 leased(정상 complete 경로 유지) |
+| `... outcome` `uncertain` | task가 `uncertain` → **자동 재시도·새 예약 거절**, lease 0 |
+| 같은 예약에 모순되는 보고 | `reservation_outcome_conflict` |
+
+### 저장
+
+`task._reservations` ring **최대 8건**. room payload 안에만 두어 **DB 마이그레이션이 없다**
+(PostgresStore도 room JSON을 그대로 저장). 공개 projection은 `_` 키를 숨기므로 예약 id는 노출되지 않는다.
+
+### 검증
+
+- `tests/test_runner_reservations.py` **14건**.
+- 전체 회귀 **776 passed / 5 failed / 33 skipped**(5m18s). 실패 5건 중 4건은 기존 환경 실패
+  (브라우저 3 + named-pipe 1), 1건(`test_agent_runtime` 진단)은 부하 타이밍 플레이크로
+  단독·파일 단위 재실행에서 **118 passed / 1 skipped**. 회귀 아님을 확인했다.
+
+### 주장하지 않음
+
+**worker는 아직 예약을 호출하지 않는다**(R2). 그래서 "이중 과금이 해결됐다"가 아니라
+"서버 쪽 잠금 장치가 준비됐다"이다. 실행 프로토콜(R3)·vault(R4)·공급자 실호출은 미구현/NOTRUN.
+
 ## 2026-10-26 13:15 UTC — runner 예약 설계 + UI 증거 표시 / runner plan and evidence UI
 
 다음 후보 두 개를 처리했다. 공급자 시험(예산 필요)은 제외했다.
