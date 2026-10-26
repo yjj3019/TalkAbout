@@ -1,5 +1,17 @@
 # TalkAbout session log
 
+## 2026-10-27 — R4 Windows current-user DPAPI opt-in
+
+- 사용자가 저장 정책으로 Windows DPAPI opt-in 선택. 기본 비저장 유지, provider API/OAuth/DB credential 제외.
+- `vault save/list/delete --vault-dir` 추가. 기존 private 디렉터리만, 숨김 TTY 입력만 저장,
+  암호화 payload 안에 token·profile·서버 URL/origin binding. 명시적 profile load 실패 시 fallback 없음.
+- check/join/run/connect/mcp credential resolver 통합, prompt-vault 상호 배타.
+  list/delete는 config/journal/provider 필요 없음. save도 로컬 작업이며 서버 유효성 확인은 별도 check.
+- DPAPI at-rest 범위와 same-user/admin/메모리·backup·remote revoke 한계를 명시.
+- 최종 vault+CLI 집중 회귀 **68 passed / 2 skipped**. 전체 **879 passed / 3 failed / 35 skipped**(기존 브라우저 3건), 기존 CLI/connector/budget **54 passed**, Node 9개 파일·docs gate 통과.
+- 실제 Windows DPAPI roundtrip·junction은 합성 문자열만 사용. 독립 보안 검토의 config shape 오류 처리 지적 수정 후 5건 추가 회귀 통과.
+- 상세 계약: [CREDENTIAL_VAULT.md](CREDENTIAL_VAULT.md). 테스트는 합성 credential만 사용.
+
 ## 2026-10-27 — R3 server_start_v1 / 예약과 실행 시작 분리
 
 - 새 worker는 claim에서 server_start_v1 요청. 예약은 준비(`execute:false`), `/start`만 최초 실행 승인.
