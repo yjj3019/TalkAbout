@@ -1,9 +1,10 @@
 # Runner 예약·원장 계획 / Runner reservations and ledger
 
-**PROPOSED / NOT IMPLEMENTED · 확인일: 2026-10-26**
+**R1 IMPLEMENTED / R2-R5 NOT IMPLEMENTED · 확인일: 2026-10-26**
 
-`feat/paired-local-runner`(2026-10-24 스냅샷)에 남아 있던 마지막 트랙이다. 이 문서는 **설계**이며,
-아직 코드가 없다. 이 문서를 근거로 "예약 API가 있다"거나 "이중 과금이 해결됐다"고 주장하지 않는다.
+`feat/paired-local-runner`(2026-10-24 스냅샷)에 남아 있던 마지막 트랙이다. 이 문서는 **설계 + R1 구현 기록**이다.
+R1(서버 예약 API)은 구현됐고 R2 이후(worker 연결)는 아니다. **worker가 아직 예약을 호출하지 않으므로**
+현재 제품 경로에서 이중 과금이 이미 차단됐다고 주장하지 않는다.
 
 ## 1. 무엇이 문제인가
 
@@ -90,7 +91,7 @@ POST /api/v1/rooms/{room_id}/tasks/{task_id}/reservations/{reservation_id}/outco
 
 | 단계 | 내용 | 선행 조건 | 산출물 |
 | --- | --- | --- | --- |
-| **R1** | 예약 생성/결과 보고 2개 endpoint + `task["reservations"]` + fencing + 테스트 | 없음 (방 JSON만 사용) | 코드 + 테스트 + API 문서 |
+| **R1** ✅ | 예약 생성/결과 보고 2개 endpoint + `task._reservations` ring + fencing + 테스트 — **구현 완료**(2026-10-26) | — | `tests/test_runner_reservations.py` 14건, [API_DRAFT.md](API_DRAFT.md) |
 | **R2** | worker `RunnerLedger`(journal 테이블) + `GrantedRuntime` + `execute:false` 시 호출 금지 | R1 | 코드 + 테스트 |
 | **R3** | `tasks/{id}/start` 실행 프로토콜(`execution_protocol='server_start_v1'`) — 예약을 실행 시작으로 승격 | R1·R2 | 코드 + 테스트 |
 | **R4** | 자격증명 vault(DPAPI 등) — **정책 결정 필요** | 별도 검토 | — |
@@ -117,7 +118,8 @@ POST /api/v1/rooms/{room_id}/tasks/{task_id}/reservations/{reservation_id}/outco
 
 ## 7. 현재 상태
 
-- 코드: **없음**(이 문서만).
-- 테스트: **없음**.
+- 코드: **R1 구현됨** — `talkabout/domain.py`의 `grant_reservation`·`reservation_outcome`, `core.py` 라우팅, `api.py` 허용 경로.
+- 테스트: `tests/test_runner_reservations.py` **14건**(재전송 멱등, attempt당 1회, stale fence 3종, 만료 lease, dispatch_held/paused, ring 상한 8, uncertain 재시도 차단, 완료 보고, 미예약 결과 거절, 거절 시 방 불변).
+- **미구현**: worker 호출 경로(R2), 실행 프로토콜(R3), vault(R4). 따라서 예약은 아직 **강제되지 않는다**.
 - 이 트랙은 [STATUS.md](STATUS.md) §4의 "남은 관문"에 있으며, `feat/paired-local-runner` 브랜치에
   WIP 자산(Ledger/GrantedRuntime/vault/bridge)이 아카이브로 남아 있다.
