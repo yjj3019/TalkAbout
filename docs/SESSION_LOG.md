@@ -13,6 +13,9 @@
   보고 거절 보존·상한 backpressure, 늦은 보고를 원래 예약에만 반영.
 - 보장 표현 수정: 협력 worker의 보존된 attempt당 실행 승인 최대 1회. 모델 실행 영수증,
   exactly-once provider 호출·과금·legacy 전체 강제는 아님. uncertain 전용 human 해결 API는 미구현.
+- 검증: 서버 시작 26건 + worker 예약/시작 10건 = 36 passed, budget 포함 43 passed.
+  기존 worker 통합 46 passed, Node 9개 파일 통과, docs_check 0 new/0 known.
+  deadline 회귀는 기존 save 후킹 대신 새 원자 save_result 경계 후킹으로 갱신(검증 의도 유지).
 - 계약 정본: [RUNNER_RESERVATIONS_PLAN.md](RUNNER_RESERVATIONS_PLAN.md). 실호출은 NOTRUN.
 
 ## 2026-10-27 20:00 KST — 실행 예약 R2: worker 연동 / reservations wired into the worker
