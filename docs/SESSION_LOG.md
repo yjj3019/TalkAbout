@@ -1,5 +1,40 @@
 # TalkAbout session log
 
+## 2026-10-27 20:00 KST — 실행 예약 R2: worker 연동 / reservations wired into the worker
+
+R1(서버 API)에 이어 worker가 실제로 예약을 사용하도록 연결했다([RUNNER_RESERVATIONS_PLAN.md](RUNNER_RESERVATIONS_PLAN.md) R2).
+
+### worker 측 변경
+
+- `reservation_id()` — purpose·room·task·attempt·generation·membership_revision의 sha256.
+  **결정적**이므로 재시작한 worker도 같은 id로 다시 물어본다.
+- 호출 전 게이트: claim·fence 재확인 직후 예약 요청 → `execute:true`일 때만 runtime 호출.
+  `reservation_already_started`면 0회 호출로 끝내고 journal을 `reservation_refused`(종료 상태)로 둔다.
+- 결과 보고: 성공 `completed`, 시작했으나 결과 없음(timeout·예외·heartbeat 실패·crash 재개) `uncertain`.
+- journal `reservation_outcomes` 테이블 — 전달 실패한 보고를 보관하고 다음 step 선두에서 재전송.
+  서버의 확정 거절(404/409/410/422)은 폐기. 상한은 기존 `pending_limit`(64)를 재사용.
+
+### 서버 측 정정 (중요)
+
+재현 스크립트로 **응답 유실 시나리오**를 확인하던 중 결함을 찾았다: 예약 POST에 Idempotency-Key를
+붙이면 첫 응답(`execute:true`)이 **재생 캐시에서 그대로 돌아왔다**. 캐시된 승인 재생은 곧
+이중 호출이다. 수정: 예약 두 경로는 캐시에서 serve/save하지 않고 **항상 새로 계산**한다
+(같은 키 재요청 → `grant_reservation` 재실행 → `replay:true, execute:false`). 키 자체는 여전히 필수.
+회귀 테스트로 고정했다.
+
+### 검증
+
+- `tests/test_worker_reservations.py` **6건** — 승인 후 1회 호출, 거절 시 0회, 응답 유실 재개가
+  replay로 처리(0회 호출), 실패 호출의 uncertain 보고, 미전달 보고의 큐 재전송, 결정적 id.
+- `tests/test_runner_reservations.py` 15건(+캐시 회귀 1건).
+- 기존 회귀 1건 갱신: 모호한 실패 후 task가 이제 서버에서 직접 `uncertain`으로 은퇴한다
+  (lease 회수를 기다리지 않음) — 더 강한 보장을 단언하도록 바꿨다.
+- FEATURE_MATRIX의 예약·W1 행 갱신(이전 치환 실수로 붙어 있던 리터럴 `` `n `` 접합도 복구).
+
+### 주장하지 않음
+
+공급자 실호출은 여전히 NOTRUN. 실행 프로토콜(R3)·vault(R4)는 미구현.
+
 ## 2026-10-26 14:05 UTC — 실행 예약 API(R1) 구현 / execution reservations, R1
 
 설계 문서([RUNNER_RESERVATIONS_PLAN.md](RUNNER_RESERVATIONS_PLAN.md))의 R1을 구현했다. 서버 전용이다.

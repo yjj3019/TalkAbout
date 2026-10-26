@@ -254,7 +254,7 @@ class Core(Participation):
             if bits[0] == "tasks" and verb == "complete":
                 authorize(actor, room, "room:speak")
             previous, lookup, fingerprint = replay(room, actor, operation, key, body)
-            if previous is not None:
+            if previous is not None and not (bits[0] == "tasks" and len(bits) > 2 and bits[2] == "reservations"):
                 if self.text_files and bits[0]=='tasks' and verb=='claim' and 'lease_id' in previous:
                     return {**previous,'lease_proof':claim_proof(token,room_id,previous,key)}
                 return previous
@@ -507,6 +507,10 @@ class Core(Participation):
             if bits[0]=='tasks':
                 if response.get('id')==target:response=public_task(response)
                 elif 'task' in response:response={**response,'task':public_task(response['task'])}
+            if bits[0] == "tasks" and len(bits) > 2 and bits[2] == "reservations":
+                # A reservation answer is computed fresh every time and never cached: a
+                # replayed execute:true would be the double call the reservation forbids.
+                return response
             saved=save_response(room, lookup, fingerprint, copy.deepcopy(response), member["epoch"])
             if self.text_files and bits[0]=='tasks' and verb=='claim':
                 return {**saved,'lease_proof':claim_proof(token,room_id,saved,key)}
