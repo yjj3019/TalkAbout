@@ -59,11 +59,11 @@ def test_deadline_is_rechecked_immediately_before_completion(fixture, tmp_path):
     class Fast:
         def run(self, context, cancel): return 'synthetic'
     worker = Worker(client, journal, Fast(), run_deadline=time.monotonic()+2)
-    original = journal.save
-    def save(task, state, payload):
-        original(task, state, payload)
-        if state == 'result_saved': worker.run_deadline = time.monotonic()-1
-    journal.save = save
+    original = journal.save_result
+    def save_result(task, payload, room_id):
+        original(task, payload, room_id)
+        worker.run_deadline = time.monotonic()-1
+    journal.save_result = save_result
     try:
         with pytest.raises(RunBudgetExceeded): worker.step()
         assert journal.status() == {'result_saved': 1}

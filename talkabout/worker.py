@@ -199,15 +199,30 @@ class Journal:
         row = self.db.execute("SELECT id,state,payload FROM queue WHERE state NOT IN ('done','failed','uncertain','cancelled','stopped_before_submit','reservation_refused') ORDER BY rowid LIMIT 1").fetchone()
         return (row[0], row[1], json.loads(row[2])) if row else None
 
-    def queue_outcome(self, reservation, room_id, task_id, state):
-        """Durable until the server accepts it: a dropped report must not become a retry."""
-        with self.db:
-            self.db.execute("INSERT OR REPLACE INTO reservation_outcomes VALUES(?,?,?,?,?)",
+    def _queue_outcome(self, reservation, room_id, task_id, state):
+        existing = self.db.execute("SELECT state FROM reservation_outcomes WHERE reservation=?",
+                                   (reservation,)).fetchone()
+        if existing and existing[0] != state:
+            raise ValueError("reservation_outcome_conflict")
+        if not existing:
+            count = self.db.execute("SELECT count(*) FROM reservation_outcomes").fetchone()[0]
+            if count >= self.pending_limit:
+                raise Backpressure("reservation_outcome_capacity")
+            self.db.execute("INSERT INTO reservation_outcomes VALUES(?,?,?,?,?)",
                             (reservation, room_id, task_id, state, time.time()))
-            stale = self.db.execute("SELECT reservation FROM reservation_outcomes ORDER BY created_at"
-                                    " LIMIT -1 OFFSET ?", (self.pending_limit,)).fetchall()
-            for (key,) in stale:
-                self.db.execute("DELETE FROM reservation_outcomes WHERE reservation=?", (key,))
+
+    def queue_outcome(self, reservation, room_id, task_id, state):
+        """Never evict unacknowledged debt at capacity."""
+        with self.db:
+            self._queue_outcome(reservation, room_id, task_id, state)
+
+    def save_result(self, task_id, payload, room_id):
+        """Commit the result and completed-outcome intent in the same transaction."""
+        with self.db:
+            if payload.get("reservation"):
+                self._queue_outcome(payload["reservation"], room_id, task_id, "completed")
+            self.db.execute("UPDATE queue SET state='result_saved',payload=? WHERE id=?",
+                            (json.dumps(payload), task_id))
 
     def outcomes(self, limit=8):
         return self.db.execute("SELECT reservation,room_id,task_id,state FROM reservation_outcomes"
@@ -304,11 +319,8 @@ class Worker:
                 self.client.request(
                     "POST", f"rooms/{rid}/tasks/{tid}/reservations/{reservation}/outcome",
                     {"state": state}, f"outcome:{reservation}:{state}")
-            except httpx.HTTPStatusError as error:
-                if error.response.status_code in {404, 409, 410, 422}:
-                    # The server answered definitively (unknown or contradictory report).
-                    self.journal.served_outcome(reservation)
-                    continue
+            except httpx.HTTPStatusError:
+                # Rejection is not acknowledgement: retain debt for diagnosis/reconciliation.
                 return
             except Exception:
                 return
@@ -364,6 +376,28 @@ class Worker:
         stop_seen = threading.Event()
         rid = payload["event"]["room_id"]
         prefix = f"rooms/{rid}/tasks/{tid}"
+        if state == "start_pending":
+            # Distinguish a crash before sending start from a lost approval response.
+            # Only the latter is execution debt; an unstarted reservation can resume.
+            task = payload["task"]
+            fence = {k: task[k] for k in ("attempt", "generation", "membership_revision")}
+            try:
+                status = self.client.request("POST", prefix + "/reservations",
+                    {**fence, "purpose": "task", "reservation_id": payload["reservation"]},
+                    f"recover:{payload['reservation']}")
+            except httpx.HTTPStatusError as error:
+                if error.response.status_code != 409:
+                    raise
+                current = self.client.request("GET", prefix)
+                if current["state"] != "uncertain":
+                    self.journal.save(tid, "failed", payload)
+                    return "stale"
+                status = {"state": "started"}
+            if status.get("reserved") is True:
+                self.journal.save(tid, "claimed", payload)
+                state = "claimed"
+            else:
+                state = "call_started"
         if state == "call_started":
             # A crash between "reserved" and "result saved" leaves the call's outcome
             # unknown. Report that; never let the same attempt be retried as if it were free.
@@ -388,7 +422,8 @@ class Worker:
                 if task["state"] != "queued":
                     self.journal.save(tid, "failed", payload)
                     return "unavailable"
-                payload["claim"] = {"generation": task["generation"], "membership_revision": task["membership_revision"]}
+                payload["claim"] = {"generation": task["generation"], "membership_revision": task["membership_revision"],
+                                    "execution_protocol": "server_start_v1"}
                 # Durable for retries of this claim, distinct across worker journals.
                 payload["claim_key"] = f"claim:{tid}:{uuid.uuid4().hex}"
                 payload["runtime_started"] = False
@@ -404,6 +439,10 @@ class Worker:
                     self.journal.stop_state("stopped")
                     return "stopped"
                 task = self.client.request("POST", prefix + "/claim", payload["claim"], payload["claim_key"])
+                if (payload["claim"].get("execution_protocol") == "server_start_v1"
+                        and task.get("execution_protocol") != "server_start_v1"):
+                    self.journal.save(tid, "failed", payload)
+                    raise ValueError("execution_protocol_not_supported")
                 payload["task"] = task
                 self.journal.save(tid, "claimed", payload)
                 state = "claimed"
@@ -485,6 +524,9 @@ class Worker:
                     # Refuse before any provider call: an unbounded input is not a turn.
                     self.journal.save(tid, 'failed', payload)
                     return error.code
+                # Stop before authorization when unacknowledged reports fill the ledger.
+                if len(self.journal.outcomes(self.journal.pending_limit)) >= self.journal.pending_limit:
+                    return "backpressure"
                 # One paid call per attempt. The permission comes from the server, and a
                 # refusal is respected: nothing below runs when it is not granted.
                 fence = {k: task[k] for k in ("attempt", "generation", "membership_revision")}
@@ -494,8 +536,21 @@ class Worker:
                                               {**fence, "purpose": "task",
                                                "reservation_id": reservation},
                                               f"reserve:{reservation}")
+                server_start = task.get("execution_protocol") == "server_start_v1"
+                if server_start and granted.get("reserved") is True:
+                    # Persist an ambiguous start before sending it. A lost response must
+                    # never be replayed as permission to launch the provider twice.
+                    payload["reservation"] = reservation
+                    self.journal.save(tid, "start_pending", payload)
+                    check_deadline(self.run_deadline)
+                    if self.journal.stop_requested():
+                        self.journal.save(tid, "cancelled", payload)
+                        return "stopped"
+                    granted = self.client.request("POST", prefix + "/start",
+                                                  {**fence, "reservation_id": reservation},
+                                                  f"start:{reservation}")
                 if granted.get("execute") is not True:
-                    if granted.get("replay") and granted.get("state") == "reserved":
+                    if granted.get("replay") and granted.get("state") in {"reserved", "started"}:
                         # An earlier run of this attempt reserved and never reported. The
                         # call may have happened, so its outcome is unknown: no retry.
                         self._record_outcome(tid, rid, reservation, "uncertain")
@@ -540,9 +595,14 @@ class Worker:
                     remaining = self.run_deadline - time.monotonic() if self.run_deadline is not None else float('inf')
                     lease_remaining=max(0,latest['lease_expires_at']-time.time()) if claimed.get('attachment_refs') else float('inf')
                     text = bounded_call(self.runtime, context, cancel, min(self.runtime_timeout, max(0, task["deadline"] - time.time()), lease_remaining, remaining))
-                    check_deadline(self.run_deadline)
+                    # Save returned text and report intent before any network request.
+                    payload["complete"] = {**fence, "result": {
+                        "client_message_id": f"{tid}:{task['attempt']}", "text": text,
+                        "reply_to": None, "mentions": [],
+                        "input_manifest": context.get("input_manifest")}}
+                    payload["complete_key"] = f"complete:{tid}:{task['attempt']}"
+                    self.journal.save_result(tid, payload, rid)
                     self._beat(prefix, task, ["runtime_completed"], "end")
-                    self._record_outcome(tid, rid, reservation, "completed")
                 except RuntimeTimeout as error:
                     # The call started and did not finish: the outcome is unknown, not free.
                     self._record_outcome(tid, rid, reservation, "uncertain")
@@ -562,14 +622,11 @@ class Worker:
                     finished.set()
                     thread.join(timeout=16)
                     watcher.join(timeout=2)
+                self._flush_outcomes()
                 if heartbeat_failed.is_set():
-                    self._record_outcome(tid, rid, reservation, "uncertain")
-                    self.journal.save(tid, "uncertain", payload)
+                    # The provider returned: its outcome is completed even if publication
+                    # loses its fence. Keep the saved result; never contradict the report.
                     return "heartbeat_failed"
-                payload["complete"] = {**fence, "result": {"client_message_id": f"{tid}:{task['attempt']}", "text": text, "reply_to": None, "mentions": [],
-                                                          "input_manifest": context.get("input_manifest")}}
-                payload["complete_key"] = f"complete:{tid}:{task['attempt']}"
-                self.journal.save(tid, "result_saved", payload)
             if stop_seen.is_set() or self.journal.stop_requested():
                 self.journal.save(tid, "stopped_before_submit", payload)
                 self.journal.stop_state("stopped")
