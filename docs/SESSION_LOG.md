@@ -1,5 +1,34 @@
 # TalkAbout session log
 
+## 2026-10-26 11:45 UTC — 저장소 정리: 브랜치·draft PR·보호 설정 / repository hygiene
+
+점검에서 나온 정리 항목을 순서대로 처리했다. 코드 변경은 없다.
+
+| 조치 | 내용 |
+| --- | --- |
+| 설정 | `delete_branch_on_merge` **켬**, `main` 보호 설정(필수 체크: `safe-regression`·`posix-containment`, force push·삭제 금지, 관리자 우회 허용) |
+| draft PR | #9–#12 닫음 — 네 건 모두 head 브랜치가 이미 main에 머지된 **중복 draft** |
+| 원격 브랜치 | **16개 삭제** — 머지 완료 11개 + 대체된 미머지 5개(변경 경로가 모두 main에 이미 존재) |
+| 남긴 브랜치 | `main`, `feat/paired-local-runner` |
+| 미머지 WIP | [PR #36](https://github.com/yjj3019/TalkAbout/pull/36) **draft**로 열어 결정 대기 |
+
+삭제한 브랜치 tip(복구 참고):
+
+```text
+b9e62ef chore/completion-verification        a769c1a feat/agent-community-flow
+deaa5e0 feat/initial-setup-guide             cdb5b66 feat/internal-broker-attachments
+dcc6303 feat/onboarding-readiness            1ca670f feat/room-invite-flow
+a4fde42 feat/runtime-connection-onboarding   e4824d6 feat/scoped-session-continuity
+d09dcc2 feat/text-attachment-vertical        c4621cb fix/native-windows-environment
+a9feb77 test/mcp-tool-contract               fab10fb chore/operating-deployment-guide
+cd2870d feat/automatic-db-install            1eeb747 feat/first-owner-setup
+08318f4 feat/p0-core-worker                  7ae0821 feat/podman-packaging
+```
+
+**남은 판단**: `feat/paired-local-runner`(2026-10-24 스냅샷)는 main 위로 rebase하면 14파일 25 hunk가 충돌한다.
+겹치는 영역을 서로 다르게 구현했기 때문이다(프롬프트 빌더·예산 회계·메시지 재시도 UI). 이 브랜치의 테스트는
+main 기준으로 **실행된 적이 없다(NOTRUN)**. 재구현·부분 채택·폐기 중 하나를 결정해야 한다.
+
 ## 2026-10-26 08:00 UTC — 웹 UI: 산출물·작업 프로필 노출 / expose work capabilities in the UI
 
 W0/W1이 CLI·API에만 있던 것을 화면에서 쓸 수 있게 했다.

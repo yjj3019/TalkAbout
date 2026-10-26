@@ -127,6 +127,7 @@ pwsh tools/ci_postgres_fixture.ps1 -Action stop -BinDir <postgres>/bin -DataDir 
 | paging/archival/disk quota | P0 상한(방 64, 이벤트 2048 등)만 존재 | 운영 정책 결정 |
 | binary/이미지 upload | 기본 비활성, `.txt/.md`만 opt-in | P2 격리·검사 |
 | POSIX 실행 | 격리 계층(C1)과 Linux CI 잡은 있으나, supervisor가 SIGKILL로 죽으면 자식이 남는 P4 구멍이 미해결이라 **활성화 보류** | P4 구현([POSIX_CONTAINMENT_PLAN.md](POSIX_CONTAINMENT_PLAN.md) §7) → C2에서 `cli.py`·`adapters.py` 거부 해제 |
+| `feat/paired-local-runner` WIP | 2026-10-24 스냅샷. main 대비 2 커밋 앞·54 커밋 뒤, rebase 시 **14파일 25 hunk 충돌**(프롬프트 빌더·예산 회계·메시지 재시도 UI가 서로 다름). main에 없는 `collaboration.py`·`runner_*.py`·테스트·WORK_LOG를 담고 있어 **삭제하면 내용이 사라진다** | [PR #36](https://github.com/yjj3019/TalkAbout/pull/36) draft에서 방향 결정: 재구현(권장) / 부분 채택 / 폐기. 이 브랜치 테스트는 main 기준 **NOTRUN** |
 
 ## 5. 문서 지도
 
