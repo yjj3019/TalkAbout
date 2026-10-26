@@ -155,6 +155,16 @@ def test_every_refusal_leaves_no_reservation_behind(fixture):
     assert not reservations_of(core, rid, task)
     assert not any(event['type'] == 'task.execution_reserved' for event in core.store.rooms[rid]['events'])
 
+def test_a_repeated_reservation_request_is_never_answered_from_the_cache(fixture):
+    """A cached execute:true would be exactly the double call the reservation forbids."""
+    _, core, rid = fixture
+    task = leased(core, rid)
+    first = reserve(core, rid, task, key='same-key')
+    assert first['execute'] is True
+    replayed = reserve(core, rid, task, key='same-key')
+    assert replayed['execute'] is False and replayed['replay'] is True
+    assert len(reservations_of(core, rid, task)) == 1
+
 def test_the_http_gate_accepts_the_reservation_routes(fixture):
     """The route regexes in api.py are part of the contract; a typo here is a silent 404."""
     store, core, rid = fixture

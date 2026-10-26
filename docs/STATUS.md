@@ -137,6 +137,13 @@ pwsh tools/ci_postgres_fixture.ps1 -Action stop -BinDir <postgres>/bin -DataDir 
     - **검증**: `tests/test_runner_reservations.py` **14건**. 전체 회귀 **776 passed / 5 failed**였고 5건 중 4건은 기존 환경 실패(브라우저 3 + named-pipe 1), 1건(`test_agent_runtime` 진단)은 부하 타이밍 플레이크로 단독·파일 단위 재실행에서 **118 passed / 1 skipped**로 통과했습니다.
     - **주장하지 않음**: **worker는 아직 예약을 호출하지 않습니다**(R2). 따라서 현재 제품 경로에서 이중 과금이 이미 차단됐다는 뜻이 아니라, 서버 쪽 잠금 장치가 준비됐다는 뜻입니다. 실행 프로토콜(R3)·vault(R4)·공급자 실호출은 여전히 미구현/NOTRUN입니다.
 
+21. **worker가 예약을 실제로 사용합니다(R2, 2026-10-27).**
+    - **호출 전 게이트**: worker는 claim·fence 재확인 직후 결정적 `reservation_id`(purpose·room·task·attempt·generation·membership_revision의 sha256)로 예약을 요청하고, **`execute:true`일 때만** runtime을 호출합니다. 거절(`reservation_already_started`)이면 0회 호출로 끝나고 `reservation_refused` 종료 상태를 남깁니다.
+    - **응답 유실**: 재시작한 worker는 같은 id로 다시 요청해 서버의 `replay:true`를 받고 **호출 없이 `uncertain`**으로 처리합니다. 이를 위해 서버는 예약 두 경로를 **idempotency 재생 캐시에서 제외**했습니다 — 캐시된 `execute:true` 재생이 곧 이중 호출이므로(회귀 테스트로 고정).
+    - **결과 보고**: 성공 → `completed`, 시작했으나 결과 없음(timeout·예외·heartbeat 실패·crash 후 재개) → `uncertain`. 전달 실패한 보고는 journal `reservation_outcomes` 테이블에 남아 다음 step 선두에서 재전송되고, 서버의 확정 거절(404/409/410/422)이면 폐기합니다.
+    - **검증**: `tests/test_worker_reservations.py` **6건** + 서버 측 회귀 1건(`test_runner_reservations.py` 15건). 기존 회귀 1건(모호한 실패 후 재큐 금지)은 이제 서버가 직접 task를 `uncertain`으로 은퇴시키므로 **더 강한 보장**을 단언하도록 갱신했습니다.
+    - **주장하지 않음**: 공급자 실호출 시험은 여전히 NOTRUN입니다. 실행 프로토콜(R3)·vault(R4)는 미구현입니다.
+
 ## 4. 아직 남은 것 (완료로 표시하지 않음)
 
 | 남은 관문 | 왜 남았는가 | 다음 행동 |
@@ -148,7 +155,7 @@ pwsh tools/ci_postgres_fixture.ps1 -Action stop -BinDir <postgres>/bin -DataDir 
 | paging/archival/disk quota | P0 상한(방 64, 이벤트 2048 등)만 존재 | 운영 정책 결정 |
 | binary/이미지 upload | 기본 비활성, `.txt/.md`만 opt-in | P2 격리·검사 |
 | POSIX 실행 | 격리 계층(C1)과 Linux CI 잡은 있으나, supervisor가 SIGKILL로 죽으면 자식이 남는 P4 구멍이 미해결이라 **활성화 보류** | P4 구현([POSIX_CONTAINMENT_PLAN.md](POSIX_CONTAINMENT_PLAN.md) §7) → C2에서 `cli.py`·`adapters.py` 거부 해제 |
-| Runner 예약·원장 | **R1 서버 예약 API 구현**(`tasks/{id}/reservations`, `.../outcome`, `task._reservations` ring). 계약은 [RUNNER_RESERVATIONS_PLAN.md](RUNNER_RESERVATIONS_PLAN.md), 상세는 항목 20 | R2: worker `RunnerLedger`+`GrantedRuntime`로 실제 호출 전 예약 → R3 실행 프로토콜. vault는 정책 결정, loopback bridge는 `trial_http`와 중복이라 거부 권장 |
+| Runner 예약·원장 | **R1 서버 API + R2 worker 연동 구현** — worker는 `execute:true` 없이 호출하지 않고 시작한 호출의 결과를 반드시 보고한다(항목 21). 계약은 [RUNNER_RESERVATIONS_PLAN.md](RUNNER_RESERVATIONS_PLAN.md) | R3 실행 프로토콜(`tasks/{id}/start` 승격) → R4 vault(정책 결정). loopback bridge는 `trial_http`와 중복이라 거부 권장 |
 
 ## 5. 문서 지도
 

@@ -1,10 +1,11 @@
 # Runner 예약·원장 계획 / Runner reservations and ledger
 
-**R1 IMPLEMENTED / R2-R5 NOT IMPLEMENTED · 확인일: 2026-10-26**
+**R1+R2 IMPLEMENTED / R3-R5 NOT IMPLEMENTED · 확인일: 2026-10-27**
 
-`feat/paired-local-runner`(2026-10-24 스냅샷)에 남아 있던 마지막 트랙이다. 이 문서는 **설계 + R1 구현 기록**이다.
-R1(서버 예약 API)은 구현됐고 R2 이후(worker 연결)는 아니다. **worker가 아직 예약을 호출하지 않으므로**
-현재 제품 경로에서 이중 과금이 이미 차단됐다고 주장하지 않는다.
+`feat/paired-local-runner`(2026-10-24 스냅샷)에 남아 있던 마지막 트랙이다. 이 문서는 **설계 + R1·R2 구현 기록**이다.
+서버 예약 API(R1)와 worker 연동(R2)은 구현됐고, 실행 프로토콜(R3)과 vault(R4)는 아니다.
+**이제 worker는 실제로 호출 전에 예약을 요청하므로** "attempt당 유료 호출 1회"가 제품 경로에서 강제된다.
+다만 공급자 실호출 시험은 여전히 NOTRUN이다.
 
 ## 1. 무엇이 문제인가
 
@@ -92,7 +93,7 @@ POST /api/v1/rooms/{room_id}/tasks/{task_id}/reservations/{reservation_id}/outco
 | 단계 | 내용 | 선행 조건 | 산출물 |
 | --- | --- | --- | --- |
 | **R1** ✅ | 예약 생성/결과 보고 2개 endpoint + `task._reservations` ring + fencing + 테스트 — **구현 완료**(2026-10-26) | — | `tests/test_runner_reservations.py` 14건, [API_DRAFT.md](API_DRAFT.md) |
-| **R2** | worker `RunnerLedger`(journal 테이블) + `GrantedRuntime` + `execute:false` 시 호출 금지 | R1 | 코드 + 테스트 |
+| **R2** ✅ | worker 예약 호출 + journal 결과 큐 + `execute:false` 시 호출 금지 — **구현 완료**(2026-10-27). 원장은 journal의 `reservation_outcomes` 테이블로 흡수했고, 별도 `GrantedRuntime` 클래스는 불필요했다(기존 `bounded_call` 앞에 게이트 배치) | R1 | `tests/test_worker_reservations.py` 6건 |
 | **R3** | `tasks/{id}/start` 실행 프로토콜(`execution_protocol='server_start_v1'`) — 예약을 실행 시작으로 승격 | R1·R2 | 코드 + 테스트 |
 | **R4** | 자격증명 vault(DPAPI 등) — **정책 결정 필요** | 별도 검토 | — |
 | **R5** | loopback bridge — **거부 권장**(`trial_http`와 중복) | — | — |
@@ -118,8 +119,9 @@ POST /api/v1/rooms/{room_id}/tasks/{task_id}/reservations/{reservation_id}/outco
 
 ## 7. 현재 상태
 
-- 코드: **R1 구현됨** — `talkabout/domain.py`의 `grant_reservation`·`reservation_outcome`, `core.py` 라우팅, `api.py` 허용 경로.
-- 테스트: `tests/test_runner_reservations.py` **14건**(재전송 멱등, attempt당 1회, stale fence 3종, 만료 lease, dispatch_held/paused, ring 상한 8, uncertain 재시도 차단, 완료 보고, 미예약 결과 거절, 거절 시 방 불변).
-- **미구현**: worker 호출 경로(R2), 실행 프로토콜(R3), vault(R4). 따라서 예약은 아직 **강제되지 않는다**.
-- 이 트랙은 [STATUS.md](STATUS.md) §4의 "남은 관문"에 있으며, `feat/paired-local-runner` 브랜치에
+- 코드: **R1·R2 구현됨** — `talkabout/domain.py`의 `grant_reservation`·`reservation_outcome`, `core.py` 라우팅과 예약 재생 캐시 제외, `api.py` 허용 경로, `worker.py`의 `reservation_id`·예약 게이트·`reservation_outcomes` 원장.
+- 테스트: `tests/test_runner_reservations.py` **15건**(서버 계약) + `tests/test_worker_reservations.py` **6건**(worker 연동: 승인 후 1회 호출, 거절 시 0회 호출, 응답 유실 재시도가 replay로 처리, 실패 호출의 uncertain 보고, 미전달 보고의 큐 재전송, 결정적 id).
+- **이제 강제된다**: worker는 `execute:true` 없이는 runtime을 호출하지 않고, 시작한 호출의 결과를 반드시 보고한다(전달 실패 시 journal에 남겨 다음 step에서 재전송).
+- **미구현**: 실행 프로토콜(R3), vault(R4).
+- 이 트랙의 남은 관문은 [STATUS.md](STATUS.md) §4에 있으며, `feat/paired-local-runner` 브랜치에
   WIP 자산(Ledger/GrantedRuntime/vault/bridge)이 아카이브로 남아 있다.

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
 import threading
@@ -37,6 +38,17 @@ def transient_sqlite_error(error):
         return (code & 0xFF) in _TRANSIENT_SQLITE_CODES
     text = str(error).lower()
     return 'locked' in text or 'busy' in text
+
+
+def reservation_id(room_id, task_id, attempt, generation, membership_revision, purpose="task"):
+    """Deterministic across retries, so a lost response cannot become a second paid call.
+
+    The server answers a replay of this id with execute:false, which is the whole point:
+    the client never has to guess whether its earlier request arrived.
+    """
+    key = "|".join(str(part) for part in
+                   (purpose, room_id, task_id, attempt, generation, membership_revision))
+    return hashlib.sha256(key.encode("utf-8")).hexdigest()
 
 
 class StopRequested(Exception):
@@ -146,7 +158,9 @@ class Journal:
         warn_if_journal_is_exposed()  # report-only: never changes the PRAGMAs above
         self.db.executescript("CREATE TABLE IF NOT EXISTS settings(k TEXT PRIMARY KEY,v TEXT);"
                              "CREATE TABLE IF NOT EXISTS inbox(id TEXT PRIMARY KEY,payload TEXT NOT NULL);"
-                             "CREATE TABLE IF NOT EXISTS queue(id TEXT PRIMARY KEY,state TEXT NOT NULL,payload TEXT NOT NULL);")
+                             "CREATE TABLE IF NOT EXISTS queue(id TEXT PRIMARY KEY,state TEXT NOT NULL,payload TEXT NOT NULL);"
+                             "CREATE TABLE IF NOT EXISTS reservation_outcomes(reservation TEXT PRIMARY KEY,room_id TEXT NOT NULL,"
+                             "task_id TEXT NOT NULL,state TEXT NOT NULL,created_at REAL NOT NULL);")
 
     def setting(self, key, default=None):
         row = self.db.execute("SELECT v FROM settings WHERE k=?", (key,)).fetchone()
@@ -172,7 +186,7 @@ class Journal:
                         self.db.execute("INSERT INTO queue VALUES(?,?,?)", (event["task_id"], "ready", json.dumps({"event": event, "runtime_started": False})))
             inbox = self.db.execute("SELECT count(*) FROM inbox").fetchone()[0]
             queue = self.db.execute("SELECT count(*) FROM queue").fetchone()[0]
-            pending = self.db.execute("SELECT count(*) FROM queue WHERE state NOT IN ('done','failed','uncertain','cancelled','stopped_before_submit')").fetchone()[0]
+            pending = self.db.execute("SELECT count(*) FROM queue WHERE state NOT IN ('done','failed','uncertain','cancelled','stopped_before_submit','reservation_refused')").fetchone()[0]
             if inbox > self.inbox_limit or queue > self.queue_limit or pending > self.pending_limit:
                 raise Backpressure("journal_capacity")
             self.set_setting("cursor", response["next_cursor"])
@@ -182,8 +196,26 @@ class Journal:
             self.db.execute("UPDATE queue SET state=?,payload=? WHERE id=?", (state, json.dumps(payload), task_id))
 
     def next(self):
-        row = self.db.execute("SELECT id,state,payload FROM queue WHERE state NOT IN ('done','failed','uncertain','cancelled','stopped_before_submit') ORDER BY rowid LIMIT 1").fetchone()
+        row = self.db.execute("SELECT id,state,payload FROM queue WHERE state NOT IN ('done','failed','uncertain','cancelled','stopped_before_submit','reservation_refused') ORDER BY rowid LIMIT 1").fetchone()
         return (row[0], row[1], json.loads(row[2])) if row else None
+
+    def queue_outcome(self, reservation, room_id, task_id, state):
+        """Durable until the server accepts it: a dropped report must not become a retry."""
+        with self.db:
+            self.db.execute("INSERT OR REPLACE INTO reservation_outcomes VALUES(?,?,?,?,?)",
+                            (reservation, room_id, task_id, state, time.time()))
+            stale = self.db.execute("SELECT reservation FROM reservation_outcomes ORDER BY created_at"
+                                    " LIMIT -1 OFFSET ?", (self.pending_limit,)).fetchall()
+            for (key,) in stale:
+                self.db.execute("DELETE FROM reservation_outcomes WHERE reservation=?", (key,))
+
+    def outcomes(self, limit=8):
+        return self.db.execute("SELECT reservation,room_id,task_id,state FROM reservation_outcomes"
+                               " ORDER BY created_at LIMIT ?", (limit,)).fetchall()
+
+    def served_outcome(self, reservation):
+        with self.db:
+            self.db.execute("DELETE FROM reservation_outcomes WHERE reservation=?", (reservation,))
 
     def status(self):
         return {state: count for state, count in self.db.execute("SELECT state,count(*) FROM queue GROUP BY state")}
@@ -258,6 +290,30 @@ class Worker:
             except httpx.HTTPStatusError as error:
                 if error.response.status_code != 409: raise
 
+    def _record_outcome(self, tid, rid, reservation, state):
+        """Keep the outcome locally until the server accepts it, then report best-effort."""
+        if not reservation:
+            return
+        self.journal.queue_outcome(reservation, rid, tid, state)
+        self._flush_outcomes()
+
+    def _flush_outcomes(self):
+        """A refused or unreachable report stays queued; it never becomes a new call."""
+        for reservation, rid, tid, state in self.journal.outcomes():
+            try:
+                self.client.request(
+                    "POST", f"rooms/{rid}/tasks/{tid}/reservations/{reservation}/outcome",
+                    {"state": state}, f"outcome:{reservation}:{state}")
+            except httpx.HTTPStatusError as error:
+                if error.response.status_code in {404, 409, 410, 422}:
+                    # The server answered definitively (unknown or contradictory report).
+                    self.journal.served_outcome(reservation)
+                    continue
+                return
+            except Exception:
+                return
+            self.journal.served_outcome(reservation)
+
     def poll(self):
         cursor = self.journal.setting("cursor")
         try:
@@ -296,6 +352,8 @@ class Worker:
             except Backpressure:
                 if not self.journal.next():
                     return "backpressure"
+        # Outcomes owed from an earlier step are reported before any new work is claimed.
+        self._flush_outcomes()
         entry = self.journal.next()
         if not entry:
             return "waiting"
@@ -307,6 +365,9 @@ class Worker:
         rid = payload["event"]["room_id"]
         prefix = f"rooms/{rid}/tasks/{tid}"
         if state == "call_started":
+            # A crash between "reserved" and "result saved" leaves the call's outcome
+            # unknown. Report that; never let the same attempt be retried as if it were free.
+            self._record_outcome(tid, rid, payload.get("reservation"), "uncertain")
             self.journal.save(tid, "uncertain", payload)
             return "uncertain"
         try:
@@ -424,6 +485,25 @@ class Worker:
                     # Refuse before any provider call: an unbounded input is not a turn.
                     self.journal.save(tid, 'failed', payload)
                     return error.code
+                # One paid call per attempt. The permission comes from the server, and a
+                # refusal is respected: nothing below runs when it is not granted.
+                fence = {k: task[k] for k in ("attempt", "generation", "membership_revision")}
+                reservation = reservation_id(rid, tid, task["attempt"], task["generation"],
+                                             task["membership_revision"])
+                granted = self.client.request("POST", prefix + "/reservations",
+                                              {**fence, "purpose": "task",
+                                               "reservation_id": reservation},
+                                              f"reserve:{reservation}")
+                if granted.get("execute") is not True:
+                    if granted.get("replay") and granted.get("state") == "reserved":
+                        # An earlier run of this attempt reserved and never reported. The
+                        # call may have happened, so its outcome is unknown: no retry.
+                        self._record_outcome(tid, rid, reservation, "uncertain")
+                        self.journal.save(tid, "uncertain", payload)
+                        return "uncertain"
+                    self.journal.save(tid, "reservation_refused", payload)
+                    return "reservation_refused"
+                payload["reservation"] = reservation
                 check_deadline(self.run_deadline)
                 payload["runtime_started"] = True
                 self.last_step_started_runtime=True
@@ -431,7 +511,6 @@ class Worker:
                 self._beat(prefix, task, ["preflight", "runtime_started"], "start")
                 cancel, finished = threading.Event(), threading.Event()
                 heartbeat_failed = threading.Event()
-                fence = {k: task[k] for k in ("attempt", "generation", "membership_revision")}
 
                 def heartbeat():
                     count = 0
@@ -463,7 +542,10 @@ class Worker:
                     text = bounded_call(self.runtime, context, cancel, min(self.runtime_timeout, max(0, task["deadline"] - time.time()), lease_remaining, remaining))
                     check_deadline(self.run_deadline)
                     self._beat(prefix, task, ["runtime_completed"], "end")
+                    self._record_outcome(tid, rid, reservation, "completed")
                 except RuntimeTimeout as error:
+                    # The call started and did not finish: the outcome is unknown, not free.
+                    self._record_outcome(tid, rid, reservation, "uncertain")
                     if stop_seen.is_set():
                         self.journal.save(tid, "cancelled" if error.runtime_stopped else "uncertain", payload)
                         self.journal.stop_state("stopped" if error.runtime_stopped else "unreachable")
@@ -473,6 +555,7 @@ class Worker:
                 except Exception as error:
                     code = getattr(error, "code", "")
                     self._beat(prefix, task, ["tool_blocked"] if code == "runtime_tool_policy_violation" else ["failed"], "fail")
+                    self._record_outcome(tid, rid, reservation, "uncertain")
                     self.journal.save(tid, "uncertain", payload)
                     raise
                 finally:
@@ -480,6 +563,7 @@ class Worker:
                     thread.join(timeout=16)
                     watcher.join(timeout=2)
                 if heartbeat_failed.is_set():
+                    self._record_outcome(tid, rid, reservation, "uncertain")
                     self.journal.save(tid, "uncertain", payload)
                     return "heartbeat_failed"
                 payload["complete"] = {**fence, "result": {"client_message_id": f"{tid}:{task['attempt']}", "text": text, "reply_to": None, "mentions": [],

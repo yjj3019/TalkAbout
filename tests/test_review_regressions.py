@@ -99,8 +99,12 @@ def test_ambiguous_model_failure_not_reactivated_by_requeue(fixture,tmp_path):
     runtime=FailedModel(); journal=Journal(tmp_path/'ambiguous.sqlite')
     worker=Worker(LocalClient(store),journal,runtime)
     with pytest.raises(ValueError): worker.step()
-    tid=next(t['id'] for t in core.read('fixture-a',rid)['tasks'] if t['state']=='leased')
+    # The reserved call reports an unknown outcome, so the server retires the task itself
+    # instead of leaving a leased one for the scheduler to hand out again.
+    tid=next(iter(store.rooms[rid]['tasks']))
+    assert core.read('fixture-a',rid)['tasks'][0]['state']=='uncertain'
     expire(store,rid,tid)
+    assert store.rooms[rid]['tasks'][tid]['state']=='uncertain'
     assert worker.step()=='waiting' and runtime.calls==1 and journal.status()=={'uncertain':1}
     journal.close()
 
