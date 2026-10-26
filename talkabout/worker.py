@@ -14,6 +14,7 @@ from urllib.parse import urlsplit
 
 import httpx
 
+from .collaboration import ContextBudgetError, add_file_sources, fit_context, shared_context
 from .domain import digest
 from .runtime import BudgetedClient, RuntimeTimeout, bounded_call, check_deadline, validate_adapter_policy
 from .storage_health import warn_if_journal_is_exposed
@@ -377,14 +378,13 @@ class Worker:
                     self.journal.stop_state("stopped")
                     return "stopped"
                 context = {"room_id": rid, "generation": task["generation"], "membership_revision": task["membership_revision"], "agent_id": self.actor_id, "display_name": self.actor["display_name"], "role": task.get("role", "participant"),
-                           "topic": room["topic"], "purpose": task["purpose"], "inputs": room["messages"][-8:],
+                           "topic": room["topic"], "purpose": task["purpose"],
                            "deliverable": room.get("deliverable")}
+                # Bounded inputs plus a manifest the server can re-check before recording.
+                context.update(shared_context(room, task))
                 context.update(task_id=tid,task_attempt=task['attempt'])
                 context["phase"] = task.get("phase")
                 context["round"] = task.get("round")
-                context["artifact_proposals"] = [{"artifact_id": a["id"], "kind": a["versions"][-1].get("kind", "text"),
-                                                  "text": a["versions"][-1]["text"]}
-                                                 for a in room["artifacts"] if a["versions"]][-4:]
                 claimed=payload['task']
                 if claimed.get('attachment_refs'):
                     require_proof=claimed.get('lease_proof')
@@ -398,6 +398,7 @@ class Worker:
                         excerpts.append({k:chunk[k] for k in ('ref','name','text','start','end','line_start','line_end',
                                                              'truncated','untrusted_data','malware_scan')})
                     context['file_excerpts']=excerpts
+                    add_file_sources(context,excerpts,available_count=len(claimed['attachment_refs']))
                     # Reads may wait on the network. Recheck consent and fencing immediately
                     # before handing any fetched text to a runtime; no remote revocation can
                     # recall bytes already delivered to that runtime.
@@ -417,6 +418,12 @@ class Worker:
                         self.journal.save(tid,'cancelled',payload);self.journal.stop_state('stopped')
                         return 'stopped'
                 # Credentials, cursors, lease state, and retry keys are never model inputs.
+                try:
+                    fit_context(context)
+                except ContextBudgetError as error:
+                    # Refuse before any provider call: an unbounded input is not a turn.
+                    self.journal.save(tid, 'failed', payload)
+                    return error.code
                 check_deadline(self.run_deadline)
                 payload["runtime_started"] = True
                 self.last_step_started_runtime=True
@@ -475,7 +482,8 @@ class Worker:
                 if heartbeat_failed.is_set():
                     self.journal.save(tid, "uncertain", payload)
                     return "heartbeat_failed"
-                payload["complete"] = {**fence, "result": {"client_message_id": f"{tid}:{task['attempt']}", "text": text, "reply_to": None, "mentions": []}}
+                payload["complete"] = {**fence, "result": {"client_message_id": f"{tid}:{task['attempt']}", "text": text, "reply_to": None, "mentions": [],
+                                                          "input_manifest": context.get("input_manifest")}}
                 payload["complete_key"] = f"complete:{tid}:{task['attempt']}"
                 self.journal.save(tid, "result_saved", payload)
             if stop_seen.is_set() or self.journal.stop_requested():
