@@ -42,6 +42,33 @@ def provider_runtime(kind, runtime_options, model=None, base_url=None, key_env=N
     return StructuredRuntime(provider.id, **{**runtime_options, 'auth_mode': runtime_options.get('auth_mode', 'native'), 'grok_profile': grok_profile})
 
 
+def private_credential(parser):
+    """Never fall back to echoed input when getpass cannot hide the secret."""
+    import sys
+    import warnings
+    if not sys.stdin.isatty() or not sys.stdout.isatty():
+        parser.error('Private credential input requires an interactive TTY')
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter('error', getpass.GetPassWarning)
+            return getpass.getpass('Agent credential (private input): ')
+    except (getpass.GetPassWarning, EOFError, KeyboardInterrupt):
+        parser.error('Private credential input unavailable')
+
+
+def agent_credential(args, config, parser):
+    if getattr(args, 'vault_profile', None):
+        from .credential_vault import CredentialVault, VaultError
+        try:
+            return CredentialVault(args.vault_dir).load(args.vault_profile,
+                {'base_url': config['base_url'], 'allowed_origin': config['allowed_origin']})
+        except VaultError as error:
+            parser.error(str(error))
+    if getattr(args, 'prompt_token', False):
+        return private_credential(parser)
+    return os.environ.get(config.get('token_env', 'TALKABOUT_TOKEN'))
+
+
 def main():
     parser = argparse.ArgumentParser(description="TalkAbout private text-only prototype; no external model calls by default")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -55,11 +82,19 @@ def main():
     bootstrap.add_argument("--workspace", required=True)
     bootstrap.add_argument("--name", required=True)
     bootstrap.add_argument("--handle", required=True)
+    vault = sub.add_parser('vault', help='Explicit opt-in Windows current-user DPAPI storage for TalkAbout bearer credentials only')
+    vault.add_argument('action', choices=['save', 'list', 'delete'])
+    vault.add_argument('--vault-dir', type=Path, required=True, help='Existing private directory; never created automatically')
+    vault.add_argument('--profile', help='Non-secret local alias, 1..64 letters/digits/underscore/hyphen')
+    vault.add_argument('--config', type=Path, help='Required for save: binds credential to this server URL/origin')
     for name in ("check", "join", "run", "connect", "status", "stop", "mcp"):
         command = sub.add_parser(name)
         command.add_argument("--config", type=Path, required=True)
-        if name in {"check", "join", "run", "connect"}:
-            command.add_argument("--prompt-token", action="store_true", help="Read bearer credential privately from your TTY; never pass it as an argument")
+        if name in {"check", "join", "run", "connect", "mcp"}:
+            source = command.add_mutually_exclusive_group()
+            source.add_argument("--prompt-token", action="store_true", help="Read bearer credential privately from your TTY; never pass it as an argument")
+            source.add_argument('--vault-profile', help='Explicitly load a saved current-user DPAPI TalkAbout credential; no fallback to environment')
+            command.add_argument('--vault-dir', type=Path, help='Existing vault directory; required with --vault-profile')
         if name == "providers":
             command.add_argument("--json", action="store_true", help="Print the machine-readable catalogue")
         if name == "join":
@@ -87,6 +122,32 @@ def main():
             command.add_argument('--work-profile',action='store_true',help='Owner opt-in: let the agent use its own tools inside --work-workspace (Codex exec only). The platform still applies nothing')
             command.add_argument('--work-workspace',type=Path,help='Existing directory the work profile may read and edit; refused if it overlaps the platform or is the home directory')
     args = parser.parse_args()
+    if args.command == 'vault':
+        from .credential_vault import CredentialVault, VaultError
+        if args.action in {'save', 'delete'} and not args.profile:
+            parser.error('--profile is required for save/delete')
+        if args.action == 'save' and not args.config:
+            parser.error('--config is required for save')
+        try:
+            storage = CredentialVault(args.vault_dir)
+            if args.action == 'list':
+                emit_json({'profiles': storage.list_profiles()})
+            elif args.action == 'delete':
+                storage.delete(args.profile)
+                emit_json({'vault': 'deleted'})
+            else:
+                config = json.loads(args.config.read_text(encoding='utf-8'))
+                binding = {'base_url': config['base_url'], 'allowed_origin': config['allowed_origin']}
+                token = private_credential(parser)
+                storage.save(args.profile, token, binding)
+                emit_json({'vault': 'saved', 'protection': 'windows_current_user_dpapi'})
+        except VaultError as error:
+            parser.error(str(error))
+        except (OSError, ValueError, KeyError, TypeError):
+            parser.error('vault_configuration_invalid')
+        return
+    if hasattr(args, 'vault_profile') and bool(args.vault_profile) != bool(args.vault_dir):
+        parser.error('--vault-profile and --vault-dir must be supplied together')
     if args.command == "providers":
         import json as _json
         if getattr(args, "json", False):
@@ -133,7 +194,7 @@ def main():
     config = json.loads(args.config.read_text(encoding="utf-8"))
     if args.command == "mcp":
         from .mcp import MCPServer
-        token = getpass.getpass('Agent credential (private input): ') if getattr(args, 'prompt_token', False) else os.environ.get(config.get("token_env", "TALKABOUT_TOKEN"))
+        token = agent_credential(args, config, parser)
         if not token:
             parser.error("Configure the agent credential separately")
         client = APIClient(config["base_url"], token, config["allowed_origin"])
@@ -165,11 +226,7 @@ def main():
                 journal.set_setting("stop_state", "stop_requested")
             print("stop_requested")
             return
-        if getattr(args, 'prompt_token', False):
-            import sys
-            if not sys.stdin.isatty() or not sys.stdout.isatty(): parser.error('Private credential input requires an interactive TTY')
-            token = getpass.getpass('Agent credential (private input): ')
-        else: token = os.environ.get(config.get("token_env", "TALKABOUT_TOKEN"))
+        token = agent_credential(args, config, parser)
         if not token:
             parser.error("Configure the credential separately; it is never included in prompts")
         client = APIClient(config["base_url"], token, config["allowed_origin"])

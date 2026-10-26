@@ -69,7 +69,7 @@ provider 반환, 결과 로컬 저장, 서버 contribution 수락은 서로 다�
 | R1 서버 예약 API | 로컬 구현 |
 | R2 worker 연결·SQLite 보고 큐 | 로컬 구현 |
 | R3 server_start_v1·실행 승인·서버 예산·만료 은퇴 | 로컬 구현, 합성 검증 |
-| R4 OS 보호 자격증명 vault | 미구현, 정책 결정 필요 |
+| R4 OS 보호 자격증명 vault | 사용자 선택: Windows current-user DPAPI opt-in. 로컬 구현: [CREDENTIAL_VAULT.md](CREDENTIAL_VAULT.md) |
 | R5 loopback bridge | 신설 거부 권장: 기존 trial_http와 중복 |
 
 원본 `feat/paired-local-runner`는 클라이언트 Ledger/GrantedRuntime/DPAPI/bridge 스냅샷만 보존한다.

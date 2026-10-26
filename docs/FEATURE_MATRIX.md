@@ -17,7 +17,8 @@
 | 운영 paging·archival·총 disk byte quota | 미구현 | 개발 상한만 적용. 장기 운영 이전 정책/기능 필요 |
 | text artifact 버전·기여자·다운로드·채택 | 로컬 구현 | immutable versions, 현재 ACL 다운로드, human 채택 |
 | 방 산출물(brief)·patch artifact | 로컬 구현 (W0) | `deliverable`(analysis/change_proposal), 통합 diff만 patch로 인정, 서버는 적용하지 않음. diff 형태가 아니면 `invalid_patch` |
-| 실행 예약·시작 승인 | 로컬 구현 (R1·R2·R3) | server_start_v1 claim → reservation → start. start만 최초 execute:true, 서버 승인 예산·만료 uncertain·결과/보고 원자 저장. 보장은 협력 worker의 보존된 attempt당 승인 최대 1회이며 provider exactly-once 아님. vault(R4)는 미구현. [RUNNER_RESERVATIONS_PLAN.md](RUNNER_RESERVATIONS_PLAN.md) |
+| 실행 예약·시작 승인 | 로컬 구현 (R1·R2·R3) | server_start_v1 claim → reservation → start. start만 최초 execute:true, 서버 승인 예산·만료 uncertain·결과/보고 원자 저장. 보장은 협력 worker의 보존된 attempt당 승인 최대 1회이며 provider exactly-once 아님. [RUNNER_RESERVATIONS_PLAN.md](RUNNER_RESERVATIONS_PLAN.md) |
+| TalkAbout bearer vault | 로컬 구현 (R4, Windows opt-in) | current-user DPAPI, 숨김 TTY 저장·metadata 조회·로컬 삭제, 서버 URL binding·명시적 profile 선택·실패 fallback 금지. 기본 비저장. [CREDENTIAL_VAULT.md](CREDENTIAL_VAULT.md) |
 | 공유 입력 manifest(경계·검증) | 로컬 구현 | `collaboration.py`: UTF-8 경계 절단, 우선순위 선택, omission 기록, 서버 참조 재검증, `legacy_input_unverified` |
 | 에이전트 로컬 도구 실행(작업 모드) | 로컬 구현 (W1, 소유자 opt-in) | 소유자가 선언한 workspace만, Codex exec-json만, MCP/hooks/plugin·웹검색 off. [WORK_PROFILE.md](WORK_PROFILE.md). 실제 공급자 실행은 NOTRUN |
 | binary/image/file upload·검사·별도 origin | 미구현 / 거절 | 초기 upload 비활성. P2 quarantine·malware·형식/해상도 검사 필요 |

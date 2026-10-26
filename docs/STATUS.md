@@ -152,6 +152,13 @@ pwsh tools/ci_postgres_fixture.ps1 -Action stop -BinDir <postgres>/bin -DataDir 
     - **검증**: 서버 실행 시작 26건 + worker 예약/시작 10건 = **36 passed**. budget 포함 **43 passed**, 기존 worker 통합 **46 passed**. 전체 **816 passed / 3 failed / 33 skipped**(기존 브라우저 3건). Node 9개 파일·docs gate 통과. 독립 최종 검토의 남은 correctness 지적 없음. 시작 요청 전 crash 재개에서도 영구 보고 debt가 없음을 별도 재현했습니다.
     - **한계**: 보장은 협력하는 worker의 보존된 attempt당 실행 승인 최대 1회입니다. exactly-once provider 실행·과금 금액·legacy client 전체 강제는 아닙니다. uncertain task 전용 human 재개 API는 없으며 방 close는 가능합니다. 이번 프로토콜의 공급자 실호출은 NOTRUN입니다. 상세: [RUNNER_RESERVATIONS_PLAN.md](RUNNER_RESERVATIONS_PLAN.md).
 
+23. **Windows current-user DPAPI vault(R4)를 opt-in으로 추가했습니다(2026-10-27).**
+    - 사용자 정책 선택: 기본 비저장 유지, Windows 현재 사용자 DPAPI만 명시적 저장. 대상은 TalkAbout bearer credential이며 provider key·OAuth·DB credential 저장 아님.
+    - `vault save/list/delete --vault-dir`로 기존 private 디렉터리 안에 저장·alias/version만 조회·로컬 삭제. save는 숨김 TTY 입력만, 덮어쓰기 없음. list/delete는 서버/SQLite/provider를 호출하지 않음.
+    - check/join/run/connect/mcp에서 `--vault-profile`+`--vault-dir`로만 사용. prompt와 동시 선택 불가, load 실패 시 환경변수 fallback 없음. 정확한 base URL/origin binding을 암호화 payload에 넣고 전송 전 확인.
+    - 검증: 전체 **879 passed / 3 failed / 35 skipped**(기존 브라우저 3건). 실제 Windows DPAPI roundtrip·junction 검사는 합성 token만 사용해 통과. Node 9개 파일·docs gate 통과. 독립 보안 검토의 config shape 오류 처리 지적을 수정했습니다.
+    - 범위: DPAPI 저장 중 보호이지 같은 사용자 악성 프로세스·관리자·메모리 검사를 막지 않음. local delete는 remote revoke/물리적 소거 아님. save는 로컬 작업이라 서버 credential 유효성·actor 신원·installation identity를 검증하지 않으며 별도 check 필요. 상세: [CREDENTIAL_VAULT.md](CREDENTIAL_VAULT.md).
+
 ## 4. 아직 남은 것 (완료로 표시하지 않음)
 
 | 남은 관문 | 왜 남았는가 | 다음 행동 |
@@ -163,7 +170,7 @@ pwsh tools/ci_postgres_fixture.ps1 -Action stop -BinDir <postgres>/bin -DataDir 
 | paging/archival/disk quota | P0 상한(방 64, 이벤트 2048 등)만 존재 | 운영 정책 결정 |
 | binary/이미지 upload | 기본 비활성, `.txt/.md`만 opt-in | P2 격리·검사 |
 | POSIX 실행 | 격리 계층(C1)과 Linux CI 잡은 있으나, supervisor가 SIGKILL로 죽으면 자식이 남는 P4 구멍이 미해결이라 **활성화 보류** | P4 구현([POSIX_CONTAINMENT_PLAN.md](POSIX_CONTAINMENT_PLAN.md) §7) → C2에서 `cli.py`·`adapters.py` 거부 해제 |
-| Runner 예약·원장 | **R1·R2·R3 로컬 구현** — 예약/시작 분리·서버 승인 예산·보고 원자 저장(항목 22). 계약은 [RUNNER_RESERVATIONS_PLAN.md](RUNNER_RESERVATIONS_PLAN.md) | R4 vault 정책 결정, uncertain 전용 human 해결 API 검토, R3 공급자 시험(새 예산 필요). loopback bridge는 중복이라 거부 권장 |
+| Runner 예약·원장 | **R1·R2·R3 로컬 구현** — 예약/시작 분리·서버 승인 예산·보고 원자 저장(항목 22). 계약은 [RUNNER_RESERVATIONS_PLAN.md](RUNNER_RESERVATIONS_PLAN.md) | R4 opt-in DPAPI 로컬 구현(항목 23), uncertain 전용 human 해결 API 검토, R3 공급자 시험(새 예산 필요). loopback bridge는 중복이라 거부 권장 |
 
 ## 5. 문서 지도
 
