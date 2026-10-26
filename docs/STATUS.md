@@ -124,6 +124,12 @@ pwsh tools/ci_postgres_fixture.ps1 -Action stop -BinDir <postgres>/bin -DataDir 
     - **검증 결과**: `tests/test_collaboration_context.py` 10건.
     - **주장하지 않음**: 모델이 읽었다는 증거가 아닙니다. 원본 WIP의 runner 예약·원장·vault·bridge는 미구현이며 [STATUS.md](STATUS.md) §4의 별도 트랙입니다.
 
+19. **runner 예약 트랙 설계와 UI 증거 표시를 추가했습니다(2026-10-26).**
+    - **설계([RUNNER_RESERVATIONS_PLAN.md](RUNNER_RESERVATIONS_PLAN.md), PROPOSED·미구현)**: 조사 결과 WIP 스냅샷에는 **클라이언트(`RunnerLedger`·`GrantedRuntime`·DPAPI vault)만 있고 서버 endpoint가 없습니다**(`runner/reservations`는 클라이언트와 fake-client 테스트에만 등장). 그래서 예약 생성/결과 보고 2개 endpoint, `task["reservations"]` ring(방 JSON만 사용 → DB 마이그레이션 없음), `execute:true`일 때만 호출, `uncertain` 자동 재시도 금지, 단계 R1~R5를 설계로 고정했습니다. loopback bridge는 `trial_http`와 중복이라 **거부 권장**입니다.
+    - **UI 증거 표시**: 방 카드에 산출물 배지, 메시지 카드에 **입력 참조 증거 칩**(`입력 참조 검증됨` / `구형 입력(미검증)`)을 추가했습니다. 서버가 기록한 `input_evidence`를 화면에서 그대로 보여줍니다.
+    - **검증**: `ui-review.test.mjs` 1건 추가(총 18건), Node 9개 파일 **210 passed**. 브라우저 캡처는 하지 않았습니다(합성 DOM).
+    - **미구현 명시**: 예약 API·ledger·vault·실행 프로토콜은 코드가 **없습니다**. 실제 공급자 시험도 여전히 NOTRUN입니다.
+
 ## 4. 아직 남은 것 (완료로 표시하지 않음)
 
 | 남은 관문 | 왜 남았는가 | 다음 행동 |
@@ -135,7 +141,7 @@ pwsh tools/ci_postgres_fixture.ps1 -Action stop -BinDir <postgres>/bin -DataDir 
 | paging/archival/disk quota | P0 상한(방 64, 이벤트 2048 등)만 존재 | 운영 정책 결정 |
 | binary/이미지 upload | 기본 비활성, `.txt/.md`만 opt-in | P2 격리·검사 |
 | POSIX 실행 | 격리 계층(C1)과 Linux CI 잡은 있으나, supervisor가 SIGKILL로 죽으면 자식이 남는 P4 구멍이 미해결이라 **활성화 보류** | P4 구현([POSIX_CONTAINMENT_PLAN.md](POSIX_CONTAINMENT_PLAN.md) §7) → C2에서 `cli.py`·`adapters.py` 거부 해제 |
-| `feat/paired-local-runner` WIP | **collaboration 부분은 재구현 완료**([COLLABORATION_CONTEXT.md](COLLABORATION_CONTEXT.md), PR #37). 남은 것은 runner 예약(`runner/reservations`)·원장·DPAPI vault·loopback bridge로, DB 스키마·공개 API를 바꾸는 별도 트랙 | runner 트랙은 설계 검토 후 착수. 원본은 `feat/paired-local-runner` 브랜치(아카이브)와 닫힌 [PR #36](https://github.com/yjj3019/TalkAbout/pull/36) diff에 보존 |
+| Runner 예약·원장 | [RUNNER_RESERVATIONS_PLAN.md](RUNNER_RESERVATIONS_PLAN.md)로 **설계만** 완료. 조사 결과 WIP 스냅샷에는 **클라이언트(Ledger·GrantedRuntime)만 있고 서버 endpoint가 없다** — 서버 계약부터 필요 | R1(예약 2개 endpoint) 구현 → R2(worker ledger) → R3(실행 프로토콜). vault는 정책 결정, loopback bridge는 `trial_http`와 중복이라 거부 권장 |
 
 ## 5. 문서 지도
 
@@ -153,6 +159,7 @@ pwsh tools/ci_postgres_fixture.ps1 -Action stop -BinDir <postgres>/bin -DataDir 
 | [POSIX_CONTAINMENT_PLAN.md](POSIX_CONTAINMENT_PLAN.md) | POSIX 실행 격리 계획(C1 구현, 활성화 보류) |
 | [WORK_PROFILE.md](WORK_PROFILE.md) | opt-in 로컬 작업 프로필(기본 꺼짐, sandbox 아님) |
 | [COLLABORATION_CONTEXT.md](COLLABORATION_CONTEXT.md) | 공유 입력 경계·manifest·서버 참조 검증 |
+| [RUNNER_RESERVATIONS_PLAN.md](RUNNER_RESERVATIONS_PLAN.md) | runner 예약·원장 설계(PROPOSED, 미구현) |
 | [validation/](validation/) | 실행별 증거 JSON |
 
 ## English

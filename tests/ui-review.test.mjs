@@ -170,3 +170,18 @@ test('room stage renders a spatial scene and the room list renders a plan', asyn
   assert.match(plan, /<svg/);
   assert.equal((plan.match(/<circle/g) || []).length >= 2, true);
 });
+
+test('room cards show the deliverable and messages show input-reference evidence',async()=>{
+ const h=await harness();
+ const withDeliverable={...room,deliverable:'change_proposal',members:{human:{kind:'human'}},messages:[]};
+ h.run(`view.language='ko';renderRooms([${JSON.stringify(withDeliverable)}]);`);
+ assert.ok(h.node('rooms').textContent.includes(labels.ko.deliverableChange));
+ h.run(`renderRooms([${JSON.stringify({...room,members:{human:{kind:'human'}},messages:[]})}]);`);
+ assert.ok(!h.node('rooms').textContent.includes(labels.ko.deliverableChange));
+ const verified={id:'m1',actor_id:'agent-a',actor_kind:'agent',display_name:'Atlas',kind:'contribution',text:'verified input',seq:1,created_at:0,input_evidence:'worker_reported_server_validated_refs_not_model_read_receipt'};
+ const legacy={id:'m2',actor_id:'agent-a',actor_kind:'agent',display_name:'Atlas',kind:'contribution',text:'legacy input',seq:2,created_at:0,input_evidence:'legacy_input_unverified'};
+ h.run(`view.language='ko';view.select('room');view.room=${JSON.stringify({...room,state:'active',messages:[verified,legacy]})};renderRoom(view.room);`);
+ const text=h.node('messages').textContent;
+ assert.ok(text.includes(labels.ko.inputVerified));
+ assert.ok(text.includes(labels.ko.inputLegacy));
+});
