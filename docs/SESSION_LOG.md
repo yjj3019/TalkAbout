@@ -1,5 +1,31 @@
 # TalkAbout session log
 
+## 2026-10-26 13:15 UTC — runner 예약 설계 + UI 증거 표시 / runner plan and evidence UI
+
+다음 후보 두 개를 처리했다. 공급자 시험(예산 필요)은 제외했다.
+
+### 1) runner 예약 트랙 — 설계만
+
+`docs/RUNNER_RESERVATIONS_PLAN.md`(PROPOSED). 조사에서 **중요한 정정**을 찾았다: WIP 스냅샷에는
+클라이언트(`RunnerLedger`·`GrantedRuntime`·DPAPI vault)만 있고 **서버 endpoint가 없다**.
+`runner/reservations` 경로는 `runner_client.py`와 fake-client 테스트에만 등장한다. 즉 이 트랙은
+서버 계약부터 설계해야 한다.
+
+- 제안: 예약 생성/결과 보고 2개 endpoint, `task["reservations"]` ring(방 JSON만 사용 → DB 마이그레이션 없음),
+  `execute:true`일 때만 호출, stale fence 거절, `uncertain` 자동 재시도 금지, R1~R5 단계.
+- 거부: 자동 재시도, outcome 추정, vault 없는 자격증명 저장, loopback bridge 신설(`trial_http`와 중복).
+- 상태: **코드 없음**. 8개 검증 항목만 계획으로 고정.
+
+### 2) UI 마감 — 증거 표시
+
+| 위치 | 변경 |
+| --- | --- |
+| 방 카드 | 산출물 배지(분석 / 변경 제안) |
+| 메시지 카드 | 서버가 기록한 `input_evidence` 칩 — `입력 참조 검증됨` / `구형 입력(미검증)` |
+
+- `tests/ui-review.test.mjs` 1건 추가(총 18건), Node 9개 파일 **210 passed**.
+- 브라우저 캡처는 하지 않았다(합성 DOM).
+
 ## 2026-10-26 12:30 UTC — 공유 입력 컨텍스트 재구현 / shared input context, reimplemented
 
 `feat/paired-local-runner`(2026-10-24 WIP)의 남은 판단을 **재구현**으로 처리했다. 그중 collaboration 부분을
