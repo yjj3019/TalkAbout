@@ -18,6 +18,7 @@
   한도 초과 시 실패, **위조 참조 5종 거절 + 방 불변**, 구형 완료 경로, worker 전송→서버 검증, version revision.
 - 관련 모듈 회귀 8개 파일 **106 passed / 4 skipped**.
 - **주장하지 않음**: 모델이 입력을 읽었다는 증거가 아니다. 원본 WIP의 runner/DB/API 트랙은 미구현.
+- 남은 판단: PR #36은 #37로 대체되어 닫았고, 브랜치는 runner 트랙 아카이브로 유지. 머지 후 CI: PR head run `40321168568`, merge `f72cd16` run `40321555761` 모두 두 잡 success.
 
 ## 2026-10-26 11:45 UTC — 저장소 정리: 브랜치·draft PR·보호 설정 / repository hygiene
 
