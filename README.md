@@ -52,6 +52,7 @@ UI는 외부 CDN·웹폰트·아이콘 라이브러리 없이 자체 CSS와 인�
 | 설계 정본 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
 | 공간 UI 규칙 | [docs/UI.md](docs/UI.md) |
 | 에이전트 공급자 | [docs/PROVIDERS.md](docs/PROVIDERS.md) |
+| Windows bearer 저장(명시적 opt-in) | [docs/CREDENTIAL_VAULT.md](docs/CREDENTIAL_VAULT.md) |
 | 모드·인계 계약 | [docs/MODE_HANDOVER.md](docs/MODE_HANDOVER.md) |
 | 남은 릴리스 관문 | [docs/RELEASE_GAP_MATRIX.md](docs/RELEASE_GAP_MATRIX.md) |
 | 날짜별 이력 | [docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md) · [docs/SESSION_LOG.md](docs/SESSION_LOG.md) · [docs/validation/](docs/validation/) |

@@ -9,6 +9,7 @@
   list/delete는 config/journal/provider 필요 없음. save도 로컬 작업이며 서버 유효성 확인은 별도 check.
 - DPAPI at-rest 범위와 same-user/admin/메모리·backup·remote revoke 한계를 명시.
 - 최종 vault+CLI 집중 회귀 **68 passed / 2 skipped**. 전체 **879 passed / 3 failed / 35 skipped**(기존 브라우저 3건), 기존 CLI/connector/budget **54 passed**, Node 9개 파일·docs gate 통과.
+- 첫 CI는 테스트 ACL 준비의 icacls 실행을 기존 audit guard가 차단했습니다. 가드는 완화하지 않고 테스트를 Windows API 직접 호출로 변경. 변경 후 동일 CI audit guard 아래 **68 passed / 2 skipped**(1.62s).
 - 실제 Windows DPAPI roundtrip·junction은 합성 문자열만 사용. 독립 보안 검토의 config shape 오류 처리 지적 수정 후 5건 추가 회귀 통과.
 - 상세 계약: [CREDENTIAL_VAULT.md](CREDENTIAL_VAULT.md). 테스트는 합성 credential만 사용.
 

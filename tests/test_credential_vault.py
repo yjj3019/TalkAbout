@@ -1,10 +1,8 @@
 """All credentials here are SYNTHETIC; no network or external services."""
 import base64
-import getpass
 import json
 import os
 from pathlib import Path
-import subprocess
 
 import pytest
 
@@ -28,14 +26,79 @@ class FakeProtector:
         return self.values[value]
 
 
+def set_windows_dacl(path, *, everyone=False):
+    """Set a protected inheritable test DACL without launching an external tool."""
+    import ctypes
+    from ctypes import wintypes
+
+    advapi = ctypes.WinDLL("advapi32", use_last_error=True)
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel.GetCurrentProcess.argtypes = []
+    kernel.GetCurrentProcess.restype = wintypes.HANDLE
+    kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel.CloseHandle.restype = wintypes.BOOL
+    kernel.LocalFree.argtypes = [ctypes.c_void_p]
+    kernel.LocalFree.restype = ctypes.c_void_p
+    advapi.OpenProcessToken.argtypes = [wintypes.HANDLE, wintypes.DWORD,
+                                       ctypes.POINTER(wintypes.HANDLE)]
+    advapi.OpenProcessToken.restype = wintypes.BOOL
+    advapi.GetTokenInformation.argtypes = [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p,
+                                          wintypes.DWORD, ctypes.POINTER(wintypes.DWORD)]
+    advapi.GetTokenInformation.restype = wintypes.BOOL
+    advapi.ConvertSidToStringSidW.argtypes = [ctypes.c_void_p, ctypes.POINTER(wintypes.LPWSTR)]
+    advapi.ConvertSidToStringSidW.restype = wintypes.BOOL
+    advapi.ConvertStringSecurityDescriptorToSecurityDescriptorW.argtypes = [
+        wintypes.LPCWSTR, wintypes.DWORD, ctypes.POINTER(ctypes.c_void_p),
+        ctypes.POINTER(wintypes.DWORD)]
+    advapi.ConvertStringSecurityDescriptorToSecurityDescriptorW.restype = wintypes.BOOL
+    advapi.SetFileSecurityW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD, ctypes.c_void_p]
+    advapi.SetFileSecurityW.restype = wintypes.BOOL
+
+    token = wintypes.HANDLE()
+    if not advapi.OpenProcessToken(kernel.GetCurrentProcess(), 0x0008, ctypes.byref(token)):
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        size = wintypes.DWORD()
+        # TokenUser starts with SID_AND_ATTRIBUTES, whose first member is PSID.
+        if advapi.GetTokenInformation(token, 1, None, 0, ctypes.byref(size)):
+            raise AssertionError("TokenUser size query unexpectedly succeeded")
+        if ctypes.get_last_error() != 122:  # ERROR_INSUFFICIENT_BUFFER
+            raise ctypes.WinError(ctypes.get_last_error())
+        info = ctypes.create_string_buffer(size.value)
+        if not advapi.GetTokenInformation(token, 1, info, size, ctypes.byref(size)):
+            raise ctypes.WinError(ctypes.get_last_error())
+        sid = ctypes.cast(info, ctypes.POINTER(ctypes.c_void_p))[0]
+        text = wintypes.LPWSTR()
+        if not advapi.ConvertSidToStringSidW(sid, ctypes.byref(text)):
+            raise ctypes.WinError(ctypes.get_last_error())
+        try:
+            current_sid = text.value
+        finally:
+            kernel.LocalFree(ctypes.cast(text, ctypes.c_void_p))
+    finally:
+        kernel.CloseHandle(token)
+
+    # P removes inherited permissions; OICI propagates full control to files/children.
+    sddl = "D:P(A;OICI;FA;;;" + current_sid + ")"
+    if everyone:
+        sddl += "(A;OICI;FA;;;WD)"
+    descriptor = ctypes.c_void_p()
+    if not advapi.ConvertStringSecurityDescriptorToSecurityDescriptorW(
+            sddl, 1, ctypes.byref(descriptor), None):
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        if not advapi.SetFileSecurityW(str(path), 0x80000004, descriptor):
+            raise ctypes.WinError(ctypes.get_last_error())
+    finally:
+        kernel.LocalFree(descriptor)
+
+
 @pytest.fixture
 def root(tmp_path):
     path = tmp_path / "vault"
     path.mkdir(mode=0o700)
     if os.name == "nt":
-        # Local ACL setup only, with inheritance removed, for a genuinely private root.
-        subprocess.run(["icacls", str(path), "/inheritance:r", "/grant:r",
-                        getpass.getuser() + ":(OI)(CI)F"], check=True, capture_output=True)
+        set_windows_dacl(path)
     return path
 
 
@@ -230,9 +293,14 @@ def test_symlink_root_ancestor_and_entries(root, tmp_path, vault):
 @pytest.mark.skipif(os.name != "nt", reason="Windows junction/reparse point")
 def test_windows_junction_rejected(root, tmp_path):
     junction = tmp_path / "junction"
-    result = subprocess.run(["cmd", "/c", "mklink", "/J", str(junction), str(root)], capture_output=True)
-    if result.returncode:
-        pytest.skip("OS does not allow creating junctions")
+    try:
+        import _winapi
+    except ImportError:
+        pytest.skip("Windows junction OS API unavailable: _winapi")
+    create_junction = getattr(_winapi, "CreateJunction", None)
+    if create_junction is None:
+        pytest.skip("Windows junction OS API unavailable: _winapi.CreateJunction")
+    create_junction(str(root), str(junction))
     try:
         assert_code("unsafe_path", lambda: CredentialVault(junction, _protector=FakeProtector()))
         (root / "nested").mkdir()
@@ -261,7 +329,7 @@ def test_root_revalidated_each_operation(vault, root, monkeypatch):
     root.rename(root.with_name("moved"))
     root.mkdir(mode=0o700)
     if os.name == "nt":
-        subprocess.run(["icacls", str(root), "/grant", "*S-1-1-0:(OI)(CI)F"], check=True, capture_output=True)
+        set_windows_dacl(root, everyone=True)
     else:
         root.chmod(0o755)
     for operation in (lambda: vault.save("work", TOKEN, BINDING), lambda: vault.load("work", BINDING),
