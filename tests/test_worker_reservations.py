@@ -77,9 +77,11 @@ def test_a_lost_reservation_response_cannot_become_a_second_call(fixture, tmp_pa
     # A later run resumes the same attempt with the same deterministic id.
     recovered = Journal(tmp_path / 'lost.sqlite')
     restarted = Worker(LocalClient(store), recovered, runtime)
-    assert restarted.step() == 'uncertain' and runtime.calls == 0
-    assert next(iter(store.rooms[rid]['tasks'].values()))['state'] == 'uncertain'
-    assert recovered.status() == {'uncertain': 1}
+    # R3 separates preparation from execution: a lost reservation response did not
+    # authorize a call, so the still-reserved entry can safely proceed to /start.
+    assert restarted.step() == 'completed' and runtime.calls == 1
+    assert next(iter(store.rooms[rid]['tasks'].values()))['state'] == 'completed'
+    assert recovered.status() == {'done': 1}
     recovered.close()
 
 
@@ -121,6 +123,80 @@ def test_an_undeliverable_outcome_stays_queued_until_the_server_takes_it(fixture
     assert not journal.outcomes()
     stored = reservations_of(store, rid)
     assert len(stored) == 1 and stored[0]['state'] == 'completed'
+    journal.close()
+
+
+def test_lost_start_response_never_launches_on_restart(fixture, tmp_path):
+    store, _, rid = fixture
+
+    class LostStart(LocalClient):
+        def request(self, method, path, body=None, key=None, params=None):
+            value = super().request(method, path, body, key, params)
+            if path.endswith('/start'):
+                raise httpx.ReadTimeout('start approval lost')
+            return value
+
+    path = tmp_path / 'start-loss.sqlite'
+    runtime = Counted()
+    journal = Journal(path)
+    worker = Worker(LostStart(store), journal, runtime)
+    with pytest.raises(httpx.ReadTimeout):
+        worker.step()
+    assert journal.status() == {'start_pending': 1}
+    assert runtime.calls == 0
+    journal.close()
+    recovered = Journal(path)
+    assert Worker(LocalClient(store), recovered, runtime).step() == 'uncertain'
+    assert runtime.calls == 0
+    assert reservations_of(store, rid)[0]['state'] == 'uncertain'
+    recovered.close()
+
+
+def test_crash_before_start_send_has_no_unreconcilable_outcome_debt(fixture, tmp_path):
+    store, _, _ = fixture
+
+    class BeforeStart(LocalClient):
+        def request(self, method, path, body=None, key=None, params=None):
+            if path.endswith('/start'):
+                raise httpx.ReadTimeout('crash before send')
+            return super().request(method, path, body, key, params)
+
+    path = tmp_path / 'before-start.sqlite'
+    journal = Journal(path)
+    runtime = Counted()
+    with pytest.raises(httpx.ReadTimeout):
+        Worker(BeforeStart(store), journal, runtime).step()
+    assert journal.status() == {'start_pending': 1}
+    assert not journal.outcomes()
+    journal.close()
+    recovered = Journal(path)
+    assert Worker(LocalClient(store), recovered, runtime).step() == 'completed'
+    assert runtime.calls == 1 and not recovered.outcomes()
+    recovered.close()
+
+
+def test_outcome_capacity_never_evicts_unacknowledged_reports(tmp_path):
+    from talkabout.worker import Backpressure
+    journal = Journal(tmp_path / 'capacity.sqlite', pending_limit=1)
+    journal.queue_outcome('a', 'r', 't', 'completed')
+    with pytest.raises(Backpressure):
+        journal.queue_outcome('b', 'r', 't', 'uncertain')
+    assert journal.outcomes() == [('a', 'r', 't', 'completed')]
+    journal.close()
+
+
+def test_result_and_completed_intent_are_durable_before_reporting(fixture, tmp_path):
+    store, _, _ = fixture
+    journal = Journal(tmp_path / 'atomic.sqlite')
+
+    class InspectOutcome(LocalClient):
+        def request(self, method, path, body=None, key=None, params=None):
+            if path.endswith('/outcome'):
+                assert journal.status() == {'result_saved': 1}
+                assert journal.outcomes()[0][3] == 'completed'
+            return super().request(method, path, body, key, params)
+
+    assert Worker(InspectOutcome(store), journal, Counted()).step() == 'completed'
     journal.close()
 
 

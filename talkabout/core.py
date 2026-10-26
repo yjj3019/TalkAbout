@@ -10,7 +10,7 @@ from .text_files import (claim_proof, filter_refs, public_task, token_hash, vali
 
 from .domain import (AGENT_PERMISSIONS, HUMAN_PERMISSIONS, Problem, active, authorize,
                      cancel_tasks, deliverable_artifact_kind, digest, emit, fencing, grant_reservation,
-                     ident, message, new_room, reservation_outcome,
+                     ident, message, new_room, reservation_outcome, start_reservation,
                      record_task_event, replay, require, save_response, schedule, participant_permissions)
 
 
@@ -231,7 +231,7 @@ class Core(Participation):
                     # A reservation is part of claiming work; its outcome is part of doing it.
                     permission = "task:claim" if len(bits) == 3 else "task:complete"
                 else:
-                    permission = "task:" + verb
+                    permission = "task:claim" if verb == "start" else "task:" + verb
             elif bits[0] == "messages":
                 require(body.get("kind") in {"question", "advice"}, "invalid_kind", 422)
                 permission = "room:" + body["kind"]
@@ -249,12 +249,14 @@ class Core(Participation):
             member = authorize(actor, room, permission, human)
             if bits[0] == 'artifacts' and actor['kind'] == 'agent' and member.get('_participation'):
                 require('session_id' in body, 'session_required')
-            if bits[0] in {'tasks', 'artifacts'} and 'session_id' in body:
+            reconciling_outcome = bits[0] == 'tasks' and len(bits) == 5 and bits[2] == 'reservations' and verb == 'outcome'
+            if bits[0] in {'tasks', 'artifacts'} and 'session_id' in body and not reconciling_outcome:
                 bound_session(token, body, room, member)
             if bits[0] == "tasks" and verb == "complete":
                 authorize(actor, room, "room:speak")
             previous, lookup, fingerprint = replay(room, actor, operation, key, body)
-            if previous is not None and not (bits[0] == "tasks" and len(bits) > 2 and bits[2] == "reservations"):
+            execution_operation = bits[0] == "tasks" and len(bits) > 2 and (bits[2] == "reservations" or verb == "start")
+            if previous is not None and not execution_operation:
                 if self.text_files and bits[0]=='tasks' and verb=='claim' and 'lease_id' in previous:
                     return {**previous,'lease_proof':claim_proof(token,room_id,previous,key)}
                 return previous
@@ -277,6 +279,7 @@ class Core(Participation):
                 if len(bits) == 3:
                     # A task whose call outcome is unknown never receives a new call.
                     require(task["state"] != "uncertain", "task_outcome_uncertain", 409)
+                    require(body.get("membership_revision") == member["revision"], "stale_attempt", 409)
                     response = grant_reservation(room, task, actor, body, now)
                 else:
                     response = reservation_outcome(room, task, actor, bits[3], body, now)
@@ -298,6 +301,12 @@ class Core(Participation):
                     require(not room.get('dispatch_held'), 'dispatch_held')
                     require(task["state"] == "queued" and now < task["deadline"], "task_unavailable")
                     require(body.get("generation") == task["generation"] == room["generation"] and body.get("membership_revision") == task["membership_revision"] == member["revision"], "stale_attempt")
+                    protocol = body.get("execution_protocol")
+                    require(protocol is None or (isinstance(protocol, str) and protocol == "server_start_v1"),
+                            "invalid_execution_protocol", 422)
+                    # A task cannot downgrade its opted-in safety contract on a retry.
+                    if protocol is not None:
+                        task["execution_protocol"] = protocol
                     task["attempt"] += 1
                     task["state"] = "leased"
                     task["lease_expires_at"] = min(task["deadline"], now + room["limits"]["lease"])
@@ -311,6 +320,8 @@ class Core(Participation):
                     emit(room, "task.claimed", task_id=target, attempt=task["attempt"])
                     record_task_event(room, target, "claimed", now)
                     response = copy.deepcopy(task)
+                elif verb == "start":
+                    response = start_reservation(room, member, task, actor, body, now)
                 else:
                     require(verb in {"complete", "heartbeat", "skip"}, "not_found", 404)
                     fencing(room, member, task, actor, body, now)
@@ -323,6 +334,11 @@ class Core(Participation):
                             record_task_event(room, target, stage, now)
                         response = copy.deepcopy(task)
                     elif verb == "complete":
+                        if task.get("execution_protocol") == "server_start_v1":
+                            require(any(item["attempt"] == task["attempt"]
+                                        and item["state"] in {"started", "completed"}
+                                        and ("reservation_id" not in body or item["id"] == body["reservation_id"])
+                                        for item in task.get("_reservations", [])), "execution_not_started", 409)
                         if room["mode"] == "co_creation" and task["purpose"] == "creator":
                             authorize(actor, room, "room:contribute")
                         # A worker may report what it was given. The server re-checks every
@@ -507,8 +523,8 @@ class Core(Participation):
             if bits[0]=='tasks':
                 if response.get('id')==target:response=public_task(response)
                 elif 'task' in response:response={**response,'task':public_task(response['task'])}
-            if bits[0] == "tasks" and len(bits) > 2 and bits[2] == "reservations":
-                # A reservation answer is computed fresh every time and never cached: a
+            if execution_operation:
+                # A reservation/start answer is computed fresh every time and never cached: a
                 # replayed execute:true would be the double call the reservation forbids.
                 return response
             saved=save_response(room, lookup, fingerprint, copy.deepcopy(response), member["epoch"])

@@ -117,11 +117,27 @@ def deliverable_artifact_kind(room, text):
     return "patch"
 
 
+def retire_started_task(room, task, now):
+    """An authorization may have reached a runtime: never automatically repeat it."""
+    if task.get("execution_protocol") != "server_start_v1":
+        return False
+    item = next((r for r in task.get("_reservations", [])
+                 if r["attempt"] == task["attempt"] and r["state"] in {"started", "completed"}), None)
+    if item is None:
+        return False
+    if item["state"] == "started":
+        item.update(state="uncertain", reported_at=now, _server_uncertain=True)
+    task.update(state="uncertain", lease_expires_at=0)
+    emit(room, "task.uncertain", task_id=task["id"], attempt=task["attempt"])
+    return True
+
+
 def cancel_tasks(room, principal=None):
     for task in room["tasks"].values():
         if task["state"] in {"queued", "leased"} and (principal is None or task["assignee"] == principal):
-            task["state"] = "cancelled"
-            emit(room, "task.cancelled", task_id=task["id"])
+            if not retire_started_task(room, task, time.time()):
+                task["state"] = "cancelled"
+                emit(room, "task.cancelled", task_id=task["id"])
 
 
 def schedule(room, principals, now=None):
@@ -145,6 +161,8 @@ def schedule(room, principals, now=None):
         started = len(task.get("_started_attempts") or ())
         exhausted = (started >= room["limits"]["attempts"]
                      or task["attempt"] >= room["limits"]["attempts"] * 2)
+        if (now >= task["deadline"] or (task["state"] == "leased" and now >= task["lease_expires_at"])) and retire_started_task(room, task, now):
+            continue
         if now >= task["deadline"] or (task["state"] == "leased" and now >= task["lease_expires_at"] and exhausted):
             task["state"] = "expired"
             emit(room, "task.expired", task_id=task["id"])
@@ -229,7 +247,7 @@ def fencing(room, member, task, actor, body, now):
 
 
 RESERVATION_ID = re.compile(r"[0-9a-f]{64}")
-RESERVATION_STATES = {"reserved", "completed", "uncertain"}
+RESERVATION_STATES = {"reserved", "started", "completed", "uncertain"}
 MAX_RESERVATIONS = 8
 
 
@@ -258,20 +276,46 @@ def grant_reservation(room, task, actor, body, now):
     existing = next((item for item in reservations if item["id"] == reservation_id), None)
     if existing:
         return {"execute": False, "reservation_id": reservation_id, "replay": True,
-                "state": existing["state"]}
+                "state": existing["state"],
+                **({"reserved": existing["state"] == "reserved"} if task.get("execution_protocol") == "server_start_v1" else {})}
     if any(item["attempt"] == task["attempt"] for item in reservations):
         return {"execute": False, "reservation_id": reservation_id, "reason": "reservation_already_started"}
     reservations.append({"id": reservation_id, "attempt": task["attempt"], "purpose": purpose,
-                         "state": "reserved", "created_at": now})
+                         "state": "reserved", "created_at": now,
+                         **({"execution_protocol": "server_start_v1"}
+                            if task.get("execution_protocol") == "server_start_v1" else {})})
     if len(reservations) > MAX_RESERVATIONS:
         del reservations[:-MAX_RESERVATIONS]
     emit(room, "task.execution_reserved", task_id=task["id"], attempt=task["attempt"])
-    return {"execute": True, "reservation_id": reservation_id, "state": "reserved"}
+    protocol = task.get("execution_protocol") == "server_start_v1"
+    return {"execute": not protocol, "reservation_id": reservation_id, "state": "reserved",
+            **({"reserved": True} if protocol else {})}
+
+
+def start_reservation(room, member, task, actor, body, now):
+    """Authorize execution once; this is not evidence that a model actually ran."""
+    require(task.get("execution_protocol") == "server_start_v1", "execution_protocol_required", 409)
+    fencing(room, member, task, actor, body, now)
+    require(not room.get("dispatch_held"), "dispatch_held", 409)
+    require(all(type(body.get(field)) is int for field in ("attempt", "generation", "membership_revision")),
+            "stale_attempt", 409)
+    reservation_id = body.get("reservation_id")
+    require(isinstance(reservation_id, str) and RESERVATION_ID.fullmatch(reservation_id),
+            "invalid_reservation_id", 422)
+    item = next((r for r in task.get("_reservations", []) if r["id"] == reservation_id), None)
+    require(item and item["attempt"] == task["attempt"], "reservation_required", 409)
+    if item["state"] != "reserved":
+        return {"execute": False, "reservation_id": reservation_id, "state": item["state"], "replay": True}
+    item.update(state="started", started_at=now)
+    started = task.setdefault("_started_attempts", [])
+    if task["attempt"] not in started:
+        started.append(task["attempt"])
+    emit(room, "task.execution_started", task_id=task["id"], attempt=task["attempt"])
+    return {"execute": True, "reservation_id": reservation_id, "state": "started"}
 
 
 def reservation_outcome(room, task, actor, reservation_id, body, now):
-    """Record what happened to a reserved call. A contradiction is refused, not repaired."""
-    active(room)
+    """Reconcile an outcome, even after room shutdown, without granting new work."""
     require(task and task["assignee"] == actor["id"], "not_found", 404)
     require(isinstance(reservation_id, str) and RESERVATION_ID.fullmatch(reservation_id),
             "not_found", 404)
@@ -280,13 +324,16 @@ def reservation_outcome(room, task, actor, reservation_id, body, now):
     require(item, "not_found", 404)
     state = body.get("state")
     require(state in {"completed", "uncertain"}, "invalid_reservation_outcome", 422)
-    if item["state"] != "reserved":
+    if item.get("execution_protocol") == "server_start_v1":
+        require(item["state"] != "reserved", "execution_not_started", 409)
+    if item["state"] not in {"reserved", "started"} and not item.get("_server_uncertain"):
         require(item["state"] == state, "reservation_outcome_conflict", 409)
         return {"reservation_id": reservation_id, "state": item["state"], "replay": True}
+    item.pop("_server_uncertain", None)
     item["state"] = state
     item["reported_at"] = now
     emit(room, "task.reservation_outcome", task_id=task["id"], attempt=item["attempt"], state=state)
-    if state == "uncertain" and task["state"] in {"queued", "leased"}:
+    if state == "uncertain" and item["attempt"] == task["attempt"] and task["state"] in {"queued", "leased"}:
         # A started call with no outcome must never be retried automatically.
         task["state"] = "uncertain"
         task["lease_expires_at"] = 0
@@ -309,7 +356,7 @@ def record_task_event(room, task_id, stage, now):
     events.append({"stage": stage, "at": now, "attempt": attempt})
     if len(events) > 24:
         del events[:-24]
-    if stage == "runtime_started" and task is not None:
+    if stage == "runtime_started" and task is not None and task.get("execution_protocol") != "server_start_v1":
         # A claim that never reached the runtime is not a failed model call. Only
         # attempts that actually started one may spend the model-call budget.
         started = task.setdefault("_started_attempts", [])
