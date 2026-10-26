@@ -149,7 +149,7 @@ pwsh tools/ci_postgres_fixture.ps1 -Action stop -BinDir <postgres>/bin -DataDir 
     - **서버 예산/수명**: start 승인 시 서버가 보수적으로 시도 예산을 기록합니다(모델 실행 영수증 아님). 시작 승인 후 lease/deadline 만료·pause/close 시에는 uncertain으로 은퇴해 자동 재배정하지 않습니다. R3 completion은 시작된 예약 없이는 거절합니다.
     - **R2 정정**: 결과와 완료 보고 의도를 SQLite에 원자 저장한 뒤 전송합니다. provider가 반환했다면 heartbeat 실패로 완료 보고를 uncertain으로 뒤집지 않습니다. 미확인 보고는 거절/포화 때문에 조용히 삭제하지 않고 보존·backpressure 처리합니다. pause/close 뒤 늦은 결과는 원래 예약에 기록하며 오래된 attempt가 현재 task를 바꾸지 않습니다.
     - **유실 구분**: 예약 응답 유실은 start 전이므로 재개 가능, start 응답 유실은 durable start_pending에서 호출 없이 uncertain 처리합니다.
-    - **검증**: 서버 실행 시작 26건 + worker 예약/시작 10건 = **36 passed**. 기존 worker 통합 회귀 **46 passed**. 독립 최종 검토의 남은 correctness 지적 없음. 시작 요청 전 crash 재개에서도 영구 보고 debt가 없음을 별도 재현했습니다.
+    - **검증**: 서버 실행 시작 26건 + worker 예약/시작 10건 = **36 passed**. budget 포함 **43 passed**, 기존 worker 통합 **46 passed**. 전체 **816 passed / 3 failed / 33 skipped**(기존 브라우저 3건). Node 9개 파일·docs gate 통과. 독립 최종 검토의 남은 correctness 지적 없음. 시작 요청 전 crash 재개에서도 영구 보고 debt가 없음을 별도 재현했습니다.
     - **한계**: 보장은 협력하는 worker의 보존된 attempt당 실행 승인 최대 1회입니다. exactly-once provider 실행·과금 금액·legacy client 전체 강제는 아닙니다. uncertain task 전용 human 재개 API는 없으며 방 close는 가능합니다. 이번 프로토콜의 공급자 실호출은 NOTRUN입니다. 상세: [RUNNER_RESERVATIONS_PLAN.md](RUNNER_RESERVATIONS_PLAN.md).
 
 ## 4. 아직 남은 것 (완료로 표시하지 않음)

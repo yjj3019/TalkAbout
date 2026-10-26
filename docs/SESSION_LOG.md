@@ -16,6 +16,7 @@
 - 검증: 서버 시작 26건 + worker 예약/시작 10건 = 36 passed, budget 포함 43 passed.
   기존 worker 통합 46 passed, Node 9개 파일 통과, docs_check 0 new/0 known.
   deadline 회귀는 기존 save 후킹 대신 새 원자 save_result 경계 후킹으로 갱신(검증 의도 유지).
+- 최종 전체 회귀: **816 passed / 3 failed / 33 skipped**(4m44s). 실패는 기존 브라우저 3건.
 - 계약 정본: [RUNNER_RESERVATIONS_PLAN.md](RUNNER_RESERVATIONS_PLAN.md). 실호출은 NOTRUN.
 
 ## 2026-10-27 20:00 KST — 실행 예약 R2: worker 연동 / reservations wired into the worker
