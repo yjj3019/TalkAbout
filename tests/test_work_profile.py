@@ -148,7 +148,7 @@ def test_work_prompt_names_the_directory_and_claims_nothing(workspace):
 
 
 def test_work_prompt_precedes_the_room_prompt(workspace):
-    room = prompt_text({'room_id': 'room-one', 'deliverable': 'change_proposal'})
+    room = prompt_text({'room_id': 'room-one', 'deliverable': 'change_proposal'}, work_profile=True)
     combined = work_prompt_text(workspace) + room
     assert combined.startswith('Work profile')
     assert 'Deliverable: a change proposal' in combined
