@@ -8,7 +8,7 @@ R3 start grant·uncertain no-retry, R4 bearer-only vault, no-web/MCP/plugin 기�
 
 | 단계 | 범위 | 상태 | 필수 gate |
 |---|---|---|---|
-| A0 | W1 Codex exec-json 도구 이벤트 계약 연결 | 진행 중 | work만 명령/파일 변경 schema 허용, text-only/unknown tool 거절, terminal ledger와 한도, synthetic stream |
+| A0 | W1 Codex exec-json 도구 이벤트 계약 연결 | 로컬 합성 검증; CI 대기 | work만 명령/파일 변경 schema 허용, text-only/unknown tool 거절, terminal ledger와 한도, synthetic stream |
 | A1 | bounded work evidence + 검증 기록 | 대기 | worker_reported 표시, task/attempt/reservation 결합, secret-free 제한 schema, immutable 저장·ACL 투영, legacy 호환 |
 | A2 | 공동 코딩 task 의존성·write scope·workspace/review 계약 | 대기 | cycle·stale CAS·overlap·권한 검사, 다른 사용자 로컬 경로 미노출, 서버 자동 patch 적용 금지 |
 | A3 | uncertain 사람 해결 | 대기 | 자동 재실행 금지, 이유·대상 attempt 감사 기록, 늦은 outcome 충돌 규칙 |
@@ -33,7 +33,7 @@ R3 start grant·uncertain no-retry, R4 bearer-only vault, no-web/MCP/plugin 기�
 
 ## A1: 제안 계약
 
-처음에는 bounded summary(관측 종류/상태/exit/개수)만 보관한다. 자유형 명령·출력·경로를 서버에 전송하지 않는다.
+처음에는 버전이 있는 제한된 종류·상태별 개수만 보관한다. 자유형 명령·출력·경로·종료 코드·바이트 수를 서버에 전송하지 않는다. 완료·정리 성공 후 고유 item의 마지막 상태로 집계하며 이벤트별 변화 수를 고유 파일 수로 오인하지 않는다.
 evidence는 일반 public task 필드가 아니라 완료 message의 seq/현재 read_start_seq 필터에 귀속한다. 기존 task projection은 arbitrary 필드를 새 멤버에게 노출할 수 있다. heartbeat/event에 싣지 않고 동일 완료 payload의 fingerprint와 원자 저장으로 replay를 고정한다.
 `worker_reported`는 서버가 파일 변경·명령 실행·테스트 정확성을 검증했다는 뜻이 아니다.
 base commit/diff/output digest와 독립 verification receipt는 증거를 실제 생성하는 승인된 producer가 있을 때만 추가한다.

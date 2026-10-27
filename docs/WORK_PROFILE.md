@@ -42,6 +42,31 @@ python -m talkabout.cli run --config agent.local.json `
 | TalkAbout 소스 트리이거나 그 조상/자손 | `runtime_work_workspace_overlaps_platform` |
 | 쓰기 불가 | `runtime_work_workspace_not_writable` |
 
+## P0 작업 도구 이벤트 관찰 계약
+
+Codex exec-json work profile에서만 `command_execution`, `file_change` 및 계획 메타데이터
+`todo_list` item을 정해진 형식과 크기·개수 상한 안에서 관찰한다. 기본 text-only 프로필은
+해당 item을 계속 거절한다. 계획 항목의 완료 표시는 실행이나 검증 성공을 뜻하지 않는다.
+
+- 허용 형식은 **Codex 0.164의 확인된 item/event 필드를 기준으로 제한**한다. command의 `exit_code`는 null 또는 생략도 받으며 나머지 필드는 exact-key다.
+  알 수 없는 item·필드, 추가 필드, 잘못된 상태나 상한 초과는 조용히 무시하지 않고
+  fail-closed로 처리한다. provider가 호환성 있는 필드를 추가하더라도 별도 검토와
+  schema·테스트 갱신 전에는 거절될 수 있다. 모든 Codex 버전과 호환된다는 뜻이 아니다.
+  `item.completed`의 `in_progress` 상태 역시 보수적으로 거절한다. event별 변경 목록 누적 상한은
+  실제 고유 파일 수가 아니며 반복 snapshot으로 정상 작업도 제한에 도달할 수 있다.
+- 이 item은 native 도구의 **사후 관찰**이다. 수용·거절 자체가 명령/파일 변경에 대한
+  사전 권한 승인이나 OS sandbox가 아니다. 이벤트가 도착하기 전에 명령이 실행되거나
+  파일이 바뀌었을 수 있으므로, parser 거절·interrupt는 부작용이 없다는 증거가 아니다.
+- 실패·거절된 도구 항목이나 nonzero 종료 코드는 해당 작업의 실패 정보이며,
+  **turn 전체의 성공 또는 테스트 통과 증거가 아니다**. 반대로 개별 항목 하나만으로
+  모든 후속 작업의 실패를 확정하지도 않는다. 최종 turn 결과와 실제 검증 여부는 별도로
+  판단하고, worker 보고를 서버 독립 검증으로 승격하지 않는다.
+- prompt 전송 뒤 parser 오류나 중단이 발생하면 실행 여부를 안전하게 단정할 수 없어
+  `unknown`으로 취급한다. 서버의 기존 R3 start 승인·uncertain 처리와 자동 재실행 금지
+  경계를 유지한다.
+- 이 P0의 검증은 **합성 이벤트 스트림**에 한정한다. 실제 provider의 파일 수정·명령 실행
+  턴은 별도의 명시적 예산·동의가 필요하며 현재 **NOTRUN**이다.
+
 ## 이것은 sandbox가 아니다
 
 - 플랫폼은 **파일·네트워크·비밀정보 접근을 제한하는 sandbox를 주장하지 않는다**. provider 자체의 workspace 정책과
@@ -64,6 +89,7 @@ python -m talkabout.cli run --config agent.local.json `
 | 항목 | 상태 |
 | --- | --- |
 | 거절 규칙·명령 형태·프롬프트 | **합성 통과** (`tests/test_work_profile.py` 17 + `tests/test_work_profile_cli.py` 5) |
+| P0 work-only bounded item 관찰 | **합성 스트림 검증** — 실제 공급자 호환성은 미검증 |
 | 실제 공급자 작업 턴(파일 수정·검증) | **NOTRUN** — 공급자 예산·동의 필요 |
 | sandbox/egress 제한 | **미구현**. [TOOL_BROKER_PLAN.md](TOOL_BROKER_PLAN.md)의 관문을 그대로 유지 |
 
