@@ -7,7 +7,7 @@ copy at the time of delivery, after the caller has performed operation ACLs.
 import copy
 
 from .collaboration import project_manifest, project_task
-from .domain import authorize, require
+from .domain import require
 from .text_files import filter_refs, public_task
 
 
@@ -21,13 +21,22 @@ def project_task_response(room, actor, response):
     Hidden completion messages become None, and an artifact with no visible
     historical versions is omitted. This may shrink a replay after ACL changes.
     """
-    member = authorize(actor, room, 'room:read')
-    # Local import avoids a core import cycle and ensures the same view and ACL
-    # semantics used for reads, including history boundaries and actor visibility.
-    from .core import public_room
-    view = public_room(room, actor)
-    visible_tasks = {task['id'] for task in view['tasks']}
-    messages, artifacts = view['messages'], view['artifacts']
+    member = room['members'].get(actor['id'])
+    require(member and member['status'] == 'active' and 'room:read' in member['permissions']
+            and (not actor.get('room_id') or actor['room_id'] == room['id']), 'not_found', 404)
+    readable = 'room:read' in actor['scopes']
+    if readable:
+        # Local import avoids a core import cycle and reuses read visibility.
+        from .core import public_room
+        view = public_room(room, actor)
+        visible_tasks = {task['id'] for task in view['tasks']}
+        messages, artifacts = view['messages'], view['artifacts']
+    else:
+        # Narrow operation-only credentials still perform their authorized mutation,
+        # but cannot use its response to bypass room:read.
+        visible_tasks = {task['id'] for task in room['tasks'].values()
+                         if actor['kind'] == 'human' or task['assignee'] == actor['id']}
+        messages, artifacts = [], []
     visible_messages = {message['id'] for message in messages}
     visible_versions = {(artifact['id'], version['id']) for artifact in artifacts
                         for version in artifact['versions']}
@@ -38,7 +47,7 @@ def project_task_response(room, actor, response):
                 'not_found', 404)
         result = public_task(snapshot)
         if 'attachment_refs' in result:
-            result['attachment_refs'] = filter_refs(actor, room, member, result['attachment_refs'])
+            result['attachment_refs'] = filter_refs(actor, room, member, result['attachment_refs']) if readable else []
         return project_task(result, messages, artifacts)
 
     def message_projection(snapshot):
@@ -46,7 +55,7 @@ def project_task_response(room, actor, response):
             return None
         result = copy.deepcopy(snapshot)
         if 'attachment_refs' in result:
-            result['attachment_refs'] = filter_refs(actor, room, member, result['attachment_refs'])
+            result['attachment_refs'] = filter_refs(actor, room, member, result['attachment_refs']) if readable else []
         return result
 
     def artifact_projection(snapshot):

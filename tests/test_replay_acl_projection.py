@@ -117,7 +117,7 @@ def test_hidden_completion_message_and_artifact_are_not_returned(fixture):
     assert 'artifact' not in projected
 
 
-@pytest.mark.parametrize('change', ['revoked', 'read_scope', 'wrong_actor', 'room_scope'])
+@pytest.mark.parametrize('change', ['revoked', 'wrong_actor', 'room_scope'])
 def test_viewer_authorization_is_never_weakened(fixture, change):
     room, actor, response, _ = fixture_with_history(fixture)
     if change == 'revoked': room['members']['a']['status'] = 'removed'
@@ -125,6 +125,16 @@ def test_viewer_authorization_is_never_weakened(fixture, change):
     if change == 'wrong_actor': actor['id'] = 'b'
     if change == 'room_scope': actor['room_id'] = 'different-room'
     with pytest.raises(Problem): project_task_response(room, actor, response)
+
+
+def test_operation_only_credential_gets_no_history_or_file_metadata(fixture):
+    room, actor, response, _ = fixture_with_history(fixture)
+    actor['scopes'] = ['task:complete']
+    projected = project_task_response(room, actor, response)
+    assert projected['message'] is None and 'artifact' not in projected
+    assert projected['task']['attachment_refs'] == []
+    assert projected['task']['input_manifest']['sources'] == []
+    assert 'review_target' not in projected['task']
 
 
 def test_cached_projection_never_mixes_different_actor_tasks(fixture):
