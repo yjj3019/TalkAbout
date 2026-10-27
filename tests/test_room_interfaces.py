@@ -72,6 +72,7 @@ def test_observation_surfaces_leave_room_and_task_state_unchanged(fixture):
     task=leased(core,rid)
     room=store.rooms[rid]
     tasks,seq,count=copy.deepcopy(room['tasks']),room['last_seq'],len(room['events'])
+    events=copy.deepcopy(room['events'])
     cursor=core.room_snapshot('fixture-human',rid)['snapshot_cursor']
     core.events('fixture-human',cursor,target_room=rid)
     core.room_snapshot('fixture-human',rid)
@@ -79,8 +80,31 @@ def test_observation_surfaces_leave_room_and_task_state_unchanged(fixture):
     human.http.get(f'/api/v1/rooms/{rid}/stream?duration_seconds=0',headers={'Authorization':'Bearer fixture-human'})
     assert store.rooms[rid]['tasks']==tasks
     assert store.rooms[rid]['last_seq']==seq and len(store.rooms[rid]['events'])==count
+    assert store.rooms[rid]['events']==events
     assert store.rooms[rid]['tasks'][task['id']]['state']=='leased'
     assert not store.rooms[rid]['tasks'][task['id']].get('_reservations')
+    # Detaching the viewer neither cancels the running work nor blocks its normal life.
+    completed=core.mutation('fixture-a',rid,'tasks/'+task['id']+'/complete','complete',result(task))
+    assert completed['task']['state']=='completed'
+
+
+def test_task_identity_is_stable_across_attempts_and_views(fixture):
+    store,core,rid=fixture
+    first=leased(core,rid)
+    store.rooms[rid]['tasks'][first['id']]['lease_expires_at']=1
+    store.tick_all()
+    room=core.read('fixture-human',rid)
+    requeued=next(t for t in room['tasks'] if t['id']==first['id'])
+    assert requeued['state']=='queued' and requeued['attempt']==1
+    second=core.mutation('fixture-a',rid,'tasks/'+first['id']+'/claim','claim-2',
+                         {'generation':requeued['generation'],'membership_revision':requeued['membership_revision']})
+    assert second['id']==first['id'] and second['attempt']==2 and second['state']=='leased'
+    snapshot=core.room_snapshot('fixture-human',rid)['room']
+    shown=next(t for t in snapshot['tasks'] if t['id']==first['id'])
+    assert shown['attempt']==2 and shown['state']=='leased' and shown['id']==first['id']
+    claimed=[e for e in core.events('fixture-human',None,target_room=rid)['events']
+             if e['type']=='task.claimed' and e.get('task_id')==first['id']]
+    assert [e['attempt'] for e in claimed]==[1,2]
 
 
 def test_sse_reconnect_from_last_event_id_repeats_no_event(fixture):

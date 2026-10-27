@@ -114,6 +114,15 @@ test('ten-second polling and SSE network errors preserve the confirmed room',asy
  h.streams[0].onerror();await new Promise(setImmediate);assert.equal(h.node('room-title').textContent,room.topic);
 });
 
+test('detaching from a room and stream lifecycle send no mutation',async()=>{
+ const h=await harness();h.show();await h.run('openRoom("room")');
+ h.streams[0].events.access_changed();await new Promise(setImmediate);assert.equal(h.node('detail').hidden,true);
+ await h.run('openRoom("room")');h.streams[1].events.stream_end();await new Promise(setImmediate);
+ await h.run('openRoom(null)');assert.equal(h.node('detail').hidden,true);
+ assert.ok(h.calls.length>2);
+ assert.ok(h.calls.every(c=>!c.options||c.options.method==='GET'));
+});
+
 for(const status of [401,403,404])test('confirmed room access rejection clears private details: '+status,async()=>{
  const h=await harness();h.show();h.respond('rooms/room',{},status);await h.run("openRoom('room',false,false)");
  assert.equal(h.node('detail').hidden,true);assert.equal(h.node('room-title').textContent,'');assert.equal(h.run('view.room'),null);
