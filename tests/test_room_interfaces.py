@@ -77,7 +77,8 @@ def test_observation_surfaces_leave_room_and_task_state_unchanged(fixture):
     core.events('fixture-human',cursor,target_room=rid)
     core.room_snapshot('fixture-human',rid)
     human=LocalClient(store,'fixture-human')
-    human.http.get(f'/api/v1/rooms/{rid}/stream?duration_seconds=0',headers={'Authorization':'Bearer fixture-human'})
+    stream=human.http.get(f'/api/v1/rooms/{rid}/stream?duration_seconds=0',headers={'Authorization':'Bearer fixture-human'})
+    assert stream.status_code==200 and 'event: stream_end' in stream.text
     assert store.rooms[rid]['tasks']==tasks
     assert store.rooms[rid]['last_seq']==seq and len(store.rooms[rid]['events'])==count
     assert store.rooms[rid]['events']==events

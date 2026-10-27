@@ -82,12 +82,15 @@ stream/events/snapshot은 read-only 관찰이며 task·room payload를 변경하
   클라이언트는 이때 live source를 닫고 목록/스냅샷에서 다시 동기화한다(닫지 않으면 브라우저가
   같은 stale 커서로 자동 재연결을 반복한다).
 - `duration_seconds`는 0..60만 허용한다.
-- 관찰은 호출 시작·취소가 아니다. task 취소는 `pause`/`close`/`change_mode` 같은 명시 control,
-  generation 무효화, 구성원 blocked/left 회수, 한도 도달 종료뿐이며 관찰 경로는 어디에도 닿지 않는다.
+- 관찰은 호출 시작·취소가 아니다. task 회수는 `pause`/`close`/`change_mode` 같은 명시 control,
+  generation 무효화, 구성원 변경(활성 유지 권한 수정도 포함해 membership mutation마다 해당
+  구성원의 queued/leased task를 회수한다), 한도 도달 종료뿐이며 관찰 경로는 어디에도 닿지 않는다.
+  이미 시작이 확인된 attempt는 이때 `cancelled`가 아니라 `uncertain`으로 남는다.
   클라이언트도 방을 열고 닫거나 스트림이 끝나도 변경 요청을 보내지 않는다(합성 DOM 계약).
-- task identity는 view와 attempt에 걸쳐 안정적이다. 만료된 미시작 lease는 같은 task id로
-  재진입하고 다음 claim에서 attempt만 오르며, 사람 스냅샷과 `task.claimed` event가 같은
-  id·attempt 순열을 보고한다. 관찰자가 잠시 떠나도 진행 중 작업은 유지되고 같은 시도로 이어진다.
+- task identity는 view와 attempt에 걸쳐 안정적이다. deadline과 재시도 예산 안에서 만료된
+  미시작 lease는 같은 task id로 재진입하고 다음 claim에서 attempt만 오르며, 사람 스냅샷과
+  `task.claimed` event가 같은 id·attempt 순열을 보고한다. 관찰자가 잠시 떠나도 진행 중 작업은
+  유지되고 같은 시도로 이어진다.
 - 위 계약은 합성(메모리 저장소·합성 DOM) 검증이다. 실제 브라우저 종료·재접속 E2E는 별도 검증이다.
 
 ## 단계 종료 방식
