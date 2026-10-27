@@ -278,7 +278,18 @@ class SyntheticRuntime:
 
 
 class Worker:
-    def __init__(self, client, journal, runtime, heartbeat_interval=3, runtime_timeout=30, adapter_policy=None, run_deadline=None):
+    def __init__(self, client, journal, runtime, heartbeat_interval=3, runtime_timeout=30, adapter_policy=None, run_deadline=None, *, work_prompt_workspace=None, pre_grant_preflight=None):
+        # Wrappers may provide the explicitly configured workspace; direct native
+        # runtimes are detected without changing the contract of legacy adapters.
+        from .agent_runtime import StructuredRuntime
+        if isinstance(runtime, StructuredRuntime) and runtime.work_profile:
+            if work_prompt_workspace is not None and str(work_prompt_workspace) != str(runtime.work_workspace):
+                raise ValueError('runtime_work_workspace_mismatch')
+            work_prompt_workspace = runtime.work_workspace
+        self.work_prompt_workspace = work_prompt_workspace
+        if pre_grant_preflight is not None and not callable(pre_grant_preflight):
+            raise TypeError('pre_grant_preflight_not_callable')
+        self.pre_grant_preflight = pre_grant_preflight
         self.run_deadline = run_deadline
         self.client = BudgetedClient(client, run_deadline) if run_deadline is not None else client
         self.journal, self.runtime = journal, runtime
@@ -519,7 +530,7 @@ class Worker:
                         return 'stopped'
                 # Credentials, cursors, lease state, and retry keys are never model inputs.
                 try:
-                    fit_context(context)
+                    fit_context(context, work_workspace=self.work_prompt_workspace)
                 except ContextBudgetError as error:
                     # Refuse before any provider call: an unbounded input is not a turn.
                     self.journal.save(tid, 'failed', payload)
@@ -527,6 +538,14 @@ class Worker:
                 # Stop before authorization when unacknowledged reports fill the ledger.
                 if len(self.journal.outcomes(self.journal.pending_limit)) >= self.journal.pending_limit:
                     return "backpressure"
+                # Local preflight happens before the reservation: legacy reservations can
+                # themselves grant execution. This check cannot eliminate later TOCTOU.
+                if self.pre_grant_preflight is not None:
+                    try:
+                        self.pre_grant_preflight()
+                    except Exception:
+                        self.journal.save(tid, 'failed', payload)
+                        raise
                 # One paid call per attempt. The permission comes from the server, and a
                 # refusal is respected: nothing below runs when it is not granted.
                 fence = {k: task[k] for k in ("attempt", "generation", "membership_revision")}

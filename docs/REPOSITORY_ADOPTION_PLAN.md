@@ -9,8 +9,8 @@ R3 start grant·uncertain no-retry, R4 bearer-only vault, no-web/MCP/plugin 기�
 | 단계 | 범위 | 상태 | 필수 gate |
 |---|---|---|---|
 | A0 | W1 Codex exec-json 도구 이벤트 계약 연결 | PR #43 병합; PR/merge CI 통과 | work만 명령/파일 변경 schema 허용, text-only/unknown tool 거절, terminal ledger와 한도, synthetic stream |
-| A1 | bounded work evidence + 검증 기록 | 구현 중 | agent 제출 미검증 표시, 완료 fence·메시지 가시성, secret-free 제한 schema, 원자 저장·legacy 호환; 독립 검증 영수증 별도 |
-| A2 | 공동 코딩 task 의존성·write scope·workspace/review 계약 | 대기 | cycle·stale CAS·overlap·권한 검사, 다른 사용자 로컬 경로 미노출, 서버 자동 patch 적용 금지 |
+| A1 | bounded work evidence + 검증 기록 | PR #44 병합; PR/merge CI 통과 | agent 제출 미검증 표시, 완료 fence·메시지 가시성, secret-free 제한 schema, 원자 저장·legacy 호환; 독립 검증 영수증 별도 |
+| A2 | 공동 코딩 task 의존성·write scope·workspace/review 계약 | 비실행 초안 구현 중; 실행 DAG 별도 | cycle·stale CAS·overlap·권한 검사, 다른 사용자 로컬 경로 미노출, 서버 자동 patch 적용 금지 |
 | A3 | uncertain 사람 해결 | 대기 | 자동 재실행 금지, 이유·대상 attempt 감사 기록, 늦은 outcome 충돌 규칙 |
 | A4 | 관찰 패널 재접속·작업 수명 분리 | 대기 | view detach와 cancel 구분, stable identity, cursor gap snapshot, 재접속이 호출 시작 안 함 |
 | A5 | opt-in browser capability 설계/pilot | 보안 관문 대기 | 별도 소유 process/profile, egress·인간 승인·cookie 격리·untrusted context·artifact ACL. 기본 no-web 유지 |
@@ -31,7 +31,23 @@ R3 start grant·uncertain no-retry, R4 bearer-only vault, no-web/MCP/plugin 기�
 - unknown MCP/web/다른 tool은 fail-closed, text profile은 종전 거절 유지.
 - 실제 CLI schema와의 실계정 호환 시험은 NOTRUN이며 합성 stream 통과와 구분한다.
 
-## A1: 제안 계약
+## A2: 안전한 도입 경계
+
+기존 세 room mode는 자동 생성된 작업을 직렬 dispatch하고 기존 worker는 계획 노드별
+지시를 이해하지 않는다. 따라서 실행 연결 이전에 사람만 읽고 수정하는 비실행 계획 초안을
+별도로 둔다. 초안 작성은 기존 방의 자동 스케줄을 중지하거나 새로운 task를 만들지 않는다.
+의존성은 계획상 관계일 뿐 자동 대기·실행 순서가 아니다. 쓰기 범위는 선언일 뿐
+경로 권한·OS sandbox·충돌 방지나 다른 호스트의 동일 workspace를 보장하지 않는다.
+초안은 작성자 principal과 당시 membership epoch에만 귀속하며 재가입 시 이전 초안은
+조회·수정할 수 없다. 작성자가 권한을 잃거나 탈퇴하면 기존 초안 복구·이전 수단은 없다.
+종료된 방은 조회만 가능하다. 변경 이벤트는 발행하지 않으므로 전용 API를 재조회해야 한다.
+
+실행 활성화는 별도 설계·승인이 필요하다: 구 worker가 임의로 노드를 실행하지 못하도록
+plan schema capability 및 고정 revision 확인, R3 start fencing, 승인된 노드 지시 전달,
+실패·uncertain 전파, task/event ACL, 예산·deadline, workspace 바인딩과 review 계약을
+먼저 정해야 한다. 실행할 때는 선행 task 완료를 검증 통과로 해석하지 않는다.
+
+## A1: 제한된 미검증 집계 계약
 
 처음에는 버전이 있는 제한된 종류·상태별 개수만 보관한다. 자유형 명령·출력·경로·종료 코드·바이트 수를 서버에 전송하지 않는다. 완료·정리 성공 후 고유 item의 마지막 상태로 집계하며 이벤트별 변화 수를 고유 파일 수로 오인하지 않는다.
 evidence는 일반 public task 필드가 아니라 완료 message의 seq/현재 read_start_seq 필터에 귀속한다. 기존 task projection은 arbitrary 필드를 새 멤버에게 노출할 수 있다. heartbeat/event에 싣지 않고 동일 완료 payload의 fingerprint와 원자 저장으로 replay를 고정한다.

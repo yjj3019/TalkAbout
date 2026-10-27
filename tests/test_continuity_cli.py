@@ -25,6 +25,7 @@ def configured(fixture,tmp_path,monkeypatch):
         _verified_executable=('synthetic-cli',1,1);_verified_account_subject=None;thread_id='synthetic-thread'
         def __init__(self,*args,**kwargs):
             super().__init__();self.options=kwargs
+            self.work_workspace=kwargs.get('work_workspace')
             self.codex_transport=kwargs.get('codex_transport','exec-json');made.append(self)
         def probe(self):return {'available':True,'reason':None}
         def preflight(self):return self.probe()

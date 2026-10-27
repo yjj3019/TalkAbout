@@ -132,6 +132,13 @@ class RoomRuntimePool:
         self.active = set()
 
     def run(self, context, cancel):
+        return self._run_turn(context, cancel, with_evidence=False)
+
+    def run_with_evidence(self, context, cancel):
+        """Forward only the evidence returned by this turn; never infer it from runtime state."""
+        return self._run_turn(context, cancel, with_evidence=True)
+
+    def _run_turn(self, context, cancel, *, with_evidence):
         with self.lock:
             if self.closed or cancel.is_set():
                 raise ConnectionCheckError('connector_stopped')
@@ -174,12 +181,17 @@ class RoomRuntimePool:
                     if created:runtime.shutdown()
                     raise
             self.calls += 1
-        if self.session_journal is None:
+        def invoke():
+            if with_evidence:
+                operation = getattr(runtime, 'run_with_evidence', None)
+                return operation(context, cancel) if callable(operation) else (runtime.run(context, cancel), None)
             return runtime.run(context, cancel)
+        if self.session_journal is None:
+            return invoke()
         try:
             if self.closed or cancel.is_set():
                 raise ConnectionCheckError('connector_stopped')
-            result=runtime.run(context,cancel)
+            result=invoke()
             if self.closed or cancel.is_set():
                 raise ConnectionCheckError('connector_stopped')
             self.session_journal.complete(context,runtime)

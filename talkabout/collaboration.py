@@ -7,7 +7,7 @@ each reference exists, belongs to this room and viewer, and matches the byte ran
 """
 import copy
 
-from .agent_runtime import MAX_INPUT, prompt_text
+from .agent_runtime import MAX_INPUT, prompt_text, work_prompt_text
 
 MAX_SHARED_TEXT_BYTES = 72000
 MAX_MESSAGES = 8
@@ -175,24 +175,29 @@ def add_file_sources(context, excerpts, *, available_count=None):
     return context
 
 
-def _serialized_size(context):
+def _serialized_size(context, *, work_workspace=None):
     try:
-        return len(prompt_text(context).encode('utf-8'))
-    except (TypeError, ValueError, RecursionError):
+        if work_workspace is None:
+            prompt = prompt_text(context)
+        else:
+            prompt = work_prompt_text(work_workspace) + prompt_text(context, work_profile=True)
+        return len(prompt.encode('utf-8'))
+    except (TypeError, ValueError, RecursionError, UnicodeError):
         raise ContextBudgetError('invalid_runtime_context') from None
 
 
-def fit_context(context):
+def fit_context(context, *, work_workspace=None):
     """Shrink text until the actual serialized prompt fits, never dropping metadata.
 
     The largest ordinary entry is halved first; the pinned message and the exact review
-    target keep a 64-byte floor longer than everything else.
+    target keep a 64-byte floor longer than everything else. For an explicitly selected
+    work workspace, count the same work-mode header and workspace prefix as the runtime.
     """
     manifest = context['input_manifest']
     manifest['budget'] = {'max_serialized_utf8_bytes': MAX_INPUT}
     target = context.get('review_target') or {}
     while True:
-        if _serialized_size(context) <= MAX_INPUT:
+        if _serialized_size(context, work_workspace=work_workspace) <= MAX_INPUT:
             return context
         candidates = []
         for group in ('inputs', 'artifact_proposals', 'file_excerpts'):

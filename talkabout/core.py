@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import copy
+import re
 import time
+import unicodedata
 from .participation import Participation, bound_session
 
 from .identity import REAL_RUNTIMES, public_connection, public_runtime_check
@@ -12,6 +14,46 @@ from .domain import (AGENT_PERMISSIONS, HUMAN_PERMISSIONS, Problem, active, auth
                      cancel_tasks, deliverable_artifact_kind, digest, emit, fencing, grant_reservation,
                      ident, message, new_room, reservation_outcome, start_reservation,
                      record_task_event, replay, require, save_response, schedule, participant_permissions)
+
+
+WORK_PLAN_ID = re.compile(r'[A-Za-z][A-Za-z0-9_-]{0,63}\Z')
+
+
+def validate_work_plan(nodes, room):
+    """Validate inert owner draft metadata, not an execution or permission grant."""
+    require(isinstance(nodes, list) and len(nodes) <= 16, 'invalid_work_plan', 422)
+    ids, dependencies = set(), {}
+    for node in nodes:
+        require(isinstance(node, dict) and set(node) == {'id', 'title', 'instruction', 'assignee', 'write_scope', 'depends_on'}, 'invalid_work_plan', 422)
+        node_id = node['id']
+        require(isinstance(node_id, str) and WORK_PLAN_ID.fullmatch(node_id) and node_id not in ids, 'invalid_work_plan', 422)
+        ids.add(node_id)
+        for field, limit in (('title', 200), ('instruction', 2000)):
+            value = node[field]
+            require(isinstance(value, str) and 1 <= len(value) <= limit and bool(value.strip())
+                    and all(not unicodedata.category(c).startswith('C') or c in '\n\t' for c in value), 'invalid_work_plan', 422)
+        require(isinstance(node['write_scope'], str) and node['write_scope'] in ('analysis', 'owner_approved_workspace'), 'invalid_work_plan', 422)
+        assignee = node['assignee']
+        require(isinstance(assignee, str) and (member := room['members'].get(assignee))
+                and member.get('kind') == 'agent' and member.get('status') == 'active', 'invalid_work_plan_assignee', 422)
+        deps = node['depends_on']
+        require(isinstance(deps, list) and len(deps) <= 15 and all(isinstance(d, str) and WORK_PLAN_ID.fullmatch(d) for d in deps)
+                and len(deps) == len(set(deps)), 'invalid_work_plan', 422)
+        dependencies[node_id] = deps
+    require(all(d in ids for deps in dependencies.values() for d in deps), 'invalid_work_plan_dependency', 422)
+    remaining = {node_id: set(deps) for node_id, deps in dependencies.items()}
+    while remaining:
+        ready = {node_id for node_id, deps in remaining.items() if not deps}
+        require(ready, 'work_plan_cycle', 422)
+        remaining = {node_id: deps - ready for node_id, deps in remaining.items() if node_id not in ready}
+    return copy.deepcopy(nodes)
+
+
+def work_plan_authorize(actor, room):
+    member = authorize(actor, room, 'room:control', human=True)
+    authorize(actor, room, 'room:read', human=True)
+    require(actor.get('owner') == room['owner'], 'forbidden', 403)
+    return member
 
 
 def validate_work_evidence(result):
@@ -230,6 +272,40 @@ class Core(Participation):
         require(room_id in rooms, "not_found", 404)
         return public_room(rooms[room_id], actor, principals)
 
+    def work_plan(self, token, room_id):
+        with self.store.read_transaction(room_id, token) as (actor, room):
+            member = work_plan_authorize(actor, room)
+            plan = room.get('_work_plan')
+            if plan is None:
+                return {'revision': 0, 'nodes': []}
+            require(plan.get('_author') == actor['id'] and plan.get('_epoch') == member['epoch'], 'not_found', 404)
+            return {'revision': plan['revision'], 'nodes': copy.deepcopy(plan['nodes'])}
+
+    def replace_work_plan(self, token, room_id, key, body):
+        with self.store.transaction(room_id, token) as (actor, room):
+            member = work_plan_authorize(actor, room)
+            current = room.get('_work_plan')
+            if current is not None:
+                require(current.get('_author') == actor['id'] and current.get('_epoch') == member['epoch'], 'not_found', 404)
+            require(isinstance(body, dict), 'invalid_work_plan', 422)
+            try:
+                previous, lookup, fingerprint = replay(room, actor, 'work-plan', key, body)
+            except UnicodeEncodeError:
+                raise Problem('invalid_work_plan', 422) from None
+            if previous is not None:
+                return copy.deepcopy(previous)
+            require(room['state'] in {'preparing', 'active', 'paused'}, 'room_closed')
+            require(set(body) == {'expected_revision', 'nodes'} and type(body['expected_revision']) is int
+                    and body['expected_revision'] >= 0, 'invalid_work_plan', 422)
+            current = room.get('_work_plan', {'revision': 0, 'nodes': []})
+            require(body['expected_revision'] == current['revision'], 'work_plan_revision_conflict')
+            nodes = validate_work_plan(body['nodes'], room)
+            revision = current['revision'] + 1
+            room['_work_plan'] = {'revision': revision, 'nodes': nodes,
+                                  '_author': actor['id'], '_epoch': member['epoch']}
+            # Never cache the confidential plan or its text in the generic replay ring.
+            return save_response(room, lookup, fingerprint, {'revision': revision}, member['epoch'])
+
     def tick(self, token, room_id):
         _, _, principals = self.store.snapshot(token)
         with self.store.transaction(room_id, token) as (actor, room):
@@ -273,6 +349,9 @@ class Core(Participation):
             previous, lookup, fingerprint = replay(room, actor, operation, key, body)
             execution_operation = bits[0] == "tasks" and len(bits) > 2 and (bits[2] == "reservations" or verb == "start")
             if previous is not None and not execution_operation:
+                if bits[0] == 'tasks':
+                    from .response_projection import project_task_response
+                    previous = project_task_response(room, actor, previous)
                 if self.text_files and bits[0]=='tasks' and verb=='claim' and 'lease_id' in previous:
                     return {**previous,'lease_proof':claim_proof(token,room_id,previous,key)}
                 return previous
@@ -311,7 +390,9 @@ class Core(Participation):
                         require(prior.get("epoch") == member["epoch"], "client_message_epoch_conflict")
                         require(prior["digest"] == fingerprint, "client_message_conflict")
                         response = {"message": room["messages"][prior["id"]], "task": public_task(task)}
-                        return save_response(room, lookup, fingerprint, response, member["epoch"])
+                        saved = save_response(room, lookup, fingerprint, response, member["epoch"])
+                        from .response_projection import project_task_response
+                        return project_task_response(room, actor, saved)
                 if verb == "claim":
                     active(room)
                     require(not room.get('dispatch_held'), 'dispatch_held')
@@ -547,6 +628,9 @@ class Core(Participation):
                 # replayed execute:true would be the double call the reservation forbids.
                 return response
             saved=save_response(room, lookup, fingerprint, copy.deepcopy(response), member["epoch"])
+            if bits[0] == 'tasks':
+                from .response_projection import project_task_response
+                saved = project_task_response(room, actor, saved)
             if self.text_files and bits[0]=='tasks' and verb=='claim':
                 return {**saved,'lease_proof':claim_proof(token,room_id,saved,key)}
             return saved

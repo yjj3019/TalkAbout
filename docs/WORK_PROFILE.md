@@ -97,6 +97,10 @@ Codex exec-json work profile에서만 `command_execution`, `file_change` 및 계
 > and do not add network access. Report a unified diff of what you changed and what you actually
 > verified. The platform applies nothing.
 
+작업 공간은 예약 전 한 번, runtime 생성 시 다시 확인한다. 이 점검은 시점별 검사일 뿐
+경로 구성요소의 교체 경쟁을 제거하거나 디렉터리의 OS 수준 격리를 보장하지 않는다.
+기존 연결 시험도 work-profile runtime을 사용하므로 도구가 비활성화된 시험이라고 가정하지 않는다.
+
 ## 검증 상태
 
 | 항목 | 상태 |

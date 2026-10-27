@@ -299,6 +299,10 @@ def create_app(store, start_scheduler=True, allow_fixture_bearer=False, allowed_
             match = re.fullmatch(r"rooms/([a-zA-Z0-9-]+)(?:/(.*))?", path)
             require(match, "not_found", 404)
             room_id, operation = match.groups()
+            if operation == 'work-plan':
+                if method == 'GET': return core.work_plan(credential, room_id)
+                if method == 'POST': return core.replace_work_plan(credential, room_id, key, body)
+                raise Problem('not_found', 404)
             if operation in {'participation/join', 'participation/ack'} and method == 'POST':
                 return core.participation(credential, room_id, operation.split('/')[-1], body)
             if operation == 'notifications' and method == 'GET':

@@ -69,6 +69,18 @@ def agent_credential(args, config, parser):
     return os.environ.get(config.get('token_env', 'TALKABOUT_TOKEN'))
 
 
+def work_workspace_preflight(kind, codex_transport, frozen_workspace):
+    """Revalidate the frozen canonical path without constructing a provider.
+
+    This is a point-in-time check, not an OS sandbox or a TOCTOU guarantee.
+    The runtime factory independently validates again before launch.
+    """
+    from .agent_runtime import _validated_work_workspace
+    checked = _validated_work_workspace(kind, codex_transport, frozen_workspace)
+    if str(checked) != frozen_workspace:
+        raise ValueError('runtime_work_workspace_mismatch')
+
+
 def main():
     parser = argparse.ArgumentParser(description="TalkAbout private text-only prototype; no external model calls by default")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -275,9 +287,16 @@ def main():
                     if args.work_profile:
                         runtime_options['work_profile']=True
                         runtime_options['work_workspace']=str(args.work_workspace)
+                    expected_workspace = None
                     def build_runtime():
-                        return provider_runtime(args.runtime, runtime_options, args.provider_model, args.provider_url, args.provider_key_env, config, args.grok_profile)
+                        instance = provider_runtime(args.runtime, runtime_options, args.provider_model, args.provider_url, args.provider_key_env, config, args.grok_profile)
+                        if expected_workspace is not None and str(instance.work_workspace) != expected_workspace:
+                            raise ValueError('runtime_work_workspace_mismatch')
+                        return instance
                     test_runtime = build_runtime()
+                    if args.work_profile:
+                        expected_workspace = str(test_runtime.work_workspace)
+                        runtime_options['work_workspace'] = expected_workspace
                     probe = test_runtime.probe()
                     if probe.get('reason') or not probe.get('available'):
                         test_runtime.shutdown()
@@ -334,6 +353,11 @@ def main():
                         report('running')
                         check_deadline(deadline)
                         return source_runtime.run(context, cancel)
+                    def run_with_evidence(self, context, cancel):
+                        report('running')
+                        check_deadline(deadline)
+                        operation = getattr(source_runtime, 'run_with_evidence', None)
+                        return operation(context, cancel) if callable(operation) else (source_runtime.run(context, cancel), None)
                     def shutdown(self):
                         stop = getattr(source_runtime, 'shutdown', None)
                         return stop() if callable(stop) else False
@@ -350,7 +374,15 @@ def main():
                     final_state = 'stopped'
                     report('stopped')
                     return
-                worker = Worker(client, journal, ReportedRuntime(), adapter_policy={'external': bool(args.runtime), 'tool_limits_verified': bool(args.runtime), 'allowed_tools': []}, run_deadline=deadline)
+                pre_grant_preflight = None
+                if args.work_profile:
+                    # Freeze the exact runtime/transport/path validated before the worker is
+                    # constructed. Factory validation remains mandatory after the grant.
+                    pre_grant_preflight = lambda: work_workspace_preflight(
+                        args.runtime, args.codex_transport, expected_workspace)
+                worker = Worker(client, journal, ReportedRuntime(), adapter_policy={'external': bool(args.runtime), 'tool_limits_verified': bool(args.runtime), 'allowed_tools': []}, run_deadline=deadline,
+                                work_prompt_workspace=test_runtime.work_workspace if args.work_profile else None,
+                                pre_grant_preflight=pre_grant_preflight)
                 final_state = 'stopped'
                 for _ in range(args.steps):
                     budget_exhausted=bool(args.runtime and (runtime.calls + check_calls >= args.max_model_calls or
