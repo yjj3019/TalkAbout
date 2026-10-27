@@ -142,6 +142,25 @@ def test_agents_non_owner_humans_and_missing_control_are_refused(fixture):
     assert not any(e['type'] == 'task.uncertain_resolved' for e in room['events'])
 
 
+def test_resolution_capability_matches_owner_and_current_permissions(fixture):
+    store, core, rid = fixture
+    assert core.read('fixture-human', rid)['can_resolve_uncertain'] is True
+    assert core.read('fixture-a', rid)['can_resolve_uncertain'] is False
+    room = store.rooms[rid]
+    store.provision({'id': 'other', 'owner': 'different-owner', 'kind': 'human',
+                     'display_name': 'Other', 'handle': 'other'}, 'fixture-other', {'room:read', 'room:control'})
+    room['members']['other'] = copy.deepcopy(room['members']['human'])
+    # Snapshot filtering hides other-owner rooms; test projection directly as defense in depth.
+    from talkabout.core import public_room
+    assert public_room(room, store.auth('fixture-other'))['can_resolve_uncertain'] is False
+    room['members']['human']['permissions'].remove('room:control')
+    assert core.read('fixture-human', rid)['can_resolve_uncertain'] is False
+    room['members']['human']['permissions'].append('room:control')
+    from talkabout.domain import token_hash
+    store.credentials[token_hash('fixture-human')]['scopes'].remove('room:control')
+    assert core.read('fixture-human', rid)['can_resolve_uncertain'] is False
+
+
 def test_resolution_is_visible_to_the_owner_and_closed_room_allows_it(fixture):
     store, core, rid = fixture
     task = make_uncertain(store, core, rid)

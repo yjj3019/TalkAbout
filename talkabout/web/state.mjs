@@ -212,6 +212,16 @@ labels.en.pendingParticipationGuide=labels.en.inviteContinue;
 labels.ko.lastContribution='최근 발언';
 labels.en.lastContribution='Latest contribution';
 
+labels.ko.uncertainAck='불명 결과 확인 기록';
+labels.en.uncertainAck='Record acknowledgement';
+labels.ko.uncertainAckHelp='외부 실행과 부작용은 여전히 알 수 없습니다. 이 기록은 작업을 완료하거나 재실행하지 않으며 새 작업을 막지 않습니다.';
+labels.en.uncertainAckHelp='External execution and effects remain unknown. This record does not complete or retry the task, and does not block new work.';
+labels.ko.uncertainAckConfirm='이 시도의 외부 실행 및 부작용이 불명임을 확인하고 검토 기록을 남기시겠습니까? 작업 상태는 결과 불명으로 유지됩니다.';
+labels.en.uncertainAckConfirm='Acknowledge that external execution and effects of this attempt are unknown and record your review? The task remains outcome unknown.';
+labels.ko.uncertainAckResultUnknown='확인 기록 요청의 결과를 확인하지 못했습니다. 최신 상태를 확인한 뒤 필요하면 같은 요청을 다시 시도하세요. 외부 영향은 여전히 불명입니다.';
+labels.en.uncertainAckResultUnknown='The acknowledgement request outcome could not be confirmed. Check the latest state and retry the same request if needed. External effects remain unknown.';
+labels.ko.uncertainAcknowledged='사람 확인 기록됨 · 외부 영향 불명';
+labels.en.uncertainAcknowledged='Human acknowledgement recorded · external effects unknown';
 labels.ko.cameraAuto='자동 추적';
 labels.en.cameraAuto='Follow';
 labels.ko.cameraFixed='고정';
