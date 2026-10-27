@@ -1,3 +1,4 @@
+import copy
 import json
 import threading
 import time
@@ -64,6 +65,62 @@ def test_sse_batches_cursor_and_human_authorization(fixture):
     assert any('event: stream_end' in b for b in blocks)
     agent=LocalClient(store)
     assert agent.http.get(f'/api/v1/rooms/{rid}/stream?duration_seconds=0',headers={'Authorization':'Bearer fixture-a'}).status_code==403
+
+
+def test_observation_surfaces_leave_room_and_task_state_unchanged(fixture):
+    store,core,rid=fixture
+    task=leased(core,rid)
+    room=store.rooms[rid]
+    tasks,seq,count=copy.deepcopy(room['tasks']),room['last_seq'],len(room['events'])
+    cursor=core.room_snapshot('fixture-human',rid)['snapshot_cursor']
+    core.events('fixture-human',cursor,target_room=rid)
+    core.room_snapshot('fixture-human',rid)
+    human=LocalClient(store,'fixture-human')
+    human.http.get(f'/api/v1/rooms/{rid}/stream?duration_seconds=0',headers={'Authorization':'Bearer fixture-human'})
+    assert store.rooms[rid]['tasks']==tasks
+    assert store.rooms[rid]['last_seq']==seq and len(store.rooms[rid]['events'])==count
+    assert store.rooms[rid]['tasks'][task['id']]['state']=='leased'
+    assert not store.rooms[rid]['tasks'][task['id']].get('_reservations')
+
+
+def test_sse_reconnect_from_last_event_id_repeats_no_event(fixture):
+    store,core,rid=fixture
+    human=LocalClient(store,'fixture-human')
+    headers={'Authorization':'Bearer fixture-human'}
+    def room_update(response):
+        block=next(b for b in response.text.strip().split('\n\n') if 'event: room_update' in b)
+        data=json.loads(next(line[6:] for line in block.splitlines() if line.startswith('data: ')))
+        cursor=next(line[4:] for line in block.splitlines() if line.startswith('id: '))
+        return data,cursor
+    first,cursor=room_update(human.http.get(f'/api/v1/rooms/{rid}/stream?duration_seconds=0',headers=headers))
+    assert [e['event_id'] for e in first['events']]
+    assert first['next_cursor']==cursor
+    second,next_cursor=room_update(human.http.get(f'/api/v1/rooms/{rid}/stream?duration_seconds=0',headers={**headers,'Last-Event-ID':cursor}))
+    assert second['events']==[]
+    third,_=room_update(human.http.get(f'/api/v1/rooms/{rid}/stream?duration_seconds=0',headers={**headers,'Last-Event-ID':next_cursor}))
+    assert third['events']==[]
+    assert core.events('fixture-human',next_cursor,target_room=rid)['events']==[]
+
+
+def test_sse_unusable_cursor_reports_access_changed_instead_of_skipping(fixture):
+    store,core,rid=fixture
+    human=LocalClient(store,'fixture-human')
+    headers={'Authorization':'Bearer fixture-human'}
+    foreign=core.events('fixture-a',target_room=rid)['next_cursor']
+    for cursor in ('f'*32,foreign):
+        response=human.http.get(f'/api/v1/rooms/{rid}/stream?duration_seconds=0&cursor={cursor}',headers=headers)
+        assert response.status_code==200 and 'event: room_update' not in response.text
+        block=next(b for b in response.text.strip().split('\n\n') if 'event: access_changed' in b)
+        code=json.loads(next(line[6:] for line in block.splitlines() if line.startswith('data: ')))['code']
+        assert code in {'cursor_gap','invalid_cursor','invalid_cursor_view'}
+
+
+@pytest.mark.parametrize('value',['61','-1','abc',''])
+def test_stream_duration_must_be_a_bounded_float(fixture,value):
+    store,core,rid=fixture
+    human=LocalClient(store,'fixture-human')
+    response=human.http.get(f'/api/v1/rooms/{rid}/stream?duration_seconds={value}',headers={'Authorization':'Bearer fixture-human'})
+    assert response.status_code==422 and response.json()['code']=='invalid_stream_duration'
 
 
 def test_mode_limits_invalidate_generation_and_old_tasks(fixture):
