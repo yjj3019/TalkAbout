@@ -177,6 +177,7 @@ pwsh tools/ci_postgres_fixture.ps1 -Action stop -BinDir <postgres>/bin -DataDir 
 | 문서 | 성격 |
 | --- | --- |
 | `STATUS.md` (이 문서) | **현재 정본** |
+| [REPOSITORY_ADOPTION_PLAN.md](REPOSITORY_ADOPTION_PLAN.md) | 외부 저장소 분석 결과 단계별 반영·보안 gate |
 | [README.md](../README.md) | 소개·빠른 시작·문서 지도 |
 | [USER_FLOW.md](USER_FLOW.md) | 실제 사용 순서 |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | 설계 정본(제안 시점) |

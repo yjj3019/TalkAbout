@@ -1,4 +1,7 @@
-"""Text-only native agent protocols, with explicit terminal proof and room binding.
+"""Native agent protocols, with explicit terminal proof and room binding.
+
+The default is text-only; owner-opt-in Codex work events are bounded observations,
+not preventive per-tool authorization or proof of filesystem/network isolation.
 
 No provider is contacted at import, construction, or probe time. Processes use the
 existing kill-on-close Windows supervisor; POSIX is deliberately unsupported.
@@ -32,6 +35,83 @@ MAX_WIRE = 2 * 1024 * 1024
 MAX_LINE = 256 * 1024
 MAX_TEXT = 16000
 MAX_INPUT = 200000
+MAX_WORK_ITEMS = 128
+MAX_WORK_EVENTS = 1024
+MAX_CODEX_ITEM_IDS = 4096
+MAX_WORK_CHANGES = 256
+MAX_WORK_BYTES = MAX_WIRE
+
+
+class _WorkItems:
+    """Bounded observations after native activity, not preventive tool authorization."""
+
+    def __init__(self):
+        self.items = {}
+        self.events = self.bytes = self.changes = 0
+
+    def accept(self, event_kind, item):
+        def invalid():
+            raise AdapterError('runtime_invalid_output')
+
+        kind = item.get('type')
+        expected = ({'id', 'type', 'command', 'aggregated_output', 'exit_code', 'status'}
+                    if kind == 'command_execution' else {'id', 'type', 'changes', 'status'})
+        keys = set(item)
+        if keys != expected and not (kind == 'command_execution' and keys == expected - {'exit_code'}):
+            invalid()
+        identifier = _identifier(item.get('id'))
+        status = item.get('status')
+        terminal = {'completed', 'failed'} | ({'declined'} if kind == 'command_execution' else set())
+        if not isinstance(status, str) or status not in terminal | {'in_progress'}:
+            invalid()
+        try:
+            size = len(json.dumps(item, ensure_ascii=False).encode('utf-8'))
+        except (TypeError, ValueError, UnicodeError):
+            invalid()
+        if size > MAX_LINE or self.events >= MAX_WORK_EVENTS or self.bytes + size > MAX_WORK_BYTES:
+            raise AdapterError('runtime_output_limit')
+        previous = self.items.get(identifier)
+        if previous is not None:
+            if previous['kind'] != kind or previous['status'] != 'in_progress' or event_kind == 'item.started':
+                invalid()
+        elif (len(self.items) >= MAX_WORK_ITEMS):
+            raise AdapterError('runtime_output_limit')
+        elif event_kind not in {'item.started', 'item.completed'}:
+            invalid()
+        if ((event_kind == 'item.completed') != (status in terminal)):
+            invalid()
+        record = {'kind': kind, 'status': status}
+        if kind == 'command_execution':
+            if (not isinstance(item['command'], str) or not item['command']
+                    or not isinstance(item['aggregated_output'], str)):
+                invalid()
+            exit_code = item.get('exit_code')
+            if exit_code is not None and (type(exit_code) is not int or not -(2 ** 31) <= exit_code < 2 ** 31):
+                invalid()
+            record['exit_code'] = exit_code
+        else:
+            changes = item['changes']
+            if not isinstance(changes, list):
+                invalid()
+            if len(changes) > MAX_WORK_CHANGES or self.changes + len(changes) > MAX_WORK_CHANGES:
+                raise AdapterError('runtime_output_limit')
+            for change in changes:
+                if (not isinstance(change, dict) or set(change) != {'path', 'kind'}
+                        or not isinstance(change['path'], str) or not change['path']
+                        or not isinstance(change['kind'], str) or change['kind'] not in {'add', 'delete', 'update'}):
+                    invalid()
+            self.changes += len(changes)
+            record['changes_count'] = len(changes)
+        self.items[identifier] = record
+        self.events += 1
+        self.bytes += size
+
+    def summary(self):
+        return {'events': self.events, 'items': len(self.items), 'changes': self.changes,
+                'observed_bytes': self.bytes, 'outcomes': [dict(item) for item in self.items.values()]}
+
+    def pending(self):
+        return any(item['status'] == 'in_progress' for item in self.items.values())
 
 # Hints from untrusted stderr, never proof of a provider failure's cause. Only
 # these fixed labels survive the reader; no message, path, URL or identifier does.
@@ -525,6 +605,7 @@ class StructuredRuntime:
         # Owner opt-in: the agent may use its own tools inside one declared directory.
         # This is lifetime-scoped trust transfer, not a sandbox claim.
         self.work_profile = bool(work_profile)
+        self.last_work_evidence = None
         self.work_workspace = (_validated_work_workspace(kind, codex_transport, work_workspace)
                                if self.work_profile else None)
         self._claude_new_id = str(uuid.uuid4())
@@ -935,6 +1016,8 @@ class StructuredRuntime:
                     raise AdapterError('runtime_cleanup_unconfirmed')
 
     def _codex_exec(self, prompt):
+        work = _WorkItems() if self.work_profile else None
+        self.last_work_evidence = work.summary() if work else None
         self._observe('prompt_submission_requested')
         self._prompt_sent = True
         self._transport.send_text(prompt, self._cancel, self._deadline)
@@ -942,6 +1025,9 @@ class StructuredRuntime:
         started = False
         session_seen = False
         completed = {}
+        item_types = {}
+        todo_states = {}
+        todo_events = 0
         while True:
             event = self._transport.receive(self._cancel, self._deadline)
             kind = event.get('type')
@@ -962,16 +1048,68 @@ class StructuredRuntime:
                 # warning). It is not model output and not a protocol failure;
                 # fatal failures still arrive as turn.failed or error events.
                 if item.get('type') == 'error':
+                    if work is not None:
+                        if kind != 'item.completed':
+                            raise AdapterError('runtime_invalid_output')
+                        error_id = _identifier(item.get('id'))
+                        if error_id in item_types:
+                            raise AdapterError('runtime_invalid_output')
+                        if len(item_types) >= MAX_CODEX_ITEM_IDS:
+                            raise AdapterError('runtime_output_limit')
+                        item_types[error_id] = 'error'
                     continue
                 if not started:
                     raise AdapterError('runtime_protocol_mismatch')
-                if item.get('type') not in {'agent_message', 'reasoning', 'plan'}:
+                item_type = item.get('type')
+                if not isinstance(item_type, str):
+                    raise AdapterError('runtime_invalid_output')
+                if work is not None:
+                    identifier = _identifier(item.get('id'))
+                    if identifier in item_types and item_types[identifier] != item_type:
+                        raise AdapterError('runtime_invalid_output')
+                    if identifier not in item_types and len(item_types) >= MAX_CODEX_ITEM_IDS:
+                        raise AdapterError('runtime_output_limit')
+                    item_types[identifier] = item_type
+                if work is not None and item_type == 'todo_list':
+                    if set(item) != {'id', 'type', 'items'} or not isinstance(item.get('items'), list):
+                        raise AdapterError('runtime_invalid_output')
+                    if len(item['items']) > 128 or todo_events >= MAX_WORK_EVENTS:
+                        raise AdapterError('runtime_output_limit')
+                    try:
+                        todo_size = len(json.dumps(item, ensure_ascii=False).encode('utf-8'))
+                    except (TypeError, ValueError, UnicodeError):
+                        raise AdapterError('runtime_invalid_output') from None
+                    if todo_size > MAX_LINE or work.bytes + todo_size > MAX_WORK_BYTES:
+                        raise AdapterError('runtime_output_limit')
+                    for entry in item['items']:
+                        if (not isinstance(entry, dict) or set(entry) != {'text', 'completed'}
+                                or not isinstance(entry['text'], str) or type(entry['completed']) is not bool):
+                            raise AdapterError('runtime_invalid_output')
+                    state = todo_states.get(identifier)
+                    if ((kind == 'item.started' and state is not None)
+                            or (kind != 'item.started' and state != 'started')):
+                        raise AdapterError('runtime_invalid_output')
+                    todo_states[identifier] = 'completed' if kind == 'item.completed' else 'started'
+                    work.bytes += todo_size
+                    todo_events += 1
+                    continue
+                if work is not None and item_type in {'command_execution', 'file_change'}:
+                    work.accept(kind, item)
+                    self.last_work_evidence = work.summary()
+                    continue
+                if item_type not in {'agent_message', 'reasoning', 'plan'}:
                     raise AdapterError('runtime_tool_policy_violation')
+                if work is not None and item.get('id') in work.items:
+                    raise AdapterError('runtime_invalid_output')
                 if kind == 'item.completed' and item.get('type') == 'agent_message':
-                    completed[_identifier(item.get('id'))] = _text(item.get('text'))
+                    message_id = _identifier(item.get('id'))
+                    if work is not None and message_id in completed:
+                        raise AdapterError('runtime_invalid_output')
+                    completed[message_id] = _text(item.get('text'))
                     self._bounded_parts(completed)
             elif kind == 'turn.completed':
-                if not started or not completed or event.get('error'):
+                if (not started or not completed or event.get('error')
+                        or (work is not None and (work.pending() or 'started' in todo_states.values()))):
                     raise AdapterError('runtime_invalid_output')
                 if event.get('status', 'completed') != 'completed':
                     raise AdapterError('runtime_failed')
@@ -1271,6 +1409,7 @@ class StructuredRuntime:
                 raise AdapterError('runtime_observation_failed') from None
 
     def _run(self, context, cancel):
+        self.last_work_evidence = None
         if not isinstance(context, dict):
             raise AdapterError('invalid_runtime_context')
         room_id = context.get('room_id')
