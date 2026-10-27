@@ -356,9 +356,11 @@ class Core(Participation):
             try:
                 previous, lookup, fingerprint = replay(room, actor, operation, key, body)
             except UnicodeEncodeError:
-                # A surrogate anywhere in the body cannot be hashed or stored; refuse
-                # before any state changes, including the idempotency ledger.
-                raise Problem("invalid_resolution" if resolving else "invalid_body", 422) from None
+                # A surrogate in the resolution body cannot be hashed or stored; refuse it
+                # before any state changes. Other operations keep their existing behavior.
+                if not resolving:
+                    raise
+                raise Problem("invalid_resolution", 422) from None
             execution_operation = bits[0] == "tasks" and len(bits) > 2 and (bits[2] == "reservations" or verb == "start")
             if previous is not None and not execution_operation:
                 if bits[0] == 'tasks':
