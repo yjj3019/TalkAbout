@@ -45,7 +45,38 @@ function clockTime(at) {
 }
 function artifactNode(room,a,effective){const node=make('article',undefined,'artifact'),head=make('header',undefined,'artifact-head');head.append(make('h3',t('version')+' '+a.revision));node.append(head);const list=make('ol',undefined,'version-list');a.versions.forEach((v,index)=>{const li=make('li',undefined,'version'),vh=make('header',undefined,'version-head');vh.append(make('span','v'+(index+1),'version-tag'),make('span',t('contributor')+': '+(room.members[v.actor_id]?.display_name||v.actor_id),'version-owner'));if(a.adopted===v.id)vh.append(make('span',t('adopted'),'chip chip--ok'));const text=make('pre',v.text,'version-text'),actions=make('div',undefined,'version-actions'),button=document.createElement('button');button.textContent=t('download');button.onclick=async()=>{try{const data=await api(`rooms/${room.id}/artifacts/${a.id}/versions/${v.id}/download`);if(view.selected!==room.id)return;const url=URL.createObjectURL(new Blob([data.text],{type:'text/plain;charset=utf-8'}));const link=document.createElement('a');link.href=url;link.download='TalkAbout-text.txt';link.click();URL.revokeObjectURL(url);}catch{notice('rejected');}};actions.append(button);if(effective.includes('room:adopt')&&room.state==='active'){const adopt=document.createElement('button');adopt.textContent=t('adopt');adopt.onclick=()=>{if(view.selected!==room.id||!confirm(t('confirmAdopt')))return;const body={generation:room.generation,membership_revision:room.members[user.id].revision,expected_revision:a.revision,version_id:v.id};mutate('adopt',body,key=>api(`rooms/${room.id}/artifacts/${a.id}/adoptions`,{method:'POST',body,key}));};actions.append(adopt);}li.append(vh,text,actions);list.append(li);});node.append(list);return node;}
 function messageNode(room,m){const agent=m.actor_kind==='agent',node=make('article',undefined,'message '+(agent?'message--agent':'message--human'));node.append(make('span',(m.display_name||'?').trim().slice(0,1),'avatar'));const body=make('div',undefined,'message-body'),head=make('header',undefined,'message-head');head.append(make('strong',m.display_name||m.actor_id),make('span',t(agent?'agentBadge':'humanBadge'),'badge'+(agent?' badge--agent':'')),make('span',t(m.kind)||m.kind,'message-kind'));const time=clockTime(m.created_at);if(time)head.append(make('time',time));body.append(head,make('p',m.text,'message-text'));const meta=make('footer',undefined,'message-meta');meta.append(make('span',t('storedMessage'),'chip chip--quiet'));if(agent){const evidence=m.execution_evidence==='synthetic_test_only'?['journeySynthetic','chip--warn']:m.execution_evidence==='worker_reported_runtime'?['journeyWorkerEvidence','chip--ok']:['journeyUnverified',''];meta.append(make('span',t(evidence[0]),('chip '+evidence[1]).trim()));}if(m.input_evidence)meta.append(make('span',t(m.input_evidence==='worker_reported_server_validated_refs_not_model_read_receipt'?'inputVerified':'inputLegacy'),'chip chip--quiet'));for(const ref of m.attachment_refs||[])meta.append(action(t('viewTextAttachment'),()=>viewTextFile(room.id,ref.file_id)));body.append(meta);node.append(body);return node;}
-function taskNode(room,task){const li=document.createElement('li'),who=room.members[task.assignee]?.display_name||task.assignee;li.append(make('span',t(task.state)||task.state,'status-pill status-'+task.state),make('span',who+' · '+(t(task.purpose)||task.purpose),'task-name'));li.append(make('span',t('attemptLabel')+': '+task.attempt+' · '+t('generationLabel')+': '+task.generation+(task.state==='completed'?' · '+t('storedCompletion'):''),'task-meta'));const trail=(task.events||[]).slice(-6);if(trail.length){const box=make('div',undefined,'task-events');for(const event of trail){box.append(make('span',(t('stage_'+event.stage)||event.stage)+' '+clockTime(event.at),'task-event stage-'+event.stage));}li.append(box);}return li;}
+function taskNode(room,task){const li=document.createElement('li'),who=room.members[task.assignee]?.display_name||task.assignee;li.append(make('span',t(task.state)||task.state,'status-pill status-'+task.state),make('span',who+' · '+(t(task.purpose)||task.purpose),'task-name'));li.append(make('span',t('attemptLabel')+': '+task.attempt+' · '+t('generationLabel')+': '+task.generation+(task.state==='completed'?' · '+t('storedCompletion'):''),'task-meta'));
+ if(task.state==='uncertain'){
+  li.append(make('p',t('uncertainAckHelp'),'task-meta'));
+  if(task.resolution)li.append(make('p',t('uncertainAcknowledged'),'task-meta'));
+  else if(room.can_resolve_uncertain===true){
+   const attempt=task.attempt;
+   const button=action(t('uncertainAck'),()=>{
+    const current=view.room?.tasks?.find(item=>item.id===task.id);
+    if(view.selected!==room.id||view.room?.can_resolve_uncertain!==true||current?.state!=='uncertain'||current.attempt!==attempt||current.resolution)return;
+    if(!confirm(t('uncertainAckConfirm')+'\n'+task.id+' · '+t('attemptLabel')+': '+attempt))return;
+    const body={attempt,ack_unknown_effects:true,reason_code:'operator_review'};
+    acknowledgeUncertain(room.id,task.id,body);
+   });li.append(button);
+  }
+ }
+ const trail=(task.events||[]).slice(-6);if(trail.length){const box=make('div',undefined,'task-events');for(const event of trail){box.append(make('span',(t('stage_'+event.stage)||event.stage)+' '+clockTime(event.at),'task-event stage-'+event.stage));}li.append(box);}return li;}
+async function acknowledgeUncertain(roomId,taskId,body){
+ const ticket=view.start('resolve-uncertain:'+taskId,body);if(!ticket)return;
+ const auth=authEpoch,roomEpoch=textRoomEpoch;
+ const current=()=>!!user&&auth===authEpoch&&roomEpoch===textRoomEpoch&&view.selected===roomId;
+ try{
+  await api(`rooms/${encodeURIComponent(roomId)}/tasks/${encodeURIComponent(taskId)}/resolve-uncertain`,{method:'POST',body,key:ticket.key});
+  view.finish(ticket,true);
+  if(current())await refresh();
+ }catch(error){
+  view.finish(ticket,false);
+  if(current()){
+   await refresh();
+   if(current())notice(error.status&&error.status<500?'rejected':'uncertainAckResultUnknown');
+  }
+ }finally{if(current()&&view.room)renderRoom(view.room);}
+}
 function toneOf(value){let hash=0;for(const ch of String(value||''))hash=(hash*31+ch.charCodeAt(0))>>>0;return hash%6;}
 const TONE_HUES = [168, 262, 206, 38, 330, 132];
 const TABLE = { x: 450, y: 372, rx: 166, ry: 88 };

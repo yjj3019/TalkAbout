@@ -6,7 +6,7 @@ import {readFileSync} from 'node:fs';
 import {ViewState,labels} from '../talkabout/web/state.mjs';
 const source=readFileSync(new URL('../talkabout/web/app.mjs',import.meta.url),'utf8').replace(/^import[^\n]+\n/,'');
 const html=readFileSync(new URL('../talkabout/web/index.html',import.meta.url),'utf8');
-const room={id:'room',topic:'Synthetic room',state:'preparing',mode:'co_creation',mode_status:'running',effective_permissions:['room:read','room:manage_members','room:control','room:approve'],members:{human:{kind:'human',status:'active'}},tasks:[],messages:[],artifacts:[]};
+const room={id:'room',topic:'Synthetic room',state:'preparing',mode:'co_creation',mode_status:'running',can_resolve_uncertain:true,effective_permissions:['room:read','room:manage_members','room:control','room:approve'],members:{human:{kind:'human',status:'active'}},tasks:[],messages:[],artifacts:[]};
 async function harness(scopes=['room:read','room:manage_members']){
  class Node{
   constructor(tag='div'){this.tagName=tag;this.hidden=false;this.children=[];this.dataset={};this.attributes={};this.value='';this.ownText='';this.className='';}
@@ -38,6 +38,66 @@ async function harness(scopes=['room:read','room:manage_members']){
  respond('rooms',[structuredClone(room)]);respond('rooms/room',structuredClone(room));respond('rooms/room/interventions',[]);respond('admin/handovers',[]);respond('agents',[]);
  return {node,run,calls,handlers,respond,tabs,actions,timers,streams,confirmations,show:()=>run(`view.select('room');view.room=${JSON.stringify(room)};renderRoom(view.room);`)};
 }
+
+test('uncertain acknowledgement requires confirmation and sends only bookkeeping request',async()=>{
+ const h=await harness(['room:read','room:control']);h.show();
+ h.run(`view.room.tasks=[{id:'task-1',assignee:'human',state:'uncertain',attempt:3,generation:1}];renderRoom(view.room);`);
+ const task=h.node('tasks').children[0],button=task.children.find(n=>n.textContent===labels.ko.uncertainAck);
+ assert.ok(button);assert.ok(task.textContent.includes(labels.ko.uncertainAckHelp));
+ h.respond('rooms/room/tasks/task-1/resolve-uncertain',{resolution:{external_effect:'unknown'}});
+ button.onclick();await new Promise(setImmediate);await new Promise(setImmediate);
+ const request=h.calls.find(c=>c.path==='rooms/room/tasks/task-1/resolve-uncertain');
+ assert.ok(request);assert.equal(request.options.method,'POST');
+ assert.deepEqual(JSON.parse(request.options.body),{attempt:3,ack_unknown_effects:true,reason_code:'operator_review'});
+ assert.ok(request.options.headers['Idempotency-Key']);assert.ok(h.confirmations[0].includes('task-1'));
+});
+
+test('lost acknowledgement response is not reported as rejection and retains retry key',async()=>{
+ const h=await harness(['room:read','room:control']);h.show();
+ const uncertainRoom=structuredClone(room);uncertainRoom.tasks=[{id:'task-1',assignee:'human',state:'uncertain',attempt:1,generation:1}];
+ h.respond('rooms',[uncertainRoom]);h.respond('rooms/room',uncertainRoom);
+ h.run(`view.room.tasks=[{id:'task-1',assignee:'human',state:'uncertain',attempt:1,generation:1}];renderRoom(view.room);`);
+ h.handlers.set('rooms/room/tasks/task-1/resolve-uncertain',async()=>{throw new TypeError('lost response');});
+ h.node('tasks').children[0].children.find(n=>n.textContent===labels.ko.uncertainAck).onclick();
+ await new Promise(setImmediate);await new Promise(setImmediate);
+ assert.equal(h.node('notice').textContent,labels.ko.uncertainAckResultUnknown);
+ const first=h.calls.find(c=>c.path.endsWith('/resolve-uncertain'));
+ h.node('tasks').children[0].children.find(n=>n.textContent===labels.ko.uncertainAck).onclick();
+ await new Promise(setImmediate);await new Promise(setImmediate);
+ const calls=h.calls.filter(c=>c.path.endsWith('/resolve-uncertain'));
+ assert.equal(calls.length,2);assert.equal(calls[1].options.headers['Idempotency-Key'],first.options.headers['Idempotency-Key']);
+});
+
+test('lost acknowledgement after same-room refresh still reconciles',async()=>{
+ const h=await harness(['room:read','room:control']);h.show();
+ const uncertainRoom=structuredClone(room);uncertainRoom.tasks=[{id:'task-1',assignee:'human',state:'uncertain',attempt:1,generation:1}];
+ h.respond('rooms',[uncertainRoom]);h.respond('rooms/room',uncertainRoom);
+ h.run(`view.room.tasks=[{id:'task-1',assignee:'human',state:'uncertain',attempt:1,generation:1}];renderRoom(view.room);`);
+ let rejectPost;h.handlers.set('rooms/room/tasks/task-1/resolve-uncertain',()=>new Promise((_,reject)=>{rejectPost=reject;}));
+ h.node('tasks').children[0].children.find(n=>n.textContent===labels.ko.uncertainAck).onclick();
+ await h.run('refresh()');const before=h.calls.filter(c=>c.path==='rooms/room').length;
+ rejectPost(new TypeError('lost response'));await new Promise(setImmediate);await new Promise(setImmediate);
+ assert.ok(h.calls.filter(c=>c.path==='rooms/room').length>before);
+ assert.equal(h.node('notice').textContent,labels.ko.uncertainAckResultUnknown);
+});
+
+test('uncertain acknowledgement ignores stale task or lost capability',async()=>{
+ const h=await harness(['room:read','room:control']);h.show();
+ h.run(`view.room.tasks=[{id:'task-1',assignee:'human',state:'uncertain',attempt:1,generation:1}];renderRoom(view.room);`);
+ const button=h.node('tasks').children[0].children.find(n=>n.textContent===labels.ko.uncertainAck);
+ h.run('view.room.tasks[0].attempt=2');button.onclick();
+ h.run('view.room.tasks[0].attempt=1;view.room.can_resolve_uncertain=false');button.onclick();
+ assert.equal(h.confirmations.length,0);assert.equal(h.calls.some(c=>c.options?.method==='POST'),false);
+});
+
+test('uncertain acknowledgement is hidden for resolved tasks and missing control',async()=>{
+ const h=await harness();h.show();
+ h.run(`view.room.tasks=[{id:'task-1',assignee:'human',state:'uncertain',attempt:1,generation:1,resolution:{external_effect:'unknown'}}];renderRoom(view.room);`);
+ assert.ok(h.node('tasks').textContent.includes(labels.ko.uncertainAcknowledged));
+ assert.ok(!h.node('tasks').children[0].children.some(n=>n.textContent===labels.ko.uncertainAck));
+ h.run(`view.room.tasks[0].resolution=null;view.room.can_resolve_uncertain=false;renderRoom(view.room);`);
+ assert.ok(!h.node('tasks').children[0].children.some(n=>n.textContent===labels.ko.uncertainAck));
+});
 
 test('room manager without registry scope refreshes the room without optional agent calls',async()=>{
  const h=await harness();h.show();await h.run('refresh()');

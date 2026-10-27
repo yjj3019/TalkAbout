@@ -138,6 +138,9 @@ def public_room(room, actor, principals=None):
         "handover": copy.deepcopy(room.get("handover")),
         "deadline": room.get("deadline"), "started_at": room.get("started_at"),
         "effective_permissions": sorted(set(actor["scopes"]) & set(viewer_member["permissions"])),
+        "can_resolve_uncertain": (actor["kind"] == "human" and actor.get("owner") == room["owner"]
+                                  and {"room:read", "room:control"} <= set(actor["scopes"])
+                                  and "room:control" in viewer_member["permissions"]),
         "pinned_message_id": room.get("pinned_message_id") if room.get("pinned_message_id") in room["messages"] and room["messages"][room["pinned_message_id"]]["seq"] >= viewer_member["read_start_seq"] else None}
 
 def control_parameters(action, parameters, room, member):

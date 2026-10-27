@@ -69,6 +69,9 @@ base commit/diff/output digest와 독립 verification receipt는 증거를 실�
   같은 attempt에 대한 재요청은 같은 payload면 replay, 다르면 `already_resolved` 409다.
 - 해소 기록은 새 task 생성을 막지 않는다(`schedule`은 uncertain을 blocker로 보지 않는다).
   추가 실행을 멈추려면 `hold_dispatch`를 함께 쓴다.
+- 웹 작업 목록에서도 소유자·읽기/제어 권한이 확인된 사람에게 확인 버튼을 제공한다.
+  확인 대화상자는 외부 영향 불명과 상태 유지 사실을 안내하고, 이유는 `operator_review`로 기록한다.
+  전송 응답이 유실되면 성공이나 거절로 단정하지 않고 최신 상태를 조회하며 동일 요청의 재시도 키를 유지한다.
 - 8건 ring 밖으로 밀려난 예약의 늦은 outcome은 이 단계에서 다루지 않는다(별도 규칙 필요).
 
 ## A4: 관찰 표면은 상태를 바꾸지 않는다
