@@ -17,7 +17,7 @@ import httpx
 
 from .collaboration import ContextBudgetError, add_file_sources, fit_context, shared_context
 from .domain import digest
-from .runtime import BudgetedClient, RuntimeTimeout, bounded_call, check_deadline, validate_adapter_policy
+from .runtime import BudgetedClient, RuntimeTimeout, bounded_call, bounded_call_with_evidence, check_deadline, validate_adapter_policy
 from .storage_health import warn_if_journal_is_exposed
 
 
@@ -591,19 +591,34 @@ class Worker:
                 watcher = threading.Thread(target=watch_stop, daemon=True)
                 thread.start()
                 watcher.start()
+                persistence_started = False
                 try:
                     remaining = self.run_deadline - time.monotonic() if self.run_deadline is not None else float('inf')
                     lease_remaining=max(0,latest['lease_expires_at']-time.time()) if claimed.get('attachment_refs') else float('inf')
-                    text = bounded_call(self.runtime, context, cancel, min(self.runtime_timeout, max(0, task["deadline"] - time.time()), lease_remaining, remaining))
-                    # Save returned text and report intent before any network request.
-                    payload["complete"] = {**fence, "result": {
-                        "client_message_id": f"{tid}:{task['attempt']}", "text": text,
-                        "reply_to": None, "mentions": [],
-                        "input_manifest": context.get("input_manifest")}}
-                    payload["complete_key"] = f"complete:{tid}:{task['attempt']}"
-                    self.journal.save_result(tid, payload, rid)
+                    timeout = min(self.runtime_timeout, max(0, task["deadline"] - time.time()), lease_remaining, remaining)
+                    if callable(getattr(self.runtime, 'run_with_evidence', None)):
+                        text, evidence = bounded_call_with_evidence(self.runtime, context, cancel, timeout)
+                    else:
+                        # Retain the legacy call boundary for existing adapters and tests.
+                        text, evidence = bounded_call(self.runtime, context, cancel, timeout), None
+                    # Persist only the helper-validated terminal aggregate, together with
+                    # the result and completed intent, before any network request.
+                    result = {"client_message_id": f"{tid}:{task['attempt']}", "text": text,
+                              "reply_to": None, "mentions": [],
+                              "input_manifest": context.get("input_manifest")}
+                    if evidence is not None:
+                        result["work_evidence"] = {name: getattr(evidence, name) for name in
+                            ('version', 'command_items', 'file_change_items', 'failed_items')}
+                    completed_payload = {**payload, "complete": {**fence, "result": result},
+                                         "complete_key": f"complete:{tid}:{task['attempt']}"}
+                    persistence_started = True
+                    self.journal.save_result(tid, completed_payload, rid)
+                    payload = completed_payload
+                    persistence_started = False
                     self._beat(prefix, task, ["runtime_completed"], "end")
                 except RuntimeTimeout as error:
+                    if persistence_started:
+                        raise
                     # The call started and did not finish: the outcome is unknown, not free.
                     self._record_outcome(tid, rid, reservation, "uncertain")
                     if stop_seen.is_set():
@@ -613,6 +628,10 @@ class Worker:
                     self.journal.save(tid, "uncertain", payload)
                     return "heartbeat_failed" if heartbeat_failed.is_set() else "runtime_timeout"
                 except Exception as error:
+                    if persistence_started:
+                        # A commit failure can be ambiguous. Do not overwrite a possibly
+                        # durable result; the next step recovers result_saved or call_started.
+                        raise
                     code = getattr(error, "code", "")
                     self._beat(prefix, task, ["tool_blocked"] if code == "runtime_tool_policy_violation" else ["failed"], "fail")
                     self._record_outcome(tid, rid, reservation, "uncertain")

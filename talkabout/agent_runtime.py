@@ -29,6 +29,7 @@ import uuid
 
 from .adapters import AdapterError, execute_bounded
 from .processes import ProcessSupervisor, ProcessCleanupError
+from .runtime import WorkEvidence
 from .trial_observation import OBSERVATION_STAGES, TrialRecordError, safe_io_failure
 
 MAX_WIRE = 2 * 1024 * 1024
@@ -1385,6 +1386,38 @@ class StructuredRuntime:
             raise AdapterError('runtime_busy')
         try:
             return self._run(context, cancel)
+        finally:
+            self._run_lock.release()
+
+    def run_with_evidence(self, context, cancel):
+        """Return a same-turn immutable aggregate after successful process cleanup.
+
+        The existing lock is held until the snapshot is made; concurrent turns
+        cannot replace the underlying observations between return and snapshot.
+        Counts are worker-reported terminal statuses, not verified side effects.
+        """
+        if not self._run_lock.acquire(blocking=False):
+            raise AdapterError('runtime_busy')
+        try:
+            text = self._run(context, cancel)
+            if cancel.is_set():
+                raise AdapterError('runtime_cancelled')
+            if not self.work_profile:
+                return text, None
+            summary = self.last_work_evidence
+            if not isinstance(summary, dict) or not isinstance(summary.get('outcomes'), list):
+                raise AdapterError('runtime_invalid_output')
+            outcomes = summary['outcomes']
+            if (len(outcomes) > MAX_WORK_ITEMS or any(not isinstance(item, dict)
+                    or item.get('kind') not in {'command_execution', 'file_change'}
+                    or item.get('status') not in {'completed', 'failed', 'declined'}
+                    or (item.get('kind') == 'file_change' and item.get('status') == 'declined')
+                    for item in outcomes)):
+                raise AdapterError('runtime_invalid_output')
+            return text, WorkEvidence(1,
+                sum(item['kind'] == 'command_execution' for item in outcomes),
+                sum(item['kind'] == 'file_change' for item in outcomes),
+                sum(item['status'] in {'failed', 'declined'} for item in outcomes))
         finally:
             self._run_lock.release()
 

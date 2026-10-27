@@ -1,6 +1,19 @@
 import queue
 import threading
 import time
+from typing import NamedTuple
+
+
+class WorkEvidence(NamedTuple):
+    """Immutable, versioned worker-reported terminal-item counts, not verification.
+
+    failed_items counts items with terminal status failed or declined; a completed
+    command with a nonzero exit code is not reclassified as failed.
+    """
+    version: int
+    command_items: int
+    file_change_items: int
+    failed_items: int
 
 
 class RunBudgetExceeded(Exception):
@@ -61,16 +74,44 @@ def bounded_shutdown(shutdown, bound=None):
 
 def bounded_call(runtime, context, cancel, timeout):
     """Bound waiting, never claim to forcibly stop remote side effects."""
+    return _bounded_call(runtime, context, cancel, timeout, with_evidence=False)
+
+
+def bounded_call_with_evidence(runtime, context, cancel, timeout):
+    """Return text and optional immutable aggregate bound to this invocation.
+
+    Only runtimes implementing run_with_evidence may supply evidence; there is no
+    fallback to mutable ambient attributes. Exceptions, timeout and cancellation
+    return no result or evidence. The aggregate is observational, not verification.
+    """
+    return _bounded_call(runtime, context, cancel, timeout, with_evidence=True)
+
+
+def _bounded_call(runtime, context, cancel, timeout, *, with_evidence):
     if timeout <= 0:
         raise RuntimeTimeout()
     output = queue.Queue(maxsize=1)
     execution_done = threading.Event()
     def invoke():
         try:
-            value = runtime.run(context, cancel)
-            if not isinstance(value, str) or not 1 <= len(value) <= 16000:
+            operation = getattr(runtime, 'run_with_evidence', None) if with_evidence else None
+            if callable(operation):
+                value = operation(context, cancel)
+                if not isinstance(value, tuple) or len(value) != 2:
+                    raise ValueError('invalid_runtime_evidence')
+                text, evidence = value
+                if evidence is not None and (type(evidence) is not WorkEvidence
+                        or type(evidence.version) is not int or evidence.version != 1
+                        or any(type(count) is not int or count < 0 for count in
+                               (evidence.command_items, evidence.file_change_items, evidence.failed_items))
+                        or evidence.command_items + evidence.file_change_items > 128
+                        or evidence.failed_items > evidence.command_items + evidence.file_change_items):
+                    raise ValueError('invalid_runtime_evidence')
+            else:
+                text, evidence = runtime.run(context, cancel), None
+            if not isinstance(text, str) or not 1 <= len(text) <= 16000:
                 raise ValueError("invalid_runtime_output")
-            output.put((True, value))
+            output.put((True, (text, evidence) if with_evidence else text))
         except Exception as error:
             output.put((False, error))
         finally:

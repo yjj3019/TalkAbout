@@ -8,8 +8,8 @@ R3 start grant·uncertain no-retry, R4 bearer-only vault, no-web/MCP/plugin 기�
 
 | 단계 | 범위 | 상태 | 필수 gate |
 |---|---|---|---|
-| A0 | W1 Codex exec-json 도구 이벤트 계약 연결 | 로컬 합성 검증; CI 대기 | work만 명령/파일 변경 schema 허용, text-only/unknown tool 거절, terminal ledger와 한도, synthetic stream |
-| A1 | bounded work evidence + 검증 기록 | 대기 | worker_reported 표시, task/attempt/reservation 결합, secret-free 제한 schema, immutable 저장·ACL 투영, legacy 호환 |
+| A0 | W1 Codex exec-json 도구 이벤트 계약 연결 | PR #43 병합; PR/merge CI 통과 | work만 명령/파일 변경 schema 허용, text-only/unknown tool 거절, terminal ledger와 한도, synthetic stream |
+| A1 | bounded work evidence + 검증 기록 | 구현 중 | agent 제출 미검증 표시, 완료 fence·메시지 가시성, secret-free 제한 schema, 원자 저장·legacy 호환; 독립 검증 영수증 별도 |
 | A2 | 공동 코딩 task 의존성·write scope·workspace/review 계약 | 대기 | cycle·stale CAS·overlap·권한 검사, 다른 사용자 로컬 경로 미노출, 서버 자동 patch 적용 금지 |
 | A3 | uncertain 사람 해결 | 대기 | 자동 재실행 금지, 이유·대상 attempt 감사 기록, 늦은 outcome 충돌 규칙 |
 | A4 | 관찰 패널 재접속·작업 수명 분리 | 대기 | view detach와 cancel 구분, stable identity, cursor gap snapshot, 재접속이 호출 시작 안 함 |
@@ -18,8 +18,8 @@ R3 start grant·uncertain no-retry, R4 bearer-only vault, no-web/MCP/plugin 기�
 
 ## A0: 도구 이벤트는 관찰이지 사전 승인 아님
 
-현재 work 명령은 도구를 켜지만 `_codex_exec`는 text-only item 집합만 수용한다.
-승인된 work profile에만 좁은 `command_execution`/`file_change` 계약을 추가한다.
+기존 work 명령이 도구를 켜도 `_codex_exec`가 text-only item만 수용하던 문제를 수정했다.
+승인된 work profile에만 좁은 `command_execution`/`file_change` 및 bounded `todo_list` 관찰 계약을 추가했다.
 이벤트는 native 실행 후 도착할 수 있으므로 parser 거절/interrupt는 명령 미실행·파일 무변경 증거가 아니다.
 시작한 prompt의 실패/불확실 결과는 기존 R3/worker uncertain 의미를 유지한다.
 
@@ -35,7 +35,7 @@ R3 start grant·uncertain no-retry, R4 bearer-only vault, no-web/MCP/plugin 기�
 
 처음에는 버전이 있는 제한된 종류·상태별 개수만 보관한다. 자유형 명령·출력·경로·종료 코드·바이트 수를 서버에 전송하지 않는다. 완료·정리 성공 후 고유 item의 마지막 상태로 집계하며 이벤트별 변화 수를 고유 파일 수로 오인하지 않는다.
 evidence는 일반 public task 필드가 아니라 완료 message의 seq/현재 read_start_seq 필터에 귀속한다. 기존 task projection은 arbitrary 필드를 새 멤버에게 노출할 수 있다. heartbeat/event에 싣지 않고 동일 완료 payload의 fingerprint와 원자 저장으로 replay를 고정한다.
-`worker_reported`는 서버가 파일 변경·명령 실행·테스트 정확성을 검증했다는 뜻이 아니다.
+서버는 어떤 승인된 agent도 이 값을 제출할 수 있으므로 출처를 `agent_reported_unverified`로 표시한다. 형식과 범위만 검증하며 runtime 이벤트의 실제 출처, 파일 변경·명령 실행·테스트 정확성을 검증했다는 뜻이 아니다.
 base commit/diff/output digest와 독립 verification receipt는 증거를 실제 생성하는 승인된 producer가 있을 때만 추가한다.
 존재하지 않는 증거를 자동 생성하거나 agent final 문장에서 'passed'를 추출해 검증으로 승격하지 않는다.
 

@@ -14,6 +14,22 @@ from .domain import (AGENT_PERMISSIONS, HUMAN_PERMISSIONS, Problem, active, auth
                      record_task_event, replay, require, save_response, schedule, participant_permissions)
 
 
+def validate_work_evidence(result):
+    """Validate bounded worker assertions; these counters are not verified execution."""
+    if 'work_evidence' not in result:
+        return None
+    value = result['work_evidence']
+    fields = {'version', 'command_items', 'file_change_items', 'failed_items'}
+    require(isinstance(value, dict) and set(value) == fields, 'invalid_work_evidence', 422)
+    require(type(value['version']) is int and value['version'] == 1,
+            'invalid_work_evidence', 422)
+    counts = (value['command_items'], value['file_change_items'], value['failed_items'])
+    require(all(type(n) is int and 0 <= n <= 128 for n in counts), 'invalid_work_evidence', 422)
+    total = counts[0] + counts[1]
+    require(total <= 128 and counts[2] <= total, 'invalid_work_evidence', 422)
+    return {**value, 'source': 'agent_reported_unverified'}
+
+
 def public_room(room, actor, principals=None):
     viewer_member = authorize(actor, room, "room:read")
     tasks = [public_task(t) for t in room["tasks"].values() if actor["kind"] == "human" or t["assignee"] == actor["id"]]
@@ -341,11 +357,14 @@ class Core(Participation):
                                         for item in task.get("_reservations", [])), "execution_not_started", 409)
                         if room["mode"] == "co_creation" and task["purpose"] == "creator":
                             authorize(actor, room, "room:contribute")
+                        work_evidence = validate_work_evidence(result)
                         # A worker may report what it was given. The server re-checks every
                         # reference; absence means "unverified legacy input", not a failure.
                         inputs = validate_manifest((body.get("result") or {}).get("input_manifest"),
                                                    public_room(room, actor, principals), task)
                         msg = message(room, actor, body, now, task, fingerprint)
+                        if work_evidence is not None:
+                            msg['work_evidence'] = work_evidence
                         task["input_manifest"] = inputs
                         msg["input_evidence"] = inputs["evidence"]
                         principal=principals[actor['id']];connection=principal.get('connection') or {}
