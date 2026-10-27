@@ -67,6 +67,19 @@ Codex exec-json work profile에서만 `command_execution`, `file_change` 및 계
 - 이 P0의 검증은 **합성 이벤트 스트림**에 한정한다. 실제 provider의 파일 수정·명령 실행
   턴은 별도의 명시적 예산·동의가 필요하며 현재 **NOTRUN**이다.
 
+## 제출된 작업 항목 집계 (A1)
+
+표준 work worker는 정상 반환·프로세스 정리 후 같은 턴의 관측 항목을 집계해 완료 메시지에 보낸다.
+`command_items`, `file_change_items`는 고유 항목 수이지 명령 실행 횟수·수정된 파일 수가 아니다.
+`failed_items`는 provider 상태가 `failed` 또는 `declined`인 항목 수이며, `completed`이지만
+종료 코드가 0이 아닌 경우를 별도로 실패로 세지 않는다. 미제출과 0건은 다르다.
+
+서버는 형식·범위 및 제출 권한을 검사하고 **`agent_reported_unverified`**로 표시한다.
+다른 승인된 agent도 임의 값을 제출할 수 있어 실제 이벤트 출처·명령 실행·파일 변경·테스트 성공의
+증거가 아니다. 자유형 명령·경로·출력·종료 코드·계획 텍스트는 이 집계에 포함하지 않는다.
+메시지 접근은 해당 멤버의 history 경계를 따르며 이벤트·task 요약에는 집계를 넣지 않는다.
+기존 결과 메시지 및 worker SQLite 보존 정책을 따르며 별도 삭제 기한을 보장하지 않는다.
+
 ## 이것은 sandbox가 아니다
 
 - 플랫폼은 **파일·네트워크·비밀정보 접근을 제한하는 sandbox를 주장하지 않는다**. provider 자체의 workspace 정책과
