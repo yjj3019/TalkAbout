@@ -61,6 +61,7 @@ def test_owner_acknowledges_without_changing_task_outcome(fixture):
     assert len(store.rooms[rid]['tasks']) == before_tasks
     events = [e for e in store.rooms[rid]['events'] if e['type'] == 'task.uncertain_resolved']
     assert len(events) == 1 and 'note' not in events[0] and events[0]['task_id'] == task['id']
+    assert events[0]['external_effect'] == 'unknown' and events[0]['attempt'] == 1
     assert not any(e['type'] == 'task.queued' and e.get('task_id') == task['id'] and e.get('attempt') != 0
                    for e in store.rooms[rid]['events'] if e['seq'] > events[0]['seq'])
 

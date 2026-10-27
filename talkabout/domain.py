@@ -375,7 +375,8 @@ def resolve_uncertain(room, task, actor, body, now):
     if note is not None:
         resolution["note"] = note
     task["resolution"] = resolution
-    emit(room, "task.uncertain_resolved", task_id=task["id"], attempt=task["attempt"], reason_code=reason)
+    emit(room, "task.uncertain_resolved", task_id=task["id"], attempt=task["attempt"], reason_code=reason,
+         external_effect="unknown")
     return {"resolution": dict(resolution), "replay": False}
 
 
