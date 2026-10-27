@@ -47,8 +47,12 @@ Idempotency-Key 자체는 필수이며, `execute:true` 응답을 캐시로 다�
   호출이 실제로 없었더라도 불확실성 때문에 `uncertain`으로 기록할 수 있다.
 - 시작 승인된 task의 lease/deadline 만료는 자동 requeue가 아니라 `uncertain`이다.
   새 journal이 생겨도 같은 실행을 새 attempt로 반복하지 않도록 한다.
-- `uncertain`은 자동 재실행하지 않는다. 기존 human room close로 방을 종료할 수 있으나,
-  uncertain task의 전용 human 재개/해결 API는 아직 없다(`skip`은 live lease용).
+- `uncertain`은 자동 재실행하지 않는다. 기존 human room close로 방을 종료할 수 있다.
+  방 소유자는 `POST /api/v1/rooms/{room}/tasks/{task}/resolve-uncertain`로 해당 attempt를 **기록상** 확인 처리할 수 있다.
+  이 호출은 `ack_unknown_effects: true`와 `reason_code`만 받고, task 상태를 `uncertain` 그대로 두며
+  requeue·재실행·완료·`skip`을 하지 않는다. 응답·event의 `external_effect`는 항상 `unknown`이며
+  "실행되지 않음"이나 "부작용 없음"을 뜻하지 않는다. 해소 기록 후에도 새 task 생성은 막지 않으므로
+  추가 실행을 멈추려면 `hold_dispatch`를 함께 쓴다.
 
 ## 4. 결과 저장과 보고
 
