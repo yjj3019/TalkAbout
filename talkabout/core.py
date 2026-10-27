@@ -12,7 +12,7 @@ from .text_files import (claim_proof, filter_refs, public_task, token_hash, vali
 
 from .domain import (AGENT_PERMISSIONS, HUMAN_PERMISSIONS, Problem, active, authorize,
                      cancel_tasks, deliverable_artifact_kind, digest, emit, fencing, grant_reservation,
-                     ident, message, new_room, reservation_outcome, start_reservation,
+                     ident, message, new_room, reservation_outcome, resolve_uncertain, start_reservation,
                      record_task_event, replay, require, save_response, schedule, participant_permissions)
 
 
@@ -318,8 +318,11 @@ class Core(Participation):
             bits = operation.split("/")
             target = bits[1] if len(bits) > 1 else None
             verb = bits[-1]
+            resolving = bits[0] == "tasks" and len(bits) == 3 and verb == "resolve-uncertain"
             if bits[0] == "tasks":
-                if len(bits) > 2 and bits[2] == "reservations":
+                if resolving:
+                    permission = "room:control"
+                elif len(bits) > 2 and bits[2] == "reservations":
                     # A reservation is part of claiming work; its outcome is part of doing it.
                     permission = "task:claim" if len(bits) == 3 else "task:complete"
                 else:
@@ -337,8 +340,12 @@ class Core(Participation):
                 permission = "room:speak"
             else:
                 raise Problem("not_found", 404)
-            human = bits[0] in {"messages", "memberships", "controls"} or verb == "adoptions"
+            human = bits[0] in {"messages", "memberships", "controls"} or verb == "adoptions" or resolving
             member = authorize(actor, room, permission, human)
+            if resolving:
+                # Same ownership rule as the private work-plan draft: only the room owner resolves.
+                authorize(actor, room, "room:read", human=True)
+                require(actor.get("owner") == room["owner"], "forbidden", 403)
             if bits[0] == 'artifacts' and actor['kind'] == 'agent' and member.get('_participation'):
                 require('session_id' in body, 'session_required')
             reconciling_outcome = bits[0] == 'tasks' and len(bits) == 5 and bits[2] == 'reservations' and verb == 'outcome'
@@ -346,7 +353,14 @@ class Core(Participation):
                 bound_session(token, body, room, member)
             if bits[0] == "tasks" and verb == "complete":
                 authorize(actor, room, "room:speak")
-            previous, lookup, fingerprint = replay(room, actor, operation, key, body)
+            try:
+                previous, lookup, fingerprint = replay(room, actor, operation, key, body)
+            except UnicodeEncodeError:
+                # A surrogate in the resolution body cannot be hashed or stored; refuse it
+                # before any state changes. Other operations keep their existing behavior.
+                if not resolving:
+                    raise
+                raise Problem("invalid_resolution", 422) from None
             execution_operation = bits[0] == "tasks" and len(bits) > 2 and (bits[2] == "reservations" or verb == "start")
             if previous is not None and not execution_operation:
                 if bits[0] == 'tasks':
@@ -368,6 +382,11 @@ class Core(Participation):
                 emit(room, "turn.requested", actor_id=actor["id"])
                 schedule(room, principals)
                 response = {"accepted": True}
+            elif resolving:
+                task = room["tasks"].get(target)
+                require(task, "not_found", 404)
+                result = resolve_uncertain(room, task, actor, body, now)
+                response = {"task": copy.deepcopy(task), **result}
             elif bits[0] == "tasks" and len(bits) > 2 and bits[2] == "reservations":
                 task = room["tasks"].get(target)
                 require(task and task["assignee"] == actor["id"], "not_found", 404)

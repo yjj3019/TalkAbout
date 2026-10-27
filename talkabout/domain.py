@@ -341,6 +341,45 @@ def reservation_outcome(room, task, actor, reservation_id, body, now):
     return {"reservation_id": reservation_id, "state": state}
 
 
+RESOLUTION_REASONS = {"operator_review", "worker_lost", "duplicate_risk", "other"}
+RESOLUTION_FIELDS = {"attempt", "ack_unknown_effects", "reason_code", "note"}
+
+
+def resolve_uncertain(room, task, actor, body, now):
+    """Record a human acknowledgement for an uncertain attempt.
+
+    This is bookkeeping only: it never requeues, completes or restarts the task,
+    contacts a provider, or claims anything about whether the external call ran.
+    """
+    require(isinstance(body, dict) and set(body) <= RESOLUTION_FIELDS, "invalid_resolution", 422)
+    require(task["state"] == "uncertain", "task_not_uncertain", 409)
+    require(type(body.get("attempt")) is int and body["attempt"] == task["attempt"], "stale_resolution", 409)
+    require(body.get("ack_unknown_effects") is True, "ack_required", 422)
+    reason = body.get("reason_code")
+    require(isinstance(reason, str) and reason in RESOLUTION_REASONS, "invalid_resolution", 422)
+    note = body.get("note")
+    if note is not None:
+        require(isinstance(note, str) and len(note) <= 512 and note.isprintable(), "invalid_resolution", 422)
+        try:
+            note.encode("utf-8")
+        except UnicodeEncodeError:
+            raise Problem("invalid_resolution", 422) from None
+    existing = task.get("resolution")
+    if existing is not None:
+        same = (existing["attempt"] == body["attempt"] and existing["reason_code"] == reason
+                and existing.get("note") == note)
+        require(same, "already_resolved", 409)
+        return {"resolution": dict(existing), "replay": True}
+    resolution = {"attempt": task["attempt"], "resolved_by": actor["id"], "resolved_at": now,
+                  "reason_code": reason, "external_effect": "unknown"}
+    if note is not None:
+        resolution["note"] = note
+    task["resolution"] = resolution
+    emit(room, "task.uncertain_resolved", task_id=task["id"], attempt=task["attempt"], reason_code=reason,
+         external_effect="unknown")
+    return {"resolution": dict(resolution), "replay": False}
+
+
 TASK_EVENT_STAGES = {
     "claimed", "preflight", "runtime_started", "prompt_submitted", "runtime_completed",
     "tool_blocked", "completed", "failed", "cancelled", "skipped",

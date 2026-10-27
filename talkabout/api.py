@@ -344,7 +344,7 @@ def create_app(store, start_scheduler=True, allow_fixture_bearer=False, allowed_
                 return core.accept(credential, room_id, key, body)
             permitted = operation and (
                 operation in {"messages", "memberships", "controls", "artifacts", "turn-requests"}
-                or re.fullmatch(r"tasks/[^/]+/(claim|start|heartbeat|complete|skip)", operation)
+                or re.fullmatch(r"tasks/[^/]+/(claim|start|heartbeat|complete|skip|resolve-uncertain)", operation)
                 or re.fullmatch(r"tasks/[^/]+/reservations", operation)
                 or re.fullmatch(r"tasks/[^/]+/reservations/[0-9a-f]{64}/outcome", operation)
                 or re.fullmatch(r"controls/[^/]+/approve", operation)

@@ -10,9 +10,9 @@ R3 start grant·uncertain no-retry, R4 bearer-only vault, no-web/MCP/plugin 기�
 |---|---|---|---|
 | A0 | W1 Codex exec-json 도구 이벤트 계약 연결 | PR #43 병합; PR/merge CI 통과 | work만 명령/파일 변경 schema 허용, text-only/unknown tool 거절, terminal ledger와 한도, synthetic stream |
 | A1 | bounded work evidence + 검증 기록 | PR #44 병합; PR/merge CI 통과 | agent 제출 미검증 표시, 완료 fence·메시지 가시성, secret-free 제한 schema, 원자 저장·legacy 호환; 독립 검증 영수증 별도 |
-| A2 | 공동 코딩 task 의존성·write scope·workspace/review 계약 | 비실행 초안 구현 중; 실행 DAG 별도 | cycle·stale CAS·overlap·권한 검사, 다른 사용자 로컬 경로 미노출, 서버 자동 patch 적용 금지 |
-| A3 | uncertain 사람 해결 | 대기 | 자동 재실행 금지, 이유·대상 attempt 감사 기록, 늦은 outcome 충돌 규칙 |
-| A4 | 관찰 패널 재접속·작업 수명 분리 | 대기 | view detach와 cancel 구분, stable identity, cursor gap snapshot, 재접속이 호출 시작 안 함 |
+| A2 | 공동 코딩 task 의존성·write scope·workspace/review 계약 | PR #45 병합; 비실행 초안/안전 보완 완료, 실행 DAG 별도 | cycle·stale CAS·overlap·권한 검사, 다른 사용자 로컬 경로 미노출, 서버 자동 patch 적용 금지 |
+| A3 | uncertain 사람 해결 | PR #46; 합성 테스트 완료, 실제 공급자 호출 아님 | 자동 재실행 금지, 이유·대상 attempt 감사 기록, 늦은 outcome 충돌 규칙 |
+| A4 | 관찰 패널 재접속·작업 수명 분리 | 부분: 재접속 안전·읽기 전용 불변 테스트 완료; view detach/cancel 분리 대기 | view detach와 cancel 구분, stable identity, cursor gap snapshot, 재접속이 호출 시작 안 함 |
 | A5 | opt-in browser capability 설계/pilot | 보안 관문 대기 | 별도 소유 process/profile, egress·인간 승인·cookie 격리·untrusted context·artifact ACL. 기본 no-web 유지 |
 | A6 | opt-in PDF/document capability 설계/pilot | 제품/보안/라이선스 관문 대기 | quarantine·parser OS 격리·quota/retry·room cache·asset pin·AGPL/의존성 검토. binary 기본 차단 유지 |
 
@@ -54,6 +54,35 @@ evidence는 일반 public task 필드가 아니라 완료 message의 seq/현재 
 서버는 어떤 승인된 agent도 이 값을 제출할 수 있으므로 출처를 `agent_reported_unverified`로 표시한다. 형식과 범위만 검증하며 runtime 이벤트의 실제 출처, 파일 변경·명령 실행·테스트 정확성을 검증했다는 뜻이 아니다.
 base commit/diff/output digest와 독립 verification receipt는 증거를 실제 생성하는 승인된 producer가 있을 때만 추가한다.
 존재하지 않는 증거를 자동 생성하거나 agent final 문장에서 'passed'를 추출해 검증으로 승격하지 않는다.
+
+## A3: uncertain은 해소해도 다시 실행되지 않는다
+
+`uncertain` task는 자동 재실행하지 않는다는 규칙을 유지한 채, 방 소유자가 그 attempt를
+**기록상 확인**만 할 수 있게 한다. `POST /api/v1/rooms/{room}/tasks/{task}/resolve-uncertain`.
+
+- 요청은 `attempt`(현재 attempt와 같아야 함), `ack_unknown_effects: true`, `reason_code`
+  (`operator_review`/`worker_lost`/`duplicate_risk`/`other`), 선택 `note`(≤512, 제어문자 불가)만 받는다.
+  알 수 없는 필드는 422다.
+- 응답과 event의 `external_effect`는 항상 `unknown`이다. 이 기록은 "실행되지 않음"·"부작용 없음"·
+  "테스트 통과"를 뜻하지 않으며 그렇게 표시하지 않는다.
+- 해소해도 task 상태는 `uncertain` 그대로이고 requeue·재실행·완료·`skip`·provider 재호출이 없다.
+  같은 attempt에 대한 재요청은 같은 payload면 replay, 다르면 `already_resolved` 409다.
+- 해소 기록은 새 task 생성을 막지 않는다(`schedule`은 uncertain을 blocker로 보지 않는다).
+  추가 실행을 멈추려면 `hold_dispatch`를 함께 쓴다.
+- 8건 ring 밖으로 밀려난 예약의 늦은 outcome은 이 단계에서 다루지 않는다(별도 규칙 필요).
+
+## A4: 관찰 표면은 상태를 바꾸지 않는다
+
+stream/events/snapshot은 read-only 관찰이며 task·room payload를 변경하지 않는다. 합성 테스트로
+확인한 계약은 다음과 같다.
+
+- 관찰 호출 후 task 상태·attempt·예약 기록·room `last_seq`·event 수가 그대로다(커서 저장만 예외).
+- 재접속은 `Last-Event-ID`/`cursor` 이후의 event만 받고 이미 받은 event를 반복하지 않는다.
+- 사용할 수 없는(stale/foreign) 커서는 event를 건너뛰지 않고 `access_changed`로 알린다.
+  클라이언트는 이때 live source를 닫고 목록/스냅샷에서 다시 동기화한다(닫지 않으면 브라우저가
+  같은 stale 커서로 자동 재연결을 반복한다).
+- `duration_seconds`는 0..60만 허용한다.
+- 관찰은 호출 시작·취소가 아니며, view detach와 취소/수명 분리는 아직 구현하지 않았다.
 
 ## 단계 종료 방식
 

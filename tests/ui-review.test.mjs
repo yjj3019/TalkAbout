@@ -119,6 +119,12 @@ for(const status of [401,403,404])test('confirmed room access rejection clears p
  assert.equal(h.node('detail').hidden,true);assert.equal(h.node('room-title').textContent,'');assert.equal(h.run('view.room'),null);
 });
 
+test('stream access change closes the live source instead of reconnecting from a stale cursor',async()=>{
+ const h=await harness();h.show();h.run('watchRoom("room")');
+ h.streams[0].events.access_changed();await new Promise(setImmediate);
+ assert.equal(h.streams[0].closed,true);assert.equal(h.run('liveSource'),null);assert.equal(h.node('detail').hidden,true);
+});
+
 test('paused and adoption workflows point to the correct action in both languages',async()=>{
  const h=await harness();for(const lang of ['ko','en']){h.run(`view.language='${lang}';`);
   const paused=h.run("workflowState({state:'paused',mode_status:'awaiting_adoption'})");assert.equal(paused.title,'paused');assert.equal(paused.tab,'management');
