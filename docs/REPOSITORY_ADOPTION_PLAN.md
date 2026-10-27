@@ -12,7 +12,7 @@ R3 start grant·uncertain no-retry, R4 bearer-only vault, no-web/MCP/plugin 기�
 | A1 | bounded work evidence + 검증 기록 | PR #44 병합; PR/merge CI 통과 | agent 제출 미검증 표시, 완료 fence·메시지 가시성, secret-free 제한 schema, 원자 저장·legacy 호환; 독립 검증 영수증 별도 |
 | A2 | 공동 코딩 task 의존성·write scope·workspace/review 계약 | PR #45 병합; 비실행 초안/안전 보완 완료, 실행 DAG 별도 | cycle·stale CAS·overlap·권한 검사, 다른 사용자 로컬 경로 미노출, 서버 자동 patch 적용 금지 |
 | A3 | uncertain 사람 해결 | PR #46; 합성 테스트 완료, 실제 공급자 호출 아님 | 자동 재실행 금지, 이유·대상 attempt 감사 기록, 늦은 outcome 충돌 규칙 |
-| A4 | 관찰 패널 재접속·작업 수명 분리 | 부분: 재접속 안전·읽기 전용 불변 테스트 완료; view detach/cancel 분리 대기 | view detach와 cancel 구분, stable identity, cursor gap snapshot, 재접속이 호출 시작 안 함 |
+| A4 | 관찰 패널 재접속·작업 수명 분리 | PR #47; 합성 계약 완료(관찰 불변·재접속·detach≠cancel·stable identity), 실제 브라우저 E2E 별도 | view detach와 cancel 구분, stable identity, cursor gap snapshot, 재접속이 호출 시작 안 함 |
 | A5 | opt-in browser capability 설계/pilot | 보안 관문 대기 | 별도 소유 process/profile, egress·인간 승인·cookie 격리·untrusted context·artifact ACL. 기본 no-web 유지 |
 | A6 | opt-in PDF/document capability 설계/pilot | 제품/보안/라이선스 관문 대기 | quarantine·parser OS 격리·quota/retry·room cache·asset pin·AGPL/의존성 검토. binary 기본 차단 유지 |
 
@@ -82,7 +82,13 @@ stream/events/snapshot은 read-only 관찰이며 task·room payload를 변경하
   클라이언트는 이때 live source를 닫고 목록/스냅샷에서 다시 동기화한다(닫지 않으면 브라우저가
   같은 stale 커서로 자동 재연결을 반복한다).
 - `duration_seconds`는 0..60만 허용한다.
-- 관찰은 호출 시작·취소가 아니며, view detach와 취소/수명 분리는 아직 구현하지 않았다.
+- 관찰은 호출 시작·취소가 아니다. task 취소는 `pause`/`close`/`change_mode` 같은 명시 control,
+  generation 무효화, 구성원 blocked/left 회수, 한도 도달 종료뿐이며 관찰 경로는 어디에도 닿지 않는다.
+  클라이언트도 방을 열고 닫거나 스트림이 끝나도 변경 요청을 보내지 않는다(합성 DOM 계약).
+- task identity는 view와 attempt에 걸쳐 안정적이다. 만료된 미시작 lease는 같은 task id로
+  재진입하고 다음 claim에서 attempt만 오르며, 사람 스냅샷과 `task.claimed` event가 같은
+  id·attempt 순열을 보고한다. 관찰자가 잠시 떠나도 진행 중 작업은 유지되고 같은 시도로 이어진다.
+- 위 계약은 합성(메모리 저장소·합성 DOM) 검증이다. 실제 브라우저 종료·재접속 E2E는 별도 검증이다.
 
 ## 단계 종료 방식
 
