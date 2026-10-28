@@ -70,7 +70,8 @@ def test_browser_room_invitation_single_flow(request,language,width):
             assert settings['base_url']==base and 'token' not in settings
             copied=page.evaluate('window.syntheticCopies')
             assert copied and secret not in copied[-1] and '--runtime claude' in copied[-1]
-            assert 'if ($LASTEXITCODE -eq 0)' in copied[-1] and '--acknowledge-private' in copied[-1]
+            assert 'cli connect' in copied[-1] and '--room '+rid in copied[-1] and '--acknowledge-private' in copied[-1]
+            assert 'cli join' not in copied[-1] and copied[-1].count('--prompt-token') == 1
             assert 'cli check' not in copied[-1] and '--retry-check' not in copied[-1]
             assert 'awaiting acceptance' in page.locator('#invite-status').inner_text() if language=='en' else '수락' in page.locator('#invite-status').inner_text()
             before_posts=len(posts)
