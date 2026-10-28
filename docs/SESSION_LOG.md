@@ -1,5 +1,17 @@
 # TalkAbout session log
 
+## 2026-10-29 — 에이전트 초대 단순화 및 Grok 조사
+
+- 사용자 요청: 방에서 설정을 만들어 에이전트에 전달하거나 CLI가 자동 참가하는 수준으로 초대를 최대한 단순화하고, Grok이 보이지 않는 원인을 확인. 팀 에이전트 3명이 초대 UX·MCP, 권한/보안, Grok 지원을 각각 읽기 전용으로 조사했다.
+- 기존 1단계: [PR #50](https://github.com/yjj3019/TalkAbout/pull/50), main `ec0c5d0eacd83c3224d8ed358c63cbdd25ab37ce` 배포. `connect --room --acknowledge-private`는 방 수락과 연결을 한 프로세스에서 진행하고 비밀 입력을 한 번 받는다. 하지만 설정 다운로드, 로컬 클라이언트, 토큰 관리와 터미널 실행은 여전히 필요하여 사용자가 요청한 단순화 수준에는 미달한다. 수락과 연결은 원자적이지 않다.
+- 사용자 환경에서 시스템 Python은 `talkabout` 미설치, Downloads에 `agent.local.json`이 없어 연결하지 못했다. 화면에는 미만료 방 전용 credential이 이미 있고, 자유 토론 모델 호출 동의가 필요했다. 기존 비밀은 다시 조회할 수 없다. 실제 접속 비밀·설정 내용은 이 기록에 포함하지 않는다.
+- 권장 목표(미구현): Windows 연결 도우미 최초 1회 설치 후 방에서 에이전트 선택 → 이 PC에서 연결 → 방 접근·모델 사용량 확인 → 연결 상태 확인. secret-free 설정 다운로드와 수동 명령·토큰 입력을 일반 경로에서 제거한다. 초대는 모델 호출 없이 처리하고 유료 실행은 별도 명시 동의와 예산을 유지한다.
+- 새로운 서버 초대 교환은 짧은 만료, 방/참가자/권한 binding, 원자적 사용 및 발급, 취소·재발급, 응답 유실 복구와 경쟁 요청을 설계·검증해야 한다. 단순 bearer 일회용 코드는 선점 공격을 막지 못하므로 로컬 도우미 키와 사용자 확인 등 수신자 binding이 필요하다. 원본 토큰·provider 비밀을 프롬프트, URL, 명령 인자, 로그, 모델에 노출하지 않는다. 기존 origin 일치·HTTPS/loopback 제한 및 비용/중단/불확실 호출 방어도 유지한다.
+- 기존 [MCP](../talkabout/mcp.py)에는 초대 수락·참가·폴링·메시지 도구가 있지만 이미 실행 중인 세션의 발견·깨우기·지속 worker 및 현재 방 시작 readiness 계약은 제공하지 않는다. 비밀 없는 붙여넣기 문구는 별도 경로로 연구하되 자동 참여가 이미 된다고 표현하지 않는다.
+- Grok: 방 초대 UI는 CLI를 disabled, API 그룹도 disabled 처리한다([index.html](../talkabout/web/index.html)); 화면의 무조건 차단 안내와 현재 [runtime probe](../talkabout/agent_runtime.py)가 서로 일치하지 않는다. 레지스트리의 gated 문구와 일부 runtime docstring도 현 코드와 불일치한다. Grok CLI native와 xAI HTTP API는 별개다. 과거 [native 실제 시험](validation/actual-trial-2026-10-25-grok.json)은 연결 1회·기여 1회가 성공했지만 120초 lease의 단일 fixture이며 현재 바이너리 안전성, 반복 대화, 공급자 증명 또는 과금을 입증하지 않는다. 시작 hook/plugin 격리 및 현재 실행 파일 검증 없이 UI 활성화하지 않는다.
+- 후속: Grok/UI·문서 불일치 정리, 설치 바이너리/프로필·격리·오류·종료 합성 검증, 실제 호출은 별도 비용 승인 후; 연결 도우미와 키 결합 초대 교환 설계·구현·보안/경쟁/복구 검증; MCP 참여 준비 계약 연구. [RUNTIME_CONNECTIONS.md](RUNTIME_CONNECTIONS.md)의 connect가 수락할 수 없다는 설명은 현재 CLI와 다르므로 수정 필요.
+- 이번 조사에서는 코드 수정·배포·실제 provider 호출을 하지 않았다. `mcp-box`는 조사 시 main `ec0c5d0` 이미지, healthy 및 `/ready` 정상으로 확인했다.
+
 ## 2026-10-27 — R4 Windows current-user DPAPI opt-in
 
 - 사용자가 저장 정책으로 Windows DPAPI opt-in 선택. 기본 비저장 유지, provider API/OAuth/DB credential 제외.
