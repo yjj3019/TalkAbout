@@ -81,6 +81,43 @@ def work_workspace_preflight(kind, codex_transport, frozen_workspace):
         raise ValueError('runtime_work_workspace_mismatch')
 
 
+def accept_room(client, room_id, parser):
+    """Accept a matching invitation, or report existing membership without mutation."""
+    invitation = next((item for item in client.request('GET', 'agents/me/invitations') if item['room_id'] == room_id), None)
+    if invitation is None:
+        existing = next((room for room in client.request('GET', 'rooms') if room['id'] == room_id), None)
+        if existing:
+            return {'room_id': room_id, 'membership': 'already_accepted', 'room_state': existing['state'], 'external_runtime': 'NOTRUN'}
+        parser.error('No matching pending invitation; inspect current membership before retrying')
+    client.request('POST', 'rooms/'+room_id+'/memberships/me/accept',
+        {'expected_revision': invitation['membership_revision'], 'acknowledge_private': True}, str(uuid.uuid4()))
+    return {'room_id': room_id, 'membership': 'accepted', 'external_runtime': 'NOTRUN'}
+
+
+def validate_run_options(args, parser):
+    if not 1 <= args.steps <= 1000 or not 1 <= args.max_seconds <= 300 or not 1 <= args.max_model_calls <= 10 or bool(args.synthetic) == bool(args.runtime):
+        parser.error('Choose exactly one runtime; steps 1..1000, max-seconds 1..300')
+    if args.command == 'connect' and not args.runtime: parser.error('connect requires a real runtime; synthetic is test-only')
+    if args.runtime and not args.approve_external: parser.error('External runtime calls require explicit --approve-external')
+    if args.max_room_calls is not None and not 0 <= args.max_room_calls <= 10: parser.error('max-room-calls must be 0..10')
+    if args.persist_provider_sessions and args.runtime != 'codex': parser.error('Provider session checkpoints currently require Codex')
+    if args.codex_transport == 'app-server' and (args.runtime != 'codex' or not args.experimental_app_server):
+        parser.error('app-server requires Codex and explicit --experimental-app-server')
+    if args.runtime and providers.get(args.runtime) and providers.get(args.runtime).transport == 'cli' and os.name != 'nt':
+        parser.error('External CLI execution requires verified Windows Job containment; POSIX execution is disabled. HTTP providers are not affected')
+    if bool(args.work_profile) != bool(args.work_workspace): parser.error('--work-profile and --work-workspace must be given together')
+    if args.work_profile and (args.runtime != 'codex' or args.codex_transport != 'exec-json'):
+        parser.error('--work-profile currently requires --runtime codex with --codex-transport exec-json')
+    if args.work_profile and (args.synthetic or os.name != 'nt'):
+        parser.error('--work-profile requires a real runtime under verified containment')
+    if args.command == 'connect' and (args.room is not None or args.acknowledge_private):
+        import re
+        if not args.room or not args.acknowledge_private:
+            parser.error('--room and --acknowledge-private must be supplied together')
+        if not re.fullmatch(r'[A-Za-z0-9-]{1,128}', args.room):
+            parser.error('Invalid room identifier')
+
+
 def main():
     parser = argparse.ArgumentParser(description="TalkAbout private text-only prototype; no external model calls by default")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -112,6 +149,9 @@ def main():
         if name == "join":
             command.add_argument("--room", required=True)
             command.add_argument("--acknowledge-private", action="store_true")
+        if name == 'connect':
+            command.add_argument('--room', help='Accept this invitation before connecting; worker may process all credential-visible rooms')
+            command.add_argument('--acknowledge-private', action='store_true', help='Explicitly acknowledge the private-room notice when using --room')
         if name in {"run", "connect"}:
             command.add_argument("--steps", type=int, default=1)
             command.add_argument("--synthetic", action="store_true")
@@ -215,6 +255,9 @@ def main():
         finally:
             client.close()
         return
+    combined = args.command == 'connect' and (args.room is not None or args.acknowledge_private)
+    if combined:
+        validate_run_options(args, parser)
     journal = Journal(config["journal_path"])
     connector_lease = None
     try:
@@ -242,6 +285,9 @@ def main():
         if not token:
             parser.error("Configure the credential separately; it is never included in prompts")
         client = APIClient(config["base_url"], token, config["allowed_origin"])
+        if combined:
+            deadline = time.monotonic() + args.max_seconds
+            client.deadline = deadline
         # A worker stop fences model work, not explicit account/membership recovery.
         if args.command in {"run", "connect"}:
             client.should_stop = journal.stop_requested
@@ -251,35 +297,12 @@ def main():
                 print(json.dumps({"agent_id": actor["id"], "kind": actor["kind"], "http": "confirmed", "external_runtime": "NOTRUN"}))
             elif args.command == "join":
                 if not args.acknowledge_private: parser.error('Read the private-room notice and explicitly acknowledge it')
-                invitation = next((item for item in client.request('GET', 'agents/me/invitations') if item['room_id'] == args.room), None)
-                if invitation is None:
-                    existing = next((room for room in client.request('GET', 'rooms') if room['id'] == args.room), None)
-                    if existing:
-                        print(json.dumps({'room_id': args.room, 'membership': 'already_accepted', 'room_state': existing['state'], 'external_runtime': 'NOTRUN'}))
-                        return
-                    parser.error('No matching pending invitation; inspect current membership before retrying')
-                client.request('POST', 'rooms/'+args.room+'/memberships/me/accept',
-                    {'expected_revision': invitation['membership_revision'], 'acknowledge_private': True}, str(uuid.uuid4()))
-                print(json.dumps({'room_id': args.room, 'membership': 'accepted', 'external_runtime': 'NOTRUN'}))
+                print(json.dumps(accept_room(client, args.room, parser)))
             else:
-                if not 1 <= args.steps <= 1000 or not 1 <= args.max_seconds <= 300 or not 1 <= args.max_model_calls <= 10 or bool(args.synthetic) == bool(args.runtime):
-                    parser.error("Choose exactly one runtime; steps 1..1000, max-seconds 1..300")
-                if args.command == "connect" and not args.runtime: parser.error("connect requires a real runtime; synthetic is test-only")
-                if args.runtime and not args.approve_external: parser.error('External runtime calls require explicit --approve-external')
-                if args.max_room_calls is not None and not 0 <= args.max_room_calls <= 10:parser.error('max-room-calls must be 0..10')
-                if args.persist_provider_sessions and args.runtime!='codex':parser.error('Provider session checkpoints currently require Codex')
-                if args.codex_transport=='app-server' and (args.runtime!='codex' or not args.experimental_app_server):
-                    parser.error('app-server requires Codex and explicit --experimental-app-server')
-                if args.runtime and providers.get(args.runtime) and providers.get(args.runtime).transport == 'cli' and os.name != 'nt':
-                    parser.error('External CLI execution requires verified Windows Job containment; POSIX execution is disabled. HTTP providers are not affected')
-                if bool(args.work_profile) != bool(args.work_workspace):
-                    parser.error('--work-profile and --work-workspace must be given together')
-                if args.work_profile and (args.runtime != 'codex' or args.codex_transport != 'exec-json'):
-                    parser.error('--work-profile currently requires --runtime codex with --codex-transport exec-json')
-                if args.work_profile and (args.synthetic or os.name != 'nt'):
-                    parser.error('--work-profile requires a real runtime under verified containment')
-                deadline = time.monotonic() + args.max_seconds
-                client.deadline = deadline
+                if not combined:
+                    validate_run_options(args, parser)
+                    deadline = time.monotonic() + args.max_seconds
+                    client.deadline = deadline
                 if args.runtime:
                     from .connector import verify_runtime, ConnectionCheckError, RoomRuntimePool
                     runtime_options={'credential_env':config.get('token_env','TALKABOUT_TOKEN'),'platform_credential':token,'run_deadline':deadline,'auth_mode':args.auth_mode}
@@ -301,6 +324,24 @@ def main():
                     if probe.get('reason') or not probe.get('available'):
                         test_runtime.shutdown()
                         raise SystemExit(probe.get('reason') or 'runtime_unavailable')
+                    if args.command == 'connect' and args.room:
+                        try:
+                            if journal.stop_requested(): raise SystemExit('connector_stopped')
+                            check_deadline(deadline)
+                            test_runtime.preflight()
+                            try:
+                                membership = accept_room(client, args.room, parser)
+                            except Exception:
+                                raise SystemExit('room_accept_unconfirmed: check invitation or membership before retrying; no model check started') from None
+                            print(json.dumps(membership), flush=True)
+                        except Exception as error:
+                            test_runtime.shutdown()
+                            from .adapters import AdapterError
+                            code = error.code if isinstance(error, AdapterError) else 'runtime_preflight_failed'
+                            raise SystemExit(code + ': room connection not started; inspect the local runtime') from None
+                        except BaseException:
+                            test_runtime.shutdown()
+                            raise
                     try:
                         if journal.stop_requested(): raise ConnectionCheckError('connector_stopped')
                         test_runtime.preflight()

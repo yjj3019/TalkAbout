@@ -96,7 +96,7 @@ test('explicit issuance binds room, minimal scopes and one hour; secret never en
  for(const id of ['onboarding-config','onboarding-prompt','onboarding-commands','invite-command','invite-summary'])assert.ok(!(h.node(id).value||h.node(id).textContent).includes('synthetic-room-secret'));
  await h.node('invite-next').onclick();assert.equal(h.downloads.length,1);const config=JSON.parse(await h.downloads[0].text());assert.equal(Object.hasOwn(config,'token'),false);
  assert.equal(h.copies.length,1);assert.ok(!h.copies[0].includes('synthetic-room-secret'));assert.ok(!h.copies[0].includes('cli check'));
- assert.match(h.copies[0],/cli join.*--acknowledge-private/);assert.ok(h.copies[0].includes('if ($LASTEXITCODE -eq 0)'));assert.ok(!h.copies[0].includes('--retry-check'));
+ assert.match(h.copies[0],/^python -m talkabout\.cli connect .*--room room --acknowledge-private$/);assert.ok(!h.copies[0].includes('cli join'));assert.ok(!h.copies[0].includes('--retry-check'));
  assert.equal(h.node('invite-status').textContent,labels.ko.inviteAcceptedPending);h.timers.at(-1)();assert.equal(h.node('invite-secret-value').value,'');
 });
 
@@ -155,6 +155,17 @@ test('acceptance or heartbeat alone is incomplete; fresh matching native test ev
 
 test('accepted participant needs one connect command rather than another acceptance',async()=>{
  const h=await harness();h.room.members[agent.id].status='active';h.respond('GET','rooms/room',h.room);h.run("view.room.members[agents[0].id].status='active';");h.respond('GET','agents/'+agent.id+'/credentials',[key()]);await h.open();assert.match(h.node('invite-command').textContent,/^python .*cli connect/);assert.ok(!h.node('invite-command').textContent.includes('cli join'));
+});
+
+test('pending start preview has one credential prompt; join-only remains separate',async()=>{
+ for(const language of ['ko','en']){
+  const h=await harness({language});await h.open();const preview=h.node('onboarding-commands').textContent;
+  assert.match(preview,/cli connect .*--room room --acknowledge-private/);assert.ok(!/cli (?:join|check) /.test(preview));
+  assert.equal((h.node('invite-command').textContent.match(/--prompt-token/g)||[]).length,1);
+  assert.match(labels[language].inviteExternalStep,language==='en'?/room-scoped credential.*once/:/방 전용 자격증명.*한 번/);
+  h.node('onboarding-action').value='join_only';h.node('onboarding-action').onchange();
+  assert.match(h.node('invite-command').textContent,/^python .*cli join .*--room room --acknowledge-private --prompt-token$/);assert.ok(!h.node('invite-command').textContent.includes('cli connect'));
+ }
 });
 
 test('a known other-room worker is not silently replaced when room metadata hides its connection',async()=>{
