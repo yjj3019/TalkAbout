@@ -169,6 +169,26 @@ test('a queued close event cannot erase a newly reopened invitation',async()=>{
  assert.equal(h.run('onboardingContext'),null);assert.equal(h.node('invite-secret-value').value,'');
 });
 
+test('guarded preview hides commands for blocked runtime, host and room states',async()=>{
+ const h=await harness();await h.open();
+ for(const change of ["el('invite-client').value='grok'", "el('invite-machine').value='other'", "onboardingContext.room.state='paused'", "onboardingContext.room.state='closed'", "onboardingContext.room.dispatch_held=true"]){
+  h.run("el('invite-client').value='codex';el('invite-machine').value='same';onboardingContext.room.state='preparing';onboardingContext.room.dispatch_held=false;el('onboarding-action').value='start';"+change);
+  assert.equal(h.run('basicInviteCommands(onboardingContext)'),'',change);
+ }
+});
+
+test('room invitation exposes prerequisites and steps while blocking unsupported choices',()=>{
+ const dialog=html.slice(html.indexOf('<dialog id="onboarding-dialog"'),html.indexOf('<dialog id="credential-dialog"'));
+ const advanced=dialog.indexOf('id="invite-advanced"');
+ for(const key of ['clientSetupHelp','runtimePlatformHelp','inviteSimpleSteps'])assert.ok(dialog.indexOf(`data-i18n="${key}"`)<advanced,key);
+ assert.ok(dialog.indexOf('id="onboarding-commands"')>advanced);
+ assert.ok(dialog.indexOf('id="onboarding-action"')<advanced);
+ assert.match(dialog,/<details id="invite-command-preview" open>/);
+ assert.match(dialog,/<option value="grok" disabled/);
+ assert.match(dialog,/<optgroup label="OpenAI-compatible API" disabled>/);
+ for(const language of ['ko','en'])for(const key of ['inviteRuntimeAvailability','inviteSimpleSteps','inviteManualSteps'])assert.ok(labels[language][key]);
+});
+
 test('all new HTML localization keys exist; advanced prompt and JSON are collapsed',()=>{
  const dialog=html.slice(html.indexOf('<dialog id="onboarding-dialog"'),html.indexOf('<dialog id="credential-dialog"'));
  for(const [,name] of dialog.matchAll(/data-i18n="([^"]+)"/g))for(const language of ['ko','en'])assert.equal(typeof labels[language][name],'string',name);
