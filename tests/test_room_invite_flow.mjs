@@ -194,7 +194,7 @@ test('room invitation exposes prerequisites and steps while blocking unsupported
  for(const key of ['clientSetupHelp','runtimePlatformHelp','inviteSimpleSteps'])assert.ok(dialog.indexOf(`data-i18n="${key}"`)<advanced,key);
  assert.ok(dialog.indexOf('id="onboarding-commands"')>advanced);
  assert.ok(dialog.indexOf('id="onboarding-action"')<advanced);
- assert.match(dialog,/<details id="invite-command-preview" open>/);
+ assert.match(dialog,/<details id="invite-command-preview">/);
  assert.match(dialog,/<option value="grok" disabled/);
  assert.match(dialog,/<optgroup label="OpenAI-compatible API" disabled>/);
  for(const language of ['ko','en'])for(const key of ['inviteRuntimeAvailability','inviteSimpleSteps','inviteManualSteps'])assert.ok(labels[language][key]);
@@ -204,4 +204,51 @@ test('all new HTML localization keys exist; advanced prompt and JSON are collaps
  const dialog=html.slice(html.indexOf('<dialog id="onboarding-dialog"'),html.indexOf('<dialog id="credential-dialog"'));
  for(const [,name] of dialog.matchAll(/data-i18n="([^"]+)"/g))for(const language of ['ko','en'])assert.equal(typeof labels[language][name],'string',name);
  assert.ok(dialog.indexOf('id="invite-advanced"')<dialog.indexOf('id="onboarding-prompt"'));assert.match(dialog,/<details id="invite-advanced">/);assert.match(dialog,/id="invite-secret-value" type="password"/);assert.match(dialog,/id="invite-error" role="alert"/);
+});
+
+test('connection helper downloads one launcher and copies the same invocation without a secret',async()=>{
+ const h=await harness();await h.open();
+ assert.equal(h.node('invite-helper').hidden,false);
+ h.node('invite-helper-download').onclick();
+ assert.equal(h.downloads.length,1);
+ const batch=await h.downloads[0].text();
+ assert.ok(batch.startsWith('@echo off\r\n'));
+ assert.ok(batch.includes('\r\n'));
+ assert.match(batch,/-Server 'http:\/\/127\.0\.0\.1:19999'/);
+ assert.match(batch,/-Room 'room'/);
+ assert.match(batch,/-Agent 'synthetic-agent'/);
+ assert.match(batch,/-Runtime 'codex'/);
+ assert.match(batch,/-AuthMode 'native'/);
+ assert.match(batch,/-MaxModelCalls 4/);
+ assert.ok(batch.includes('/web/connect-agent.ps1'));
+ assert.ok(batch.includes('powershell -NoProfile -ExecutionPolicy Bypass -Command "'));
+ assert.ok(!batch.includes('--prompt-token'));
+ assert.ok(!batch.includes('synthetic-room-secret'));
+ await h.node('invite-helper-copy').onclick();
+ assert.equal(h.copies.length,1);
+ assert.ok(h.copies[0].startsWith('& ([scriptblock]::Create((Invoke-RestMethod -UseBasicParsing'));
+ assert.ok(h.copies[0].includes("-Room 'room'"));
+ assert.ok(!h.copies[0].includes('synthetic-room-secret'));
+ assert.equal(h.calls.filter(c=>c.method==='POST').length,0);
+});
+
+test('connection helper stays hidden for unsupported runtime, remote host, closed state and free mode without consent',async()=>{
+ const h=await harness();await h.open();
+ for(const [change,expected] of [
+  ["el('invite-client').value='grok'",true],
+  ["el('invite-client').value='codex';el('invite-machine').value='other'",true],
+  ["el('invite-machine').value='same';onboardingContext.room.state='paused'",true],
+  ["onboardingContext.room.state='preparing';onboardingContext.room.mode='free_discussion';el('onboarding-turn-consent').checked=false",true],
+  ["onboardingContext.room.mode='free_discussion';el('onboarding-turn-consent').checked=true",false],
+ ]){
+  h.run("el('invite-client').value='codex';el('invite-machine').value='same';onboardingContext.room.state='preparing';onboardingContext.room.mode='co_creation';el('onboarding-turn-consent').checked=false;"+change+";renderInviteWizard();");
+  assert.equal(h.node('invite-helper').hidden,expected,change);
+ }
+ h.run("el('invite-client').value='codex';el('invite-machine').value='same';onboardingContext.room.state='preparing';onboardingContext.room.mode='free_discussion';el('onboarding-turn-consent').checked=true;renderInviteWizard();");
+ h.node('invite-helper-download').onclick();
+ const batch=await h.downloads[h.downloads.length-1].text();
+ assert.ok(batch.includes('-RequestTurn'));
+ assert.match(batch,/-MaxModelCalls 3/);
+ const noManage=await harness({manage:false});await noManage.open();
+ assert.equal(noManage.node('invite-helper').hidden,true);
 });

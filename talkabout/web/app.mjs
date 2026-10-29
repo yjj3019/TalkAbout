@@ -645,8 +645,43 @@ function basicInviteCommands(ctx){
  if(!connect)return '';
  return connect;
 }
-async function loadInviteCredentials(){
- const ctx=onboardingContext,ticket=inviteEpoch,auth=authEpoch;if(!inviteCurrent(ctx,ticket,auth)||!can('credential:manage'))return;
+// Connection helper: the GUI generates a Windows .cmd that fetches /web/connect-agent.ps1
+// from this server and runs it with the room, runtime and budget baked in. No secret is embedded.
+function inviteHelperPlan(ctx){
+ const runtime=el('invite-client').value||'codex';
+ if(!['codex','claude'].includes(runtime))return null;
+ if(inviteLoopback()&&el('invite-machine').value==='other')return null;
+ if(!ctx||!ctx.room||!ctx.agent||!roomConnectionEligible(ctx.room,ctx.agent))return null;
+ if(!can('credential:manage'))return null;
+ if(ctx.room.state==='closed'||ctx.room.state==='paused'||ctx.room.dispatch_held)return null;
+ const free=ctx.room.mode==='free_discussion',requestTurn=free&&el('onboarding-turn-consent').checked===true;
+ if(free&&!requestTurn)return null;
+ const plan={origin:location.origin,room:ctx.room.id,agent:ctx.agent.id,runtime,authMode:'native',maxModelCalls:roomCallBudget(ctx.room).calls,requestTurn};
+ if(!/^https?:\/\/[A-Za-z0-9.:\[\]-]+$/.test(plan.origin)||!/^[A-Za-z0-9-]{1,128}$/.test(plan.room)||!/^[A-Za-z0-9-]{1,64}$/.test(plan.agent))return null;
+ if(!Number.isInteger(plan.maxModelCalls)||plan.maxModelCalls<1||plan.maxModelCalls>10)return null;
+ return plan;
+}
+function inviteHelperInvocation(plan){
+ const q=value=>"'"+plan[value]+"'";
+ return '& ([scriptblock]::Create((Invoke-RestMethod -UseBasicParsing '+q('origin')+'/web/connect-agent.ps1))) -Server '+q('origin')+' -Room '+q('room')+' -Agent '+q('agent')+' -Runtime '+q('runtime')+' -AuthMode '+q('authMode')+' -MaxModelCalls '+plan.maxModelCalls+(plan.requestTurn?' -RequestTurn':'');
+}
+function inviteHelperBatch(plan){
+ const lines=['@echo off','setlocal','title TalkAbout connect - '+plan.runtime,
+  'echo TalkAbout connection helper: room '+plan.room+' / runtime '+plan.runtime,
+  'powershell -NoProfile -ExecutionPolicy Bypass -Command "'+inviteHelperInvocation(plan)+'"',
+  'if errorlevel 1 (','  echo.','  echo [TalkAbout] The helper did not finish. Read the message above.','  pause',')'];
+ return lines.join('\r\n')+'\r\n';
+}
+function downloadInviteHelper(){
+ const ctx=onboardingContext;if(!ctx)return;const plan=inviteHelperPlan(ctx);if(!plan)return;
+ const url=URL.createObjectURL(new Blob([inviteHelperBatch(plan)],{type:'application/octet-stream'}));
+ try{const link=document.createElement('a');link.href=url;link.download='talkabout-connect.cmd';link.click();}finally{URL.revokeObjectURL(url);}
+}
+async function copyInviteHelperCommand(){
+ const ctx=onboardingContext;if(!ctx)return;const plan=inviteHelperPlan(ctx);if(!plan)return;
+ try{await navigator.clipboard.writeText(inviteHelperInvocation(plan));notice('copied');}catch{notice('rejected');}
+}
+async function loadInviteCredentials(){ const ctx=onboardingContext,ticket=inviteEpoch,auth=authEpoch;if(!inviteCurrent(ctx,ticket,auth)||!can('credential:manage'))return;
  ctx.loading=true;renderInviteWizard();
  try{const data=await api('agents/'+ctx.agent.id+'/credentials');if(!inviteCurrent(ctx,ticket,auth))return;if(!Array.isArray(data))throw new Error('metadata_unconfirmed');ctx.credentials=data.filter(c=>c.room_id===ctx.room.id);ctx.metadataError=false;}
  catch{if(inviteCurrent(ctx,ticket,auth)){ctx.metadataError=true;el('invite-error').textContent=t('inviteMetadataFailure');}}
@@ -660,6 +695,7 @@ function renderInviteWizard(){
  el('invite-key-state').textContent=t(room.state==='closed'||!roomConnectionEligible(room,agent)?'inviteKeyUnavailable':ctx.loading?'inviteKeysLoading':ctx.metadataError?'inviteMetadataFailure':keys.length?'inviteKeyExists':'inviteKeyMissing');
  let status=connected?'inviteConnected':member?.status==='pending'?'inviteAcceptedPending':'inviteAwaitConnection',next='invitePrepare',help='invitePrepareHelp',disabled=false;
  const command=basicInviteCommands(ctx);el('invite-command').textContent=command;
+ const helperPlan=inviteHelperPlan(ctx);el('invite-helper').hidden=!helperPlan;el('invite-helper-state').textContent=helperPlan?t(keys.length?'inviteHelperReady':'inviteHelperNeedKey'):'';
  if(room.state==='closed'){status='inviteRoomClosed';next='inviteClose';help='inviteClosedHelp';}
  else if(room.state==='paused'||room.dispatch_held){status='inviteRoomHeld';next='inviteClose';help='inviteHeldHelp';}
  else if(unsupported||remote){status=unsupported?'inviteUnsupported':'inviteOtherBlocked';next='inviteUnavailable';help=status;disabled=true;}
@@ -736,6 +772,7 @@ el('invite-secret-copy').onclick=async()=>{const ctx=onboardingContext,ticket=in
 el('onboarding-dialog').addEventListener?.('cancel',clearOnboarding);el('onboarding-dialog').addEventListener?.('close',()=>{if(!el('onboarding-dialog').open)clearOnboarding();});
 el('onboarding-close').onclick=clearOnboarding;el('credential-close').onclick=clearCredential;el('credential-dialog').addEventListener?.('cancel',clearCredential);el('credential-dialog').addEventListener?.('close',()=>{el('credential-value').value='';});
 el('credential-reveal').onclick=()=>{el('credential-value').type=el('credential-value').type==='password'?'text':'password';};
+el('invite-helper-download').onclick=downloadInviteHelper;el('invite-helper-copy').onclick=copyInviteHelperCommand;
 for(const [button,field] of [['copy-prompt','onboarding-prompt'],['copy-config','onboarding-config']])el(button).onclick=async()=>{try{await navigator.clipboard.writeText(el(field).value);notice('copied');}catch{notice('rejected');}};
 async function refreshTextAttachmentSettings(){const auth=authEpoch,data=await api('capabilities');if(auth===authEpoch&&user)textAttachmentSettings=data?.text_attachments?.enabled===true?data.text_attachments:{enabled:false};}
 function clearTextFileView(){textFileEpoch++;activeTextFile=null;el('text-file-dialog').close?.();el('text-file-output').textContent='';el('text-file-truncated').textContent='';el('text-file-input').value='';el('file-upload-status').textContent='';}

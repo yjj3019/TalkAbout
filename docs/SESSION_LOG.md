@@ -1,5 +1,24 @@
 # TalkAbout session log
 
+## 2026-10-30 — 초대 연결 단순화: Windows 연결 도우미
+
+- 사용자 요청: 에이전트 초대 절차가 너무 복잡하다. "초대 → 내려받은 파일 실행 → 비밀값 1회 붙여넣기 → 브라우저에서 확인" 수준으로 줄인다.
+- 추가: [connect-agent.ps1](../talkabout/web/connect-agent.ps1) — Windows PowerShell 5.1 호환·ASCII 전용·시크릿 없음. Python 3.12+ 탐색(없으면 python.org 안내), `%LOCALAPPDATA%\TalkAbout\venv` 생성과 client 자동 설치(첫 실행, 인터넷 필요. `TALKABOUT_SOURCE`가 있으면 그 환경을 그대로 사용), BOM 없는 설정 파일 기록, provider CLI PATH 경고, `connect --room --acknowledge-private` 실행. 토큰은 CLI `--prompt-token`의 숨김 입력으로만 받고 스크립트는 저장·출력·인자 전달하지 않는다. `-DryRun`은 아무것도 만들지 않고 계획만 출력한다.
+- GUI: 방 참여 안내에 **연결 도우미 다운로드 (.cmd)**와 **한 줄 명령 복사**를 추가([index.html](../talkabout/web/index.html), [app.mjs](../talkabout/web/app.mjs), [state.mjs](../talkabout/web/state.mjs)). .cmd는 서버의 도우미를 받아 실행하며 방·런타임·예산만 담고 비밀은 담지 않는다. loopback+다른 컴퓨터, 미지원 runtime, 닫힘/일시정지/보류, 자유 토론 발언 동의 없음에서는 도우미를 숨기고 고급 수동 경로를 쓰게 한다. 수동 명령 미리보기는 기본 접힘, 4단계 안내 문구는 도우미 흐름으로 교체.
+- 서버: `/web/connect-agent.ps1` 정적 제공을 setup-lock·asset 두 allowlist에 추가([api.py](../talkabout/api.py)). setup 잠금 상태에서도 200으로 내려가고, 목록 밖 `/web/*`는 기존처럼 404다.
+- 문서: [USER_FLOW.md](USER_FLOW.md), [RUNTIME_CONNECTIONS.md](RUNTIME_CONNECTIONS.md), [README.md](../README.md), [README.en.md](../README.en.md)에 도우미 권장 경로를 추가하고 기존 check/join/connect는 고급·수동·다른 컴퓨터 경로로 유지. 브라우저·provider E2E는 NOTRUN으로만 표기.
+- 검증(실제 실행): Node UI 계약 9파일 **222 passed**(초대 흐름 34건에 도우미 다운로드·복사·숨김 조건 2건 추가). [test_initial_setup.py](../tests/test_initial_setup.py) **11 passed / 3 skipped**(PostgreSQL fixture skip) — setup 잠금 상태에서 `/web/connect-agent.ps1` 200·ASCII/BOM 없음·목록 밖 자산 404 확인. PowerShell 5.1·7 파서 오류 0, `-DryRun` exit 0·부작용 없음, `scriptblock::Create(Invoke-RestMethod)` 경로 exit 0, 잘못된 room/예산/서버 exit 1. 실제 로컬 서버를 띄워 GUI가 만드는 것과 같은 `.cmd`를 cmd.exe로 실행해 도우미 fetch→파라미터 바인딩→`-DryRun` exit 0까지 확인.
+- 발견·수정: 소스 모드(`TALKABOUT_SOURCE`)에서 새 StateDir을 만들지 않아 설정 기록이 실패하던 버그를 검증 중 찾아 수정(모드와 무관하게 config 기록 전 디렉터리 보장). 수정 후 같은 명령이 설정 기록·CLI 시작까지 진행하고 비대화형 TTY 부재로 exit 2와 안내를 출력하는 것을 확인.
+- NOTRUN: venv 생성·pip 설치 분기, 대화형 토큰 입력 성공 경로(실제 자격증명), 실제 provider 호출, 브라우저 다운로드·SmartScreen E2E, 운영 배포. `tools/docs_check.py` 0 new/0 known. `.git` 쓰기·커밋·push는 이 샌드박스가 거부해 수행하지 못했다.
+
+## 2026-10-30 — 문서 정합성: 통합 connect(초대 수락+연결) 반영
+
+- 사용자 요청: 이력 점검에 이어 다음 작업 진행. 이번 세션은 문서 드리프트 정리만 했고 코드·배포·provider 호출은 하지 않았다.
+- 코드 기준 실제 동작: `connect --room --acknowledge-private`는 같은 프로세스에서 runtime probe·preflight 후 pending 초대를 수락하고(`already_accepted`면 변경 없음) 이어서 모델 시험과 bounded worker를 진행한다. 두 flag는 함께 줘야 하며 방 id는 `[A-Za-z0-9-]{1,128}`이다. 수락 응답이 불확실하면 `room_accept_unconfirmed`로 멈추고 모델 시험을 시작하지 않는다. 수락과 시험·worker는 원자적이지 않아 수락 후 실패해도 수락은 남는다. GUI 방 참여 안내도 pending 초대에서 join 줄을 빼고 connect에 두 flag를 붙인다.
+- 수정한 기록: [RUNTIME_CONNECTIONS.md](RUNTIME_CONNECTIONS.md)의 상태 배너·사용 순서·`check`/`join`/`connect` 설명·영문 요약, [README.md](../README.md)와 [README.en.md](../README.en.md)의 사용 순서·절 제목·연결 설명, [USER_FLOW.md](USER_FLOW.md) 영문 89행. 이전 문구는 "join은 별도 수락이며 connect는 초대를 수락하지 않는다", "connect에는 방 ID flag가 없다"였다.
+- 검증: `tools/docs_check.py` **0 new, 0 known**. Python/Node 회귀와 브라우저는 이 sandbox에서 자식 프로세스 `EPERM`·temp 디렉터리 scandir `WinError 5`로 실행 불가하여 **NOTRUN**이며 통과를 주장하지 않는다. 실제 provider 호출·배포·git push는 하지 않았다.
+- 이번에 다루지 않은 것: Grok UI·probe 문구 정합(코드·UI 변경 필요), 초대 교환 재설계(원자성·수신자 binding·취소/재발급), A5/A6 보안 관문, 2026-10-28 병합분 이후 전체 회귀 재기준.
+
 ## 2026-10-29 — 에이전트 초대 단순화 및 Grok 조사
 
 - 사용자 요청: 방에서 설정을 만들어 에이전트에 전달하거나 CLI가 자동 참가하는 수준으로 초대를 최대한 단순화하고, Grok이 보이지 않는 원인을 확인. 팀 에이전트 3명이 초대 UX·MCP, 권한/보안, Grok 지원을 각각 읽기 전용으로 조사했다.

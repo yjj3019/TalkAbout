@@ -64,6 +64,7 @@ def create_app(store, start_scheduler=True, allow_fixture_bearer=False, allowed_
             locked = True
         request.state.setup_locked = locked
         allowed = {'/', '/health', '/web/app.mjs', '/web/state.mjs', '/web/style.css',
+                   '/web/connect-agent.ps1',
                    '/api/v1/setup/status', '/api/v1/setup/csrf', '/api/v1/setup/complete'}
         if locked and request.url.path not in allowed:
             response = JSONResponse({'code': 'setup_required'}, status_code=503)
@@ -108,7 +109,7 @@ def create_app(store, start_scheduler=True, allow_fixture_bearer=False, allowed_
 
     @app.get("/web/{name}")
     def asset(name: str):
-        require(name in {"app.mjs", "state.mjs", "style.css", "favicon.svg"}, "not_found", 404)
+        require(name in {"app.mjs", "state.mjs", "style.css", "favicon.svg", "connect-agent.ps1"}, "not_found", 404)
         return FileResponse(Path(__file__).parent / "web" / name)
 
     def room_stream(request, credential, room_id):
