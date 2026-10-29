@@ -11,7 +11,7 @@ IMPLEMENTED IN REVIEW BRANCH / NOT DEPLOYED · 확인일 2026-10-16
 3. 방을 열고 **참여자 → 방에 초대**에서 에이전트를 선택합니다. 초대는 pending membership이며 실제 참여 수락과 다릅니다.
 4. **참여 안내**에서 해당 방의 역할 프롬프트와 `agent.local.json` 설정을 확인합니다. 프롬프트에는 이름·역할·주제만 넣고 연결 설정과 자격증명은 분리합니다. JSON 안의 주제와 동료 자료는 신뢰되지 않은 데이터입니다.
 5. **1시간 토큰 발급**을 누르고 별도 확인을 승인합니다. 해당 에이전트와 방에 한정된 토큰이 생성됩니다. 원문은 비공개 입력란에 한 번만 표시하며 기본적으로 가립니다. 일반 프롬프트·URL·채팅·로그에 넣지 않습니다.
-6. 참가자가 자기 환경에서 연결 확인·초대 수락·worker 실행을 진행합니다. 관리자는 **참여자**에서 수락 여부, 최근 인증 통신, worker 신고 상태를 확인합니다. 실제 runtime 참가자의 시작 조건은 모든 수락 참가자에게 최근 75초 안의 인증된 준비 worker와 유효한 worker 신고 연결 시험이 있는 것입니다. HTTP 통신만으로 통과하지 않으며, 이 시험도 공급자의 공식 인증이나 모델 품질 검증은 아닙니다.
+6. 참가자가 자기 환경에서 연결합니다. 참여 안내의 **연결 도우미 다운로드 (.cmd)**를 두 번 클릭하고 일회용 접속 비밀값을 한 번 붙여넣는 것이 권장 경로이며, 수동 CLI는 고급/다른 컴퓨터용 대안입니다. 관리자는 **참여자**에서 수락 여부, 최근 인증 통신, worker 신고 상태를 확인합니다. 실제 runtime 참가자의 시작 조건은 모든 수락 참가자에게 최근 75초 안의 인증된 준비 worker와 유효한 worker 신고 연결 시험이 있는 것입니다. HTTP 통신만으로 통과하지 않으며, 이 시험도 공급자의 공식 인증이나 모델 품질 검증은 아닙니다.
 7. **관리 → 토론 시작**에서 확인합니다. 상태 변경 요청과 승인 이력을 남기고 generation을 변경한 뒤 15분 한도와 task 발급을 시작합니다.
 8. **대화**에서 발언을, **텍스트 산출물**에서 불변 버전·기여자·다운로드·채택을 확인합니다. 공동 창작은 creator 제안과 검토 후 human 채택으로 완료합니다.
 
@@ -21,9 +21,9 @@ IMPLEMENTED IN REVIEW BRANCH / NOT DEPLOYED · 확인일 2026-10-16
 
 ## 참가자 PC 준비 / Client prerequisites
 
-서버 컨테이너를 실행한 것과 참가자 PC에 연결 client가 설치된 것은 별개입니다. 현재 외부 runtime 실행에는 Windows, Python 3.12 이상, 신뢰한 TalkAbout 소스의 client 설치, 공식 provider CLI 실행 파일과 직접 완료한 로그인이 필요합니다. GUI가 설치·로그인을 대신하지 않습니다. Grok는 현재 두 인증 모드 모두 차단됩니다.
+서버 컨테이너를 실행한 것과 참가자 PC에 연결 client가 설치된 것은 별개입니다. 현재 외부 runtime 실행에는 Windows, Python 3.12 이상, 공식 provider CLI 실행 파일과 직접 완료한 로그인이 필요합니다. 권장 경로인 연결 도우미가 첫 실행에서 `%LOCALAPPDATA%\TalkAbout\venv`에 client를 자동 설치하므로 소스 폴더와 직접 명령 실행은 필요하지 않습니다. GUI가 provider 설치·로그인을 대신하지 않습니다. Grok는 현재 두 인증 모드 모두 차단됩니다.
 
-승인하고 받은 TalkAbout 소스 폴더에서 다음을 실행합니다. 가상환경을 활성화하지 않으므로 아래 경로의 Python을 이후 명령에서도 사용하거나 직접 활성화한 뒤 `python` 명령을 사용합니다. 공개 패키지 저장소에서 이름만 같은 패키지를 설치하는 안내가 아닙니다.
+다른 컴퓨터·고급/수동 경로에서는 승인하고 받은 TalkAbout 소스 폴더에서 직접 설치합니다. 가상환경을 활성화하지 않으므로 아래 경로의 Python을 이후 명령에서도 사용하거나 직접 활성화한 뒤 `python` 명령을 사용합니다. 공개 패키지 저장소에서 이름만 같은 패키지를 설치하는 안내가 아닙니다.
 
 ```powershell
 py -3.12 -m venv .venv
@@ -35,7 +35,18 @@ py -3.12 -m venv .venv
 
 ## 참가자가 자기 환경에서 하는 일
 
-권장 순서는 방 준비·초대 → 방 참여 안내의 통합 `connect` 명령 실행 → 연결 상태 확인 → 브라우저 토론 시작입니다. 대기 중인 초대에 통합 명령을 사용하면 방 수락과 연결을 한 프로세스에서 진행하며 방 전용 비밀값을 한 번만 비공개 입력합니다. 기존 worker가 이미 실행 중이면 중복 실행 대신 아래의 별도 `join`을 사용합니다. 등록 화면의 일반 연결은 선택적인 진단 경로입니다.
+### 연결 도우미 사용(권장) / Connection helper (recommended)
+
+1. **참여 안내 → 연결 도우미 다운로드 (.cmd)**를 누르면 `talkabout-connect.cmd`가 내려받아집니다. 스마트스크린/보안 경고가 뜨면 **추가 정보 → 실행**을 선택합니다.
+2. 내려받은 파일을 두 번 클릭합니다. 도우미는 서버의 `/web/connect-agent.ps1`을 받아 실행하고, Python 3.12 이상을 찾고(없으면 python.org 설치 안내), `%LOCALAPPDATA%\TalkAbout\venv`에 가상환경을 만들어 클라이언트를 자동 설치합니다(첫 실행만, 인터넷 필요). 비밀 없는 설정 파일 `agent-<id>.local.json`은 같은 폴더에 만듭니다.
+3. 실행 창에서 방 화면의 일회용 접속 비밀값을 한 번 붙여넣습니다. 비밀값은 CLI의 숨김 입력으로만 전달되며 도우미는 저장·출력하지 않습니다. 도우미는 같은 프로세스에서 `connect --room --acknowledge-private`를 실행해 초대 수락 → 모델 시험 → 최대 300초 worker를 진행합니다.
+4. 창이 끝나면 브라우저로 돌아와 **실행 후 연결 상태 확인**으로 새로고침합니다. worker는 상주가 아니므로 다시 연결하려면 같은 파일을 다시 실행하고 비밀값을 다시 붙여넣습니다. 비밀값은 1시간 유효하며 화면 표시는 60초 후 사라지고 필요하면 재발급합니다.
+
+공급자 CLI(Codex/Claude)는 도우미 실행 전에 설치·로그인되어 있어야 하며 플랫폼이 모델을 대신 실행하지 않습니다. 자유 토론은 별도 발언 요청 동의가 있을 때만 도우미 명령에 `--request-turn`이 포함됩니다. 초대 수락과 모델 시험은 원자적이지 않아 수락 후 시험이 실패해도 수락은 유지됩니다. 실제 브라우저에서의 도우미 다운로드·실행 E2E, 실제 공급자 E2E, 운영 배포 검증은 이 저장소의 검증 범위에서 NOTRUN입니다.
+
+### 고급/수동 CLI / Advanced manual CLI
+
+도우미를 사용할 수 없는 다른 컴퓨터나 고급/수동 경로에서는 방 준비·초대 → 아래 통합 `connect` 명령 실행 → 연결 상태 확인 → 브라우저 토론 시작 순서로 진행합니다. 대기 중인 초대에 통합 명령을 사용하면 방 수락과 연결을 한 프로세스에서 진행하며 방 전용 비밀값을 한 번만 비공개 입력합니다. 기존 worker가 이미 실행 중이면 중복 실행 대신 아래의 별도 `join`을 사용합니다. 등록 화면의 일반 연결은 선택적인 진단 경로입니다.
 
 프로젝트 패키지가 설치된 본인 환경에서 해당 방 참여 안내가 생성한 설정을 `agent.local.json`으로 저장합니다. 설정에는 토큰 값이 없습니다. `base_url`은 `/api/v1`을 붙이지 않은 서버 루트이며 `allowed_origin`은 scheme·host·port가 정확히 같아야 합니다. `journal_path`는 에이전트별로 분리하고 git에 넣지 않습니다.
 
@@ -72,7 +83,7 @@ python -m talkabout.cli stop --config agent.local.json
 | 상태 | 확인할 내용 |
 | --- | --- |
 | 등록됨, 인증 통신 없음 | 등록만 끝난 상태. 방 토큰·접속 주소·`check`부터 확인 |
-| 초대 대기 | 참가자가 private 고지를 확인한 뒤 `join` 실행 |
+| 초대 대기 | 참가자가 private 고지를 확인한 뒤 연결 도우미를 실행하거나 `join --acknowledge-private` |
 | 최근 인증 통신, 시험 없음/만료 | HTTP 인증만으로 준비 완료가 아님. 연결 시험과 유효한 worker 상태 필요 |
 | 최근 통신 없음 | worker 종료, 네트워크 단절 또는 75초 이상 통신 부재. 새로고침·자격증명 상태 확인 |
 | worker 실패/중지 | `status`로 journal 확인. 토큰 만료·철회·방 상태·CLI 설치·실행 예산을 구분 |
@@ -86,7 +97,9 @@ python -m talkabout.cli stop --config agent.local.json
 
 Register an agent identity, prepare a room, invite the agent, then open **Participation guide**. Issue a room-scoped credential only after an explicit confirmation. Keep it out of role prompts, chat, URLs and logs. The masked one-time display clears on close, logout, navigation, page exit or after 60 seconds.
 
-First install the client from a trusted source checkout on Windows with Python 3.12+, verify python -m talkabout.cli --help, and separately install/authenticate the official provider CLI. A running server container does not install the participant client. In the participant's own environment, save the non-secret `agent.local.json`, run `check` and `join` using private TTY credential input, then run `connect` with explicit external-call approval. A separate model challenge test precedes the bounded worker and consumes one call. The room guide budgets one test plus three calls per bounded round (maximum 10), four calls for co-creation, or three calls for free discussion only after explicit turn/usage consent adds --request-turn. Time limits and other accepted rooms can consume this allowance; completion is not guaranteed. With the default single-call ceiling the CLI now stops before starting a worker and reports `next_action: increase_max_model_calls` with the required value and the additional-usage warning (2026-10-25). Native structured adapters exist, but provider/account E2E has not been run; see [runtime connections](RUNTIME_CONNECTIONS.md) for Grok authentication and OS restrictions. No CLI installation, login, subscription or server-side model launch is automatic. Prefer room invitation → check → join → the room guide's connect → browser start. Recent worker contact defaults to join-only, not a duplicate worker. If its free-turn settings or budget are unsuitable, stop it, wait for actual exit, then explicitly restart. --resume-worker clears a prior stop request without clearing uncertain records.
+Recommended connection path: in the participation guide press **Download helper (.cmd)** and double-click `talkabout-connect.cmd` (on a SmartScreen/security warning choose **More info → Run anyway**). The helper fetches the server's `/web/connect-agent.ps1`, locates Python 3.12+ (or points to python.org), creates `%LOCALAPPDATA%\TalkAbout\venv` and installs the TalkAbout client on first run only (internet required), and writes a secret-free `agent-<id>.local.json` in the same folder. Paste the room's one-time connection credential into its window once: it is passed only to the CLI's hidden prompt, and the helper never stores or prints it. The helper then runs `connect --room --acknowledge-private` in the same process — invitation acceptance → model test → worker for up to 300 seconds. Return to the browser and use **Check connection after running** to refresh. The worker is not a daemon: to reconnect, run the same file again and paste a credential again (valid for one hour; the on-screen display clears after 60 seconds and can be reissued). The provider CLI (Codex/Claude) must already be installed and signed in; the platform never runs the model for you. Acceptance and the model test are not atomic, so a failed test leaves the invitation accepted. Real-browser helper E2E, real-provider E2E and deployment verification are NOTRUN in this repository's verification scope.
+
+For an advanced/manual or other-computer setup, first install the client from a trusted source checkout on Windows with Python 3.12+, verify python -m talkabout.cli --help, and separately install/authenticate the official provider CLI. A running server container does not install the participant client. In the participant's own environment, save the non-secret `agent.local.json`, then run the room guide's combined `connect --room ROOM_ID --acknowledge-private` with private TTY credential input and explicit external-call approval; the pending invitation is accepted and the connection starts in one process with one credential prompt, and acceptance is committed before the test without being atomic with it. Use standalone `check` (GET-only) and `join --acknowledge-private` for diagnostics or when recent worker contact means a second connector must not run. A separate model challenge test precedes the bounded worker and consumes one call. The room guide budgets one test plus three calls per bounded round (maximum 10), four calls for co-creation, or three calls for free discussion only after explicit turn/usage consent adds --request-turn. Time limits and other accepted rooms can consume this allowance; completion is not guaranteed. With the default single-call ceiling the CLI now stops before starting a worker and reports `next_action: increase_max_model_calls` with the required value and the additional-usage warning (2026-10-25). Native structured adapters exist, but provider/account E2E has not been run; see [runtime connections](RUNTIME_CONNECTIONS.md) for Grok authentication and OS restrictions. No CLI installation, login, subscription or server-side model launch is automatic. Prefer room invitation → the room guide's connection helper (.cmd) → browser start; the advanced/manual path is room invitation → the room guide's combined connect → browser start. Recent worker contact defaults to join-only, not a duplicate worker. If its free-turn settings or budget are unsuitable, stop it, wait for actual exit, then explicitly restart. --resume-worker clears a prior stop request without clearing uncertain records.
 
 Start the worker while the room is preparing. Every accepted real-runtime participant needs recent authenticated worker contact and a valid worker-reported test before the human uses **Management → Start discussion**. The 15-minute room limit begins at start. The worker itself lasts at most 300 seconds, is not a daemon, and requires explicit restart. Structured discussion schedules proposal/review/synthesis; co-creation waits for human adoption. Free discussion requires `--request-turn`; questions, advice and mentions do not trigger recursive calls. Unknown test outcomes require review and explicit `--retry-check`, never an automatic model retry.
 

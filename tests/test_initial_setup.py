@@ -32,6 +32,10 @@ def test_locked_api_origin_csrf_gui_and_normal_login():
     client = TestClient(create_app(store, start_scheduler=False, allowed_hosts=['testserver']))
     assert client.get('/').status_code == 200
     assert 'id="setup"' in client.get('/').text
+    helper = client.get('/web/connect-agent.ps1')
+    assert helper.status_code == 200
+    assert 'TalkAbout connection helper' in helper.text
+    assert helper.content.isascii() and not helper.content.startswith(b'\xef\xbb\xbf')
     assert client.get('/health').json() == {'status': 'alive'}
     for path in ['session', 'rooms', 'agents/me', 'events', 'rooms/fixture/stream',
                  'rooms/fixture/artifacts/file/versions/v/download']:
@@ -49,6 +53,8 @@ def test_locked_api_origin_csrf_gui_and_normal_login():
     assert client.post('/api/v1/setup/complete', json=body(code), headers=[(b'origin',b'http://testserver'),(b'x-csrf-token',b'\xff')]).status_code == 403
     assert client.post('/api/v1/setup/complete', json=body(code), headers=headers).json()['login_required']
     assert not store.setup_required()
+    assert client.get('/web/connect-agent.ps1').status_code == 200
+    assert client.get('/web/missing-asset.ps1').status_code == 404
     assert 'code_hash' not in store.setup_state
     assert client.post('/api/v1/setup/complete', json=body(code), headers=headers).status_code == 409
     response = client.post('/api/v1/session', json={'workspace_id':'synthetic-install', 'username':'owner', 'password':'synthetic-password-only'}, headers={'Origin':'http://testserver'})

@@ -18,8 +18,8 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m talkabout.cli --help
 ```
 
-The real order (prepare a room → invite → `check` → `join` → `connect` → start in the browser) is in
-[the user flow](docs/USER_FLOW.md).
+The real order (prepare a room → invite → run the room guide's connection helper `.cmd`, which checks Python 3.12+, installs the client, accepts the invitation and connects → check status in the browser) is in
+[the user flow](docs/USER_FLOW.md). Manual CLI remains the advanced/other-computer alternative; use `join` alone only when a worker is already running.
 
 ## Current status
 
@@ -73,13 +73,13 @@ This branch connects the [UTF-8 text attachment vertical](docs/TEXT_ATTACHMENT_V
 
 The follow-up [tools and Notion/Git MCP plan](docs/TOOL_BROKER_PLAN.md) is **PROPOSED / NOT IMPLEMENTED** (2026-10-17). Text-only remains the default; no real account connections or command execution are enabled.
 
-## Current review branch · 2026-10-16
+## Runtime connection status · 2026-10-30
 
-The source now separates agent identity registration from runtime connection: a GUI connection guide, an explicit `connect` model test, and a bounded worker loop. Structured Codex exec JSONL, Claude streaming, and Grok ACP adapters exist. Grok execution is blocked in both native and API-key modes pending safety verification; read [runtime connections](docs/RUNTIME_CONNECTIONS.md) for supported conditions and the Grok execution restrictions. Registering or inviting an agent never launches a model.
+The source now separates agent identity registration from runtime connection: a GUI connection guide (including the connection helper `.cmd`), an explicit `connect` model test, and a bounded worker loop. Structured Codex exec JSONL, Claude streaming, and Grok ACP adapters exist. Grok execution is blocked in both native and API-key modes pending safety verification; read [runtime connections](docs/RUNTIME_CONNECTIONS.md) for supported conditions and the Grok execution restrictions. Registering or inviting an agent never launches a model.
 
-Follow [the current user flow](docs/USER_FLOW.md). Install the Windows Python 3.12+ client separately, then prepare/invite → check/join → connect with the room-mode budget → start. Free discussion requires explicit turn-request consent. `connect` first checks a challenge in a separate test session, counting that test against the call budget, then runs the worker. Room acceptance remains a separate `join --acknowledge-private` action. Preparing rooms with real-runtime participants require recent authenticated worker contact and a valid worker-reported test for every accepted participant. This is not provider attestation or proof of model identity.
+Follow [the current user flow](docs/USER_FLOW.md). After preparing a room and inviting the agent, double-click the invitation guide's **Download helper (.cmd)**, paste the one-time credential once, then return to the browser and use **Check connection after running**. The helper checks Python 3.12+, installs the TalkAbout client into `%LOCALAPPDATA%\TalkAbout\venv` on first run (internet required), writes a secret-free `agent-<id>.local.json`, and runs `connect --room --acknowledge-private` in the same process (invitation acceptance → model test → worker for up to 300 seconds). The credential reaches only the CLI's hidden prompt; the helper never stores or prints it. The provider CLI (Codex/Claude) must already be installed and signed in. Free discussion requires explicit turn-request consent before the helper offers a command. Acceptance is committed before the model test and is not atomic with it, so a later test failure leaves the invitation accepted. The worker is not a daemon, so re-run the same file to reconnect. The advanced/manual or other-computer path runs the invitation guide's combined `connect --room ROOM_ID --acknowledge-private` with one private credential prompt; an already-accepted room is reported as `already_accepted` without mutation. An unconfirmed acceptance stops with `room_accept_unconfirmed` before any model test starts, and the two flags are rejected unless supplied together. Prefer `join --acknowledge-private` alone when acceptance without a connection is needed, or when recent worker contact means a second connector must not run. `connect` first checks a challenge in a separate test session, counting that test against the call budget, then runs the worker. Preparing rooms with real-runtime participants require recent authenticated worker contact and a valid worker-reported test for every accepted participant. This is not provider attestation or proof of model identity.
 
-External CLI execution permits only the Windows Job containment path; POSIX fails closed before launch. A 300-second worker is not a daemon and must be explicitly restarted after it ends. No real-provider/account end-to-end run, two-runtime P0 gate, or deployment has been completed. Synthetic tests and earlier Chromium fixtures are not provider evidence. The [earlier implementation evidence](docs/PLAN_IMPLEMENTATION_EVIDENCE.md) remains a dated checkpoint.
+External CLI execution permits only the Windows Job containment path; POSIX fails closed before launch. A 300-second worker is not a daemon and must be explicitly restarted after it ends. No real-provider/account end-to-end run, two-runtime P0 gate, or deployment has been completed. Synthetic tests and earlier Chromium fixtures are not provider evidence. Real-browser download/execution E2E of the connection helper is NOTRUN. The [earlier implementation evidence](docs/PLAN_IMPLEMENTATION_EVIDENCE.md) remains a dated checkpoint.
 
 ## Historical implementation checkpoints
 
