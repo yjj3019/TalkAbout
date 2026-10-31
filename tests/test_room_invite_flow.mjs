@@ -232,6 +232,63 @@ test('connection helper downloads one launcher and copies the same invocation wi
  assert.equal(h.calls.filter(c=>c.method==='POST').length,0);
 });
 
+test('one-click connect is offered only with a usable helper plan',async()=>{
+ const h=await harness();await h.open();
+ assert.equal(h.node('invite-oneclick').hidden,false);
+ for(const change of ["el('invite-client').value='grok'","el('invite-machine').value='other'","onboardingContext.room.state='paused'","onboardingContext.room.dispatch_held=true"]){
+  h.run("el('invite-client').value='codex';el('invite-machine').value='same';onboardingContext.room.state='preparing';onboardingContext.room.dispatch_held=false;renderInviteWizard();"+change+";renderInviteWizard();");
+  assert.equal(h.node('invite-oneclick').hidden,true,change);
+ }
+ h.run("el('invite-client').value='codex';el('invite-machine').value='same';onboardingContext.room.state='preparing';onboardingContext.room.dispatch_held=false;renderInviteWizard();");
+ const noManage=await harness({manage:false});await noManage.open();
+ assert.equal(noManage.node('invite-oneclick').hidden,true);
+});
+
+test('one-click copies a room-scoped invite once and opens the pinned handler',async()=>{
+ const h=await harness(),response=issued();h.respond('POST','agents/'+agent.id+'/credentials',response);await h.open();
+ h.node('invite-oneclick-go').onclick();await tick();await tick();
+ const request=h.calls.find(c=>c.method==='POST');
+ assert.equal(h.calls.filter(c=>c.method==='POST').length,1);
+ const body=JSON.parse(request.options.body);assert.equal(body.room_id,'room');assert.deepEqual(body.scopes,scopes);
+ assert.equal(h.confirms.length,1);assert.ok(h.confirms[0].includes(labels.ko.oneClickConfirm));
+ assert.equal(h.copies.length,1);const payload=JSON.parse(h.copies[0]);
+ assert.deepEqual(Object.keys(payload).sort(),['agent','auth_mode','max_model_calls','origin','request_turn','room','runtime','token','v']);
+ assert.equal(payload.v,1);assert.equal(payload.origin,'http://127.0.0.1:19999');assert.equal(payload.room,'room');assert.equal(payload.agent,agent.id);
+ assert.equal(payload.runtime,'codex');assert.equal(payload.auth_mode,'native');assert.equal(payload.max_model_calls,4);assert.equal(payload.request_turn,false);
+ assert.equal(payload.token,'synthetic-room-secret');assert.ok(!h.copies[0].includes('talkabout://'));
+ assert.equal(response.token,'');assert.equal(h.node('invite-secret-value').value,'');
+ assert.equal(h.run('location.href'),'talkabout://connect');
+ assert.equal(h.node('invite-oneclick-state').textContent,labels.ko.oneClickStarted);
+ assert.equal(h.node('invite-oneclick-hint').hidden,true);
+ for(const id of ['onboarding-config','onboarding-prompt','onboarding-commands','invite-command','invite-summary'])assert.ok(!(h.node(id).value||h.node(id).textContent).includes('synthetic-room-secret'));
+ for(const run of h.timers){try{run();}catch{}}
+ assert.equal(h.node('invite-oneclick-hint').hidden,false);
+});
+
+test('one-click never navigates or claims success when the clipboard is denied',async()=>{
+ const h=await harness(),response=issued();h.respond('POST','agents/'+agent.id+'/credentials',response);await h.open();h.failClipboard();
+ h.node('invite-oneclick-go').onclick();await tick();await tick();
+ assert.equal(response.token,'');assert.equal(h.node('invite-secret-value').value,'');
+ assert.equal(h.node('invite-oneclick-state').textContent,labels.ko.oneClickClipboardFailure);
+ assert.equal(h.run('location.href'),undefined);
+});
+
+test('one-click without consent or after a cancelled confirmation issues nothing',async()=>{
+ const declined=await harness({consent:false});await declined.open();declined.node('invite-oneclick-go').onclick();await tick();
+ assert.equal(declined.calls.filter(c=>c.method==='POST').length,0);assert.equal(declined.copies.length,0);assert.equal(declined.run('location.href'),undefined);
+});
+
+test('helper installer pins the server origin and carries no invite or credential',async()=>{
+ const h=await harness();await h.open();h.node('invite-oneclick-install').onclick();
+ assert.equal(h.downloads.length,1);const batch=await h.downloads[0].text();
+ assert.ok(batch.startsWith('@echo off\r\n'));assert.ok(batch.includes('\r\n'));
+ assert.ok(batch.includes("-InstallHelper -Server 'http://127.0.0.1:19999'"));
+ assert.ok(batch.includes("'http://127.0.0.1:19999/web/connect-agent.ps1'"));
+ assert.ok(!batch.includes('talkabout://connect'));assert.ok(!batch.includes('synthetic-room-secret'));
+ assert.ok(!batch.includes('-Room '));assert.ok(!batch.includes('-Agent '));assert.ok(!batch.includes('--prompt-token'));
+ assert.equal(h.calls.filter(c=>c.method==='POST').length,0);
+});
+
 test('connection helper stays hidden for unsupported runtime, remote host, closed state and free mode without consent',async()=>{
  const h=await harness();await h.open();
  for(const [change,expected] of [

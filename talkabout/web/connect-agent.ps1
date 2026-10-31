@@ -10,14 +10,23 @@
 #
 # Running this file with -File works the same way.
 #
+# The room page also offers a one-click path. It installs this helper once per
+# Windows user with -InstallHelper, which registers a talkabout:// handler
+# pinned to one server origin. Pressing the room-page button then copies a
+# short-lived invite payload (server, room, agent, runtime, budget, credential)
+# to the clipboard and opens that handler. The handler ignores the link text,
+# reads the clipboard once, clears it, and passes the credential to the CLI
+# through the child process environment only. The credential never appears in a
+# URL, an argument, the generated launcher, or this helper's output.
+#
 # The helper finds Python 3.12 or newer, prepares a private virtual environment
 # under the state directory, writes a non-secret client configuration file, and
 # starts the TalkAbout CLI one time. The CLI accepts the pending room invitation,
 # runs one model test, and then runs a bounded worker.
 #
 # The room connection secret is read only by the CLI hidden prompt
-# (--prompt-token). This helper never stores, prints, passes as an argument, or
-# logs the secret.
+# (--prompt-token) in the download path. This helper never stores, prints, passes
+# as an argument, or logs the secret in either path.
 #
 # ASCII only on purpose: Windows PowerShell 5.1 may decode this file and
 # Invoke-RestMethod output without a charset, so non-ASCII bytes could corrupt
@@ -26,8 +35,8 @@
 
 param(
     [Parameter(Mandatory = $true)][string]$Server,
-    [Parameter(Mandatory = $true)][string]$Room,
-    [Parameter(Mandatory = $true)][string]$Agent,
+    [string]$Room,
+    [string]$Agent,
     [ValidateSet('codex', 'claude')][string]$Runtime = 'codex',
     [ValidateSet('native', 'api_key')][string]$AuthMode = 'native',
     [int]$MaxModelCalls = 3,
@@ -36,7 +45,19 @@ param(
     [string]$StateDir = (Join-Path $env:LOCALAPPDATA 'TalkAbout'),
     [switch]$RequestTurn,
     [switch]$Update,
-    [switch]$DryRun
+    [switch]$DryRun,
+    # One-click mode: the room page puts a short-lived JSON payload on the
+    # clipboard and opens talkabout://connect. This helper reads it once, uses
+    # the credential only through the child process environment, and clears the
+    # clipboard. The payload never appears in an argument, a URL, or output.
+    [switch]$FromClipboard,
+    # Installs this helper for the current Windows user and registers the
+    # talkabout:// handler pinned to one server origin. The handler never reads
+    # a server origin from the URL it receives.
+    [switch]$InstallHelper,
+    # Diagnostics only: supply the clipboard payload without a clipboard. The
+    # generated installer and the registered handler never use this parameter.
+    [string]$ClipboardText = ''
 )
 
 $script:PackageArchiveUrl = 'https://github.com/yjj3019/TalkAbout/archive/refs/heads/main.zip'
@@ -92,6 +113,148 @@ function Resolve-StatePath {
             return $null
         }
     }
+}
+
+function Read-ClipboardInvite {
+    # Read the one-click payload exactly once. A marked clipboard value is
+    # replaced immediately so a second activation cannot reuse it.
+    param([string]$Text)
+    if ([string]::IsNullOrWhiteSpace($Text)) {
+        try {
+            $Text = Get-Clipboard -Raw -ErrorAction Stop
+        } catch {
+            Write-Fail 'Could not read the clipboard. Use the download-and-run helper or the manual command instead.'
+        }
+    }
+    $text = [string]$Text
+    if (-not [string]::IsNullOrWhiteSpace($text)) {
+        try { Set-Clipboard -Value ' ' -ErrorAction Stop } catch { }
+    }
+    return $text
+}
+
+function ConvertFrom-InvitePayload {
+    # Validate every field before using it. Unknown or extra keys are refused so
+    # a payload cannot smuggle a different target or a different server.
+    param([string]$Text, [string]$PinnedOrigin)
+    if ([string]::IsNullOrWhiteSpace($Text)) {
+        Write-Fail 'The clipboard does not contain a TalkAbout one-click invite. Copy the invite again from the room page.'
+    }
+    try {
+        $payload = $Text.Trim() | ConvertFrom-Json
+    } catch {
+        Write-Fail 'The clipboard does not contain a valid TalkAbout one-click invite.'
+    }
+    if ($null -eq $payload -or $payload -is [array] -or $payload -isnot [pscustomobject]) {
+        Write-Fail 'The clipboard does not contain a valid TalkAbout one-click invite.'
+    }
+    $allowed = @('v', 'origin', 'room', 'agent', 'runtime', 'auth_mode', 'max_model_calls', 'request_turn', 'token')
+    foreach ($name in $payload.PSObject.Properties.Name) {
+        if ($allowed -notcontains $name) {
+            Write-Fail ('The invite payload contains an unsupported field: ' + $name)
+        }
+    }
+    if ($payload.v -ne 1) {
+        Write-Fail 'The invite payload version is not supported. Update the room page and try again.'
+    }
+    if (-not (Test-OriginValue -Value ([string]$payload.origin))) {
+        Write-Fail 'The invite payload does not name a valid server origin.'
+    }
+    if ([string]$payload.origin -ne $PinnedOrigin) {
+        Write-Fail ('The invite is for ' + [string]$payload.origin + ' and this helper is installed for ' + $PinnedOrigin + '. Install the helper for that server first.')
+    }
+    if (([string]$payload.room) -cnotmatch '^[A-Za-z0-9-]{1,128}$') {
+        Write-Fail 'The invite payload does not name a valid room.'
+    }
+    if (([string]$payload.agent) -cnotmatch '^[A-Za-z0-9-]{1,64}$') {
+        Write-Fail 'The invite payload does not name a valid agent.'
+    }
+    if (@('codex', 'claude') -notcontains [string]$payload.runtime) {
+        Write-Fail 'The invite payload names an unsupported runtime.'
+    }
+    if (@('native', 'api_key') -notcontains [string]$payload.auth_mode) {
+        Write-Fail 'The invite payload names an unsupported authentication mode.'
+    }
+    if ($payload.max_model_calls -isnot [int] -and $payload.max_model_calls -isnot [long]) {
+        Write-Fail 'The invite payload does not name a valid model-call budget.'
+    }
+    if ($payload.max_model_calls -lt 1 -or $payload.max_model_calls -gt 10) {
+        Write-Fail 'The invite payload names a model-call budget outside 1 to 10.'
+    }
+    if ($payload.request_turn -isnot [bool]) {
+        Write-Fail 'The invite payload does not name a valid turn consent.'
+    }
+    $token = [string]$payload.token
+    if ([string]::IsNullOrWhiteSpace($token) -or $token.Length -gt 512 -or $token -match '\s') {
+        Write-Fail 'The invite payload does not contain a usable credential.'
+    }
+    return @{
+        Origin = [string]$payload.origin
+        Room = [string]$payload.room
+        Agent = [string]$payload.agent
+        Runtime = [string]$payload.runtime
+        AuthMode = [string]$payload.auth_mode
+        MaxModelCalls = [int]$payload.max_model_calls
+        RequestTurn = [bool]$payload.request_turn
+        Token = $token
+    }
+}
+
+function Install-ConnectionHelper {
+    # One-time per-user install: copy this script, write the pinned launcher and
+    # register talkabout:// for the current user only. The handler ignores the
+    # URL it receives, so a hostile talkabout:// link cannot change the server.
+    param([string]$Origin)
+    $helperDir = Join-Path $env:LOCALAPPDATA 'TalkAbout\helper'
+    Write-Banner
+    Write-Host 'TalkAbout one-click helper setup'
+    Write-Host ('  Server        : ' + $Origin)
+    Write-Host ('  Helper folder : ' + $helperDir)
+    Write-Host '  Scope         : current Windows user only (HKCU), no administrator rights'
+    try {
+        New-Item -ItemType Directory -Path $helperDir -Force -ErrorAction Stop | Out-Null
+    } catch {
+        Write-Fail ('Could not create ' + $helperDir + ': ' + $_.Exception.Message)
+    }
+    $helperScript = Join-Path $helperDir 'connect-agent.ps1'
+    $launcher = Join-Path $helperDir 'launch.cmd'
+    try {
+        $scriptText = Invoke-RestMethod -UseBasicParsing -Uri ($Origin + '/web/connect-agent.ps1')
+    } catch {
+        Write-Fail ('Could not download the helper from ' + $Origin + ': ' + $_.Exception.Message)
+    }
+    $encoding = New-Object System.Text.UTF8Encoding($false)
+    try {
+        [System.IO.File]::WriteAllText($helperScript, [string]$scriptText, $encoding)
+    } catch {
+        Write-Fail ('Could not write ' + $helperScript + ': ' + $_.Exception.Message)
+    }
+    $helperArguments = '-Server ' + ("'" + $Origin + "'") + ' -FromClipboard'
+    $launcherLine = 'powershell -NoProfile -ExecutionPolicy Bypass -File "%LOCALAPPDATA%\TalkAbout\helper\connect-agent.ps1" ' + $helperArguments
+    $launcherLines = @('@echo off', $launcherLine)
+    try {
+        [System.IO.File]::WriteAllText($launcher, ($launcherLines -join "`r`n") + "`r`n", [System.Text.Encoding]::ASCII)
+    } catch {
+        Write-Fail ('Could not write ' + $launcher + ': ' + $_.Exception.Message)
+    }
+    $command = '"' + $launcher + '" "%1"'
+    try {
+        New-Item -Path 'HKCU:\Software\Classes\talkabout' -Force -ErrorAction Stop | Out-Null
+        New-ItemProperty -Path 'HKCU:\Software\Classes\talkabout' -Name '(default)' -Value 'URL:TalkAbout connection' -PropertyType String -Force | Out-Null
+        New-ItemProperty -Path 'HKCU:\Software\Classes\talkabout' -Name 'URL Protocol' -Value '' -PropertyType String -Force | Out-Null
+        New-Item -Path 'HKCU:\Software\Classes\talkabout\shell\open\command' -Force -ErrorAction Stop | Out-Null
+        New-ItemProperty -Path 'HKCU:\Software\Classes\talkabout\shell\open\command' -Name '(default)' -Value $command -PropertyType String -Force | Out-Null
+    } catch {
+        Write-Fail ('Could not register the talkabout:// handler: ' + $_.Exception.Message)
+    }
+    Write-Host ''
+    Write-Host 'Installed. Return to the room page and press the one-click connect button again.'
+    Write-Host ('The handler is pinned to ' + $Origin + '; it ignores the link text it receives.')
+    if (Test-InteractiveConsole) {
+        Write-Host ''
+        try { [void](Read-Host 'Press Enter to close this window') } catch { }
+    }
+    return 0
 }
 
 function Confirm-StateDirectory {
@@ -230,8 +393,10 @@ function Write-AgentConfig {
 }
 
 function Get-ConnectArguments {
-    # Build the CLI argument list. The last element is the hidden-input switch;
-    # no credential value ever appears here.
+    # Build the CLI argument list. With -PromptToken the last element is the
+    # hidden-input switch and the credential is read by the CLI itself; in
+    # one-click mode the credential arrives through the child environment and
+    # no argument mentions it either way.
     param(
         [string]$ConfigPath,
         [string]$RuntimeName,
@@ -240,7 +405,8 @@ function Get-ConnectArguments {
         [int]$ModelCalls,
         [int]$StepCount,
         [int]$SecondLimit,
-        [bool]$WantTurn
+        [bool]$WantTurn,
+        [bool]$PromptToken = $true
     )
     $arguments = @(
         '-m', 'talkabout.cli', 'connect',
@@ -257,7 +423,9 @@ function Get-ConnectArguments {
     if ($WantTurn) {
         $arguments += '--request-turn'
     }
-    $arguments += '--prompt-token'
+    if ($PromptToken) {
+        $arguments += '--prompt-token'
+    }
     return $arguments
 }
 
@@ -290,6 +458,61 @@ function Test-InteractiveConsole {
 if (-not (Test-OriginValue -Value $Server)) {
     Write-Fail 'Server must be an http(s) origin such as http://127.0.0.1:8080, with no trailing slash, path, query, or credentials.'
 }
+
+if ($InstallHelper.IsPresent) {
+    if ($FromClipboard.IsPresent) {
+        Write-Fail 'InstallHelper runs alone; it does not connect.'
+    }
+    $helperDir = Join-Path $env:LOCALAPPDATA 'TalkAbout\helper'
+    if ($DryRun.IsPresent) {
+        $quotedOrigin = "'" + $Server + "'"
+        $launcherLine = 'powershell -NoProfile -ExecutionPolicy Bypass -File <helper>\connect-agent.ps1 -Server ' + $quotedOrigin + ' -FromClipboard'
+        Write-Banner
+        Write-Host 'Dry run: one-click helper install plan.'
+        Write-Host '  Nothing is downloaded, written or registered in a dry run.'
+        Write-Host ('  Server        : ' + $Server)
+        Write-Host ('  Helper folder : ' + $helperDir)
+        Write-Host ('  Writes        : ' + (Join-Path $helperDir 'connect-agent.ps1') + ' and ' + (Join-Path $helperDir 'launch.cmd'))
+        Write-Host ('  Launcher      : ' + $launcherLine)
+        Write-Host '  Registry      : HKCU\Software\Classes\talkabout\shell\open\command -> "<helper>\launch.cmd" "%1"'
+        Write-Host ('  Pinned origin : ' + $Server + ' (the handler ignores the link text it receives)')
+        Write-Host '  Secret        : the installer writes no credential; it arrives later through the clipboard payload'
+        exit 0
+    }
+    exit (Install-ConnectionHelper -Origin $Server)
+}
+
+$clipboardToken = ''
+$promptToken = $true
+if ($FromClipboard.IsPresent) {
+    $payloadText = $ClipboardText
+    if ([string]::IsNullOrWhiteSpace($payloadText)) {
+        if ($DryRun.IsPresent) {
+            # A dry run must not consume the clipboard for a real activation.
+            Write-Banner
+            Write-Host 'Dry run: one-click mode.'
+            Write-Host ('  Server        : ' + $Server)
+            Write-Host '  Clipboard     : would be read once for a short-lived invite payload; nothing is read or cleared in a dry run'
+            Write-Host '  Credential    : would be taken from that payload and passed only through the child environment'
+            Write-Host '  Next          : press the one-click connect button on the room page, then run the installed helper'
+            exit 0
+        }
+        $payloadText = Read-ClipboardInvite -Text ''
+    }
+    $invite = ConvertFrom-InvitePayload -Text $payloadText -PinnedOrigin $Server
+    if ([string]::IsNullOrWhiteSpace($Room)) { $Room = $invite.Room }
+    if ([string]::IsNullOrWhiteSpace($Agent)) { $Agent = $invite.Agent }
+    if ($Room -ne $invite.Room) { Write-Fail 'The -Room argument does not match the invite payload.' }
+    if ($Agent -ne $invite.Agent) { Write-Fail 'The -Agent argument does not match the invite payload.' }
+    $Runtime = $invite.Runtime
+    $AuthMode = $invite.AuthMode
+    $MaxModelCalls = $invite.MaxModelCalls
+    $RequestTurn = [switch]$invite.RequestTurn
+    $clipboardToken = $invite.Token
+    $promptToken = $false
+    $payloadText = ''
+}
+
 if ($Room -cnotmatch '^[A-Za-z0-9-]{1,128}$') {
     Write-Fail 'Room must match ^[A-Za-z0-9-]{1,128}$ (letters, digits, hyphen).'
 }
@@ -342,7 +565,7 @@ Write-Host ('  State dir     : ' + $statePath)
 Write-Host ('  Config file   : ' + $configPath)
 Write-Host ('  Journal file  : ' + $journalPath)
 
-$plannedArguments = Get-ConnectArguments -ConfigPath $configPath -RuntimeName $Runtime -AuthModeName $AuthMode -RoomId $Room -ModelCalls $MaxModelCalls -StepCount $Steps -SecondLimit $MaxSeconds -WantTurn $RequestTurn.IsPresent
+$plannedArguments = Get-ConnectArguments -ConfigPath $configPath -RuntimeName $Runtime -AuthModeName $AuthMode -RoomId $Room -ModelCalls $MaxModelCalls -StepCount $Steps -SecondLimit $MaxSeconds -WantTurn $RequestTurn.IsPresent -PromptToken $promptToken
 
 # ---------------------------------------------------------------------------
 # 5. Dry run: report the plan, create nothing, execute nothing.
@@ -374,7 +597,11 @@ if ($DryRun.IsPresent) {
     Write-Host ('  Configuration : would write ' + $configPath + ' as UTF-8 without BOM:')
     Write-Host ('    ' + (Get-AgentConfigJson -BaseUrl $Server -JournalPath $journalPath))
     Write-Host ('  Provider CLI  : would check "' + $providerName + '" on PATH; a missing CLI only warns')
-    Write-Host '  Secret        : the CLI would ask once in a hidden prompt (--prompt-token); the helper never stores or prints it'
+    if ($promptToken) {
+        Write-Host '  Secret        : the CLI would ask once in a hidden prompt (--prompt-token); the helper never stores or prints it'
+    } else {
+        Write-Host '  Secret        : comes from the one-click invite payload through the child environment only; the helper does not print or store it'
+    }
     Write-Host ('  Next          : the CLI accepts the invitation, runs one model test, then runs the bounded worker (max ' + $MaxSeconds + ' second(s))')
     Write-Host ''
     Write-Host 'Dry run complete. Re-run this helper in an interactive window to connect.'
@@ -475,31 +702,44 @@ if ($null -eq $providerCommand) {
 }
 
 # ---------------------------------------------------------------------------
-# 7. Explain the one-time secret prompt.
+# 7. Explain where the credential comes from.
 # ---------------------------------------------------------------------------
 
 Write-Host ''
-Write-Host '[5/6] One-time connection secret'
-Write-Host '  The room page shows a one-time connection secret.'
-Write-Host '  Paste it once into this window when the CLI asks; the input stays hidden.'
-Write-Host '  This helper does not store, print, or pass the secret as an argument.'
-Write-Host '  The secret display disappears after 60 seconds; request a new secret on the room page if it is gone.'
+Write-Host '[5/6] Connection credential'
+if ($promptToken) {
+    Write-Host '  The room page shows a one-time connection secret.'
+    Write-Host '  Paste it once into this window when the CLI asks; the input stays hidden.'
+    Write-Host '  This helper does not store, print, or pass the secret as an argument.'
+    Write-Host '  The secret display disappears after 60 seconds; request a new secret on the room page if it is gone.'
+} else {
+    Write-Host '  The one-click invite arrived through the clipboard and was cleared already.'
+    Write-Host '  The credential is passed to the client through this process environment only.'
+    Write-Host '  This helper does not print or store it; it stays valid for one hour.'
+}
 
 # ---------------------------------------------------------------------------
-# 8. Start the CLI with the hidden token prompt.
+# 8. Start the CLI. The one-click credential is exported for the child process
+#    only and removed from this process before the result is reported.
 # ---------------------------------------------------------------------------
 
 Write-Host ''
 Write-Host '[6/6] Start the TalkAbout CLI'
-$connectArguments = Get-ConnectArguments -ConfigPath $configPath -RuntimeName $Runtime -AuthModeName $AuthMode -RoomId $Room -ModelCalls $MaxModelCalls -StepCount $Steps -SecondLimit $MaxSeconds -WantTurn $RequestTurn.IsPresent
+$connectArguments = Get-ConnectArguments -ConfigPath $configPath -RuntimeName $Runtime -AuthModeName $AuthMode -RoomId $Room -ModelCalls $MaxModelCalls -StepCount $Steps -SecondLimit $MaxSeconds -WantTurn $RequestTurn.IsPresent -PromptToken $promptToken
 Write-Host ('  ' + (Format-CommandLine -Exe $clientPython -Arguments $connectArguments))
 Write-Host ''
 $connectExitCode = 1
+if (-not $promptToken) {
+    $env:TALKABOUT_TOKEN = $clipboardToken
+    $clipboardToken = ''
+}
 try {
     & $clientPython @connectArguments
     if ($null -ne $LASTEXITCODE) { $connectExitCode = $LASTEXITCODE }
 } catch {
     [Console]::Error.WriteLine('ERROR: could not start the TalkAbout client: ' + $_.Exception.Message)
+} finally {
+    if (-not $promptToken) { Remove-Item Env:TALKABOUT_TOKEN -ErrorAction SilentlyContinue }
 }
 
 # ---------------------------------------------------------------------------
