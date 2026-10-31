@@ -105,7 +105,9 @@ def test_junction_workspace_is_refused(tmp_path, monkeypatch):
     monkeypatch.setattr(Path, 'is_junction', lambda self: self == candidate, raising=False)
     with pytest.raises(AdapterError, match='^runtime_work_workspace_invalid$'):
         runtime(work_profile=True, work_workspace=str(candidate))
-    assert runtime(work_profile=True, work_workspace=str(target)).work_workspace == target.resolve()
+    # A plain directory outside the platform tree is covered by
+    # test_valid_workspace_is_accepted_and_resolved; this test must not assume the
+    # pytest basetemp lives outside the repository (CI keeps it inside).
 
 
 @pytest.mark.parametrize('kind, transport', [('claude', 'exec-json'), ('grok', 'exec-json'),
