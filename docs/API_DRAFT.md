@@ -35,6 +35,7 @@ rooms:create agent는 workspace quota와 사전 creator_policy 안에서 private
 | GET /agents/me/snapshot?previous_cursor=… | agent:self_read + 각 room:read | scope rebase·room gap 복구, snapshot/tasks와 새 vector cursor |
 | GET /rooms/{room_id}/events?cursor=…&wait_seconds=… | room:read | 방 하나의 opaque cursor; 통합 cursor와 서로 교환 불가 |
 | GET /rooms/{room_id}/snapshot | room:read | 현재 허용 상태·요약·최근 이벤트·assigned queued task와 snapshot_cursor |
+| GET /rooms/{room_id}/diagnostics | room:read human | **read-only** 대기 사유 enum(관측만·상태 불변·모델 호출 없음). terminal은 빈 목록, `uncertain`은 사람 해소 대기로 구분 |
 | GET /rooms/{room_id}/stream | room:read human UI | P1 SSE, Last-Event-ID 복구, 동일 ACL·재조회 |
 | GET /rooms/{room_id}/tasks | room:read | 자기 assigned task; human은 허용된 관리 범위 |
 | GET /rooms/{room_id}/tasks/{task_id} | room:read | 현재 state·attempt·lease·generation·membership_revision |

@@ -150,6 +150,18 @@ class _FixedWorkspace:
         return None
 
 
+def _is_junction(path):
+    """Final-component Windows junction/reparse check.
+
+    Junctions are not reported by Path.is_symlink() on Windows, so the documented
+    "final component is not a link" rule needs its own check. This is a path-shape
+    check only: it is not a sandbox, impersonation protection, or a race-free
+    guarantee for intermediate components.
+    """
+    checker = getattr(path, 'is_junction', None)
+    return bool(checker()) if checker is not None else False
+
+
 def _validated_work_workspace(kind, codex_transport, path):
     """Resolve the one directory a work-profile turn may read and edit.
 
@@ -162,7 +174,7 @@ def _validated_work_workspace(kind, codex_transport, path):
     if not isinstance(path, str) or not path.strip():
         raise AdapterError('runtime_work_workspace_required')
     candidate = Path(path).expanduser()
-    if candidate.is_symlink():
+    if candidate.is_symlink() or _is_junction(candidate):
         raise AdapterError('runtime_work_workspace_invalid')
     try:
         resolved = candidate.resolve(strict=True)

@@ -188,6 +188,7 @@ pwsh tools/ci_postgres_fixture.ps1 -Action stop -BinDir <postgres>/bin -DataDir 
 | [RUNTIME_IMPLEMENTATION_VALIDATION.md](RUNTIME_IMPLEMENTATION_VALIDATION.md) | 실제 에이전트 연결 구현·검증 기록(2026-10-17 스냅샷) |
 | [POSIX_CONTAINMENT_PLAN.md](POSIX_CONTAINMENT_PLAN.md) | POSIX 실행 격리 계획(C1 구현, 활성화 보류) |
 | [WORK_PROFILE.md](WORK_PROFILE.md) | opt-in 로컬 작업 프로필(기본 꺼짐, sandbox 아님) |
+| [CLEAN_ROOM_IMPLEMENTATION.md](CLEAN_ROOM_IMPLEMENTATION.md) | 외부 기술의 독립 구현(clean-room) 정책·기록 템플릿 |
 | [COLLABORATION_CONTEXT.md](COLLABORATION_CONTEXT.md) | 공유 입력 경계·manifest·서버 참조 검증 |
 | [RUNNER_RESERVATIONS_PLAN.md](RUNNER_RESERVATIONS_PLAN.md) | runner 예약·원장 설계(PROPOSED, 미구현) |
 | [validation/](validation/) | 실행별 증거 JSON |

@@ -92,6 +92,22 @@ def test_symlinked_workspace_is_refused(tmp_path):
         runtime(work_profile=True, work_workspace=str(link))
 
 
+def test_junction_workspace_is_refused(tmp_path, monkeypatch):
+    """Final-component junction rejection is checked without creating a real junction.
+
+    Creating a Windows junction needs an OS call this suite does not make (NOTRUN);
+    the branch is exercised by reporting the candidate as a junction.
+    """
+    target = tmp_path / 'real'
+    target.mkdir()
+    candidate = tmp_path / 'junction'
+    candidate.mkdir()
+    monkeypatch.setattr(Path, 'is_junction', lambda self: self == candidate, raising=False)
+    with pytest.raises(AdapterError, match='^runtime_work_workspace_invalid$'):
+        runtime(work_profile=True, work_workspace=str(candidate))
+    assert runtime(work_profile=True, work_workspace=str(target)).work_workspace == target.resolve()
+
+
 @pytest.mark.parametrize('kind, transport', [('claude', 'exec-json'), ('grok', 'exec-json'),
                                              ('codex', 'app-server')])
 def test_unverified_providers_are_refused(kind, transport, workspace):

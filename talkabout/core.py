@@ -789,3 +789,12 @@ class Core(Participation):
                     for m in room["messages"].values() if m["actor_kind"] == "human" and m["seq"] >= member["read_start_seq"]]
         controls = [{"kind": "control", **copy.deepcopy(c)} for c in room["controls"].values() if c.get("requested_seq", 0) >= member["read_start_seq"]]
         return sorted(messages + controls, key=lambda item: item["created_at"])
+
+    def room_diagnostics(self, token, room_id):
+        """Read-only waiting-reason projection: no mutation, no event, no model call."""
+        actor, rooms, _ = self.store.snapshot(token)
+        require(room_id in rooms, "not_found", 404)
+        room = rooms[room_id]
+        member = authorize(actor, room, "room:read", human=True)
+        from .observation import room_diagnostics
+        return room_diagnostics(room, membership_revision=member["revision"])

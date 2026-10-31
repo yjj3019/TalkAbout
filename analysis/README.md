@@ -4,7 +4,7 @@
 
 ## 무엇이 들어 있나
 
-외부 저장소 3개를 정밀 분석해 TalkAbout에 쓸 만한 것을 판정한 기록이다.
+여러 라운드에 걸쳐 외부 저장소를 정밀 분석해 TalkAbout에 쓸 만한 것을 판정한 기록이다.
 
 | 파일 | 내용 |
 | --- | --- |
@@ -14,6 +14,8 @@
 | `r2-00-CROSS-REPO.md` | 2라운드 3-저장소 비교 종합 — 영역별 최적 출처 |
 | `r2-adjudication.md` | 1라운드 판정 재검증(18건) |
 | `r2-hermes-*.md`, `r2-opencodex-*.md` | 2라운드 상세 보고서 7편 |
+| `repo-review-2026-10-27/` | 7개 저장소 묶음(1차) — herdr, agent-browser, Codewhale, oh-my-claudecode, PDFMathTranslate, website cloner, oh-my-pi. TalkAbout 결손 대조와 단계별 반영 계획(A0~A6)의 근거 |
+| `repo-review-2026-10-31/` | 7개 저장소 묶음(2차) — serena, codex, openbot, rakazo, open-duet, OpenMausBot, munder-difflin. 승인·관찰·격리 데이터 계약과 A5/A6 선행 gate 후보 |
 
 ## 인용 규칙
 

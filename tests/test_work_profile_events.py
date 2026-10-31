@@ -237,3 +237,54 @@ def test_evidence_resets_each_turn(workspace):
     value._transport = Transport(stream([]))
     assert value._codex_exec('second') == 'done'
     assert value.last_work_evidence == {'events': 0, 'items': 0, 'changes': 0, 'observed_bytes': 0, 'outcomes': []}
+
+
+# A0 versioned schema fixture: synthetic Codex 0.164 item surface frozen by this
+# repository. Provider execution is NOTRUN; the fixture detects drift, it does not
+# claim compatibility with any installed binary.
+SCHEMA_FIXTURE = Path(__file__).resolve().parent / 'fixtures' / 'codex_exec_0164_items.json'
+SCHEMA_FIXTURE_DATA = json.loads(SCHEMA_FIXTURE.read_text(encoding='utf-8'))
+
+
+def test_versioned_exec_item_schema_fixture_matches_parser(workspace):
+    data = SCHEMA_FIXTURE_DATA
+    assert data['schema_version'] == 'codex-cli-0.164'
+    value = runtime(workspace, data['allowed_items'])
+    assert value._codex_exec('synthetic') == 'done'
+    evidence = value.last_work_evidence
+    expected = data['expected']
+    assert {key: evidence[key] for key in ('events', 'items', 'changes')} == expected
+    assert 'SECRET' not in json.dumps(evidence)
+
+
+@pytest.mark.parametrize('case', SCHEMA_FIXTURE_DATA['rejected'],
+                         ids=[case['name'] for case in SCHEMA_FIXTURE_DATA['rejected']])
+def test_versioned_exec_rejected_schema_stays_rejected(workspace, case):
+    with pytest.raises(AdapterError, match=case['error']):
+        runtime(workspace, [event(case['phase'], case['item'])])._codex_exec('synthetic')
+
+
+def test_malformed_item_after_completed_tool_is_unknown_not_success(workspace, monkeypatch):
+    """Observation failure must not be promoted to a successful turn (P0-1 contract)."""
+    value = ar.StructuredRuntime('codex', executable=sys.executable,
+                                 work_profile=True, work_workspace=workspace)
+    monkeypatch.setattr(value, '_ensure_preflight', lambda cancel: None)
+    monkeypatch.setattr(value, '_check_codex_exec_auth', lambda *args: None)
+    monkeypatch.setattr(value, 'probe', lambda: {'available': True, 'reason': None})
+    monkeypatch.setattr(value, 'command', lambda: ['synthetic'])
+    transport = Transport([{'type': 'thread.started', 'thread_id': 'thread'},
+                           {'type': 'turn.started'},
+                           event('completed', command('completed', 0)),
+                           event('completed', {'id': 'answer', 'type': 'agent_message'})])
+    transport.check = lambda *args: None
+    transport.close = lambda: True
+    transport.diagnostics = lambda: {}
+    monkeypatch.setattr(ar, '_JSONLTransport', lambda *args, **kwargs: transport)
+    interrupted = []
+    monkeypatch.setattr(value, '_interrupt', lambda: interrupted.append(True))
+    with pytest.raises(AdapterError, match='runtime_invalid_output'):
+        value.run({'room_id': 'synthetic-room'}, threading.Event())
+    assert value.last_outcome == 'unknown' and value._failed and interrupted == [True]
+    assert value.last_work_evidence['outcomes'] == [
+        {'kind': 'command_execution', 'status': 'completed', 'exit_code': 0}]
+    assert 'SECRET' not in json.dumps(value.last_work_evidence)

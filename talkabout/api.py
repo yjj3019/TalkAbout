@@ -324,6 +324,8 @@ def create_app(store, start_scheduler=True, allow_fixture_bearer=False, allowed_
                     return room_stream(request, credential, room_id)
                 if operation == "interventions":
                     return core.interventions(credential, room_id)
+                if operation == "diagnostics":
+                    return core.room_diagnostics(credential, room_id)
                 room = core.read(credential, room_id)
                 if not operation:
                     return room
