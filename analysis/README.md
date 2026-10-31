@@ -16,6 +16,7 @@
 | `r2-hermes-*.md`, `r2-opencodex-*.md` | 2라운드 상세 보고서 7편 |
 | `repo-review-2026-10-27/` | 7개 저장소 묶음(1차) — herdr, agent-browser, Codewhale, oh-my-claudecode, PDFMathTranslate, website cloner, oh-my-pi. TalkAbout 결손 대조와 단계별 반영 계획(A0~A6)의 근거 |
 | `repo-review-2026-10-31/` | 7개 저장소 묶음(2차) — serena, codex, openbot, rakazo, open-duet, OpenMausBot, munder-difflin. 승인·관찰·격리 데이터 계약과 A5/A6 선행 gate 후보 |
+| `product-direction-review-2026-10-31.md` | 첨부 "가상 오피스+IDE+에이전트 오케스트레이션" 조사 정밀 검증 — 30+ 저장소 라이선스·활동 실측, TalkAbout 기존 자산 대비 격차, 도입 순서 |
 
 ## 인용 규칙
 

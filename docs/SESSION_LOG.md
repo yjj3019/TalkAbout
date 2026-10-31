@@ -1,5 +1,24 @@
 # TalkAbout session log
 
+## 2026-11-01 — 초대 1클릭 연결(talkabout:// + 클립보드 일회용 초대)
+
+- 사용자 요청: "초대하기" 버튼으로 실행되거나 copy/paste 수준의 간단함. 브라우저는 로컬 프로그램을 직접 실행할 수 없으므로 ① 완전 1클릭(사용자 지정 링크 + 최초 1회 설치)을 선택.
+- 구현(서버 API·DB 변경 없음):
+  - [connect-agent.ps1](../talkabout/web/connect-agent.ps1)에 `-InstallHelper`(현재 사용자 HKCU에 `talkabout://` 등록, 설치 시점 서버 origin 고정, 링크가 담은 주소는 읽지 않음)와 `-FromClipboard`(클립보드 JSON 1회 읽고 즉시 지움 → 자식 프로세스 `TALKABOUT_TOKEN`으로만 자격증명 전달, `--prompt-token` 생략) 추가. 페이로드는 닫힌 필드 집합·origin 일치·room/agent 형식·runtime/auth·예산 1~10·토큰 형식 검증 후 사용.
+  - [app.mjs](../talkabout/web/app.mjs)·[index.html](../talkabout/web/index.html)에 **1클릭 연결 / 도우미 설치(.cmd)** 추가. 버튼은 기존 자격증명 발급(확인 1회) → 클립보드에 `{v,origin,room,agent,runtime,auth_mode,max_model_calls,request_turn,token}` → `talkabout://connect` 실행 → 성공 상태 표시. 클립보드 실패·핸들러 미실행 시 기존 수동 경로를 유지하고 2.5초 뒤 설치 안내를 표시.
+  - 설치 파일에는 비밀값·room·agent가 없고 서버 origin만 고정된다. 링크 URL에는 비밀이 없다(클립보드 경유).
+- 보안 경계(문서화): 같은 PC 전용(클립보드·프로토콜), 1시간 room-scoped 권한, 기존 발급 철회 수단 유지, 클립보드 실패 시 실패로 표시하고 실행 주장 없음, 핸들러는 링크 텍스트를 서버 주소로 사용하지 않음.
+- 검증(실행): PowerShell 5.1에서 `-FromClipboard -DryRun` 계획 출력(토큰 미출력·`--prompt-token` 미포함)과 거절 4종(origin 불일치·미지원 필드·예산 초과·미지원 runtime·빈 토큰) 확인. `-InstallHelper -DryRun` 계획 출력 확인. **실제 설치 1회 실행 → `launch.cmd` 1줄·HKCU 명령 등록 확인 후 키·폴더 삭제**(복구 확인). Node UI **239 passed**(초대 흐름 39건 중 1클릭 신규 5건 포함). 도우미 계약 Python 테스트 **10 passed**. `tools/docs_check.py` **0 new / 0 known**. Python 전체 **1174 passed / 33 skipped / 3 failed** — 실패 3건은 모두 subprocess 경계 시험(`stdin/EOF`·`git rev-parse`·synthetic child)이며, 같은 시험이 수정 전 HEAD에서도 실패/간헐 실패함을 `git worktree`로 비교해 확인했다(코드 회귀 아님, 이 환경의 프로세스·git 지연). 같은 회귀는 당일 00:15에 1176 passed로 통과한 이력이 있다.
+- NOTRUN: 실제 브라우저에서 `.cmd` 다운로드·실행, OS의 `talkabout://` 호출 대화상자, 클립보드 실제 읽기·초기화, 실제 공급자 연결. 설치·등록은 수동 1회 시험 후 원상 복구했다.
+
+## 2026-11-01 — 패치 리뷰 표면: 버전 번호·hunk 분류·검증 문구 정정
+
+- 사용자 요청: 이전 라운드(PR #54 병합 이후) 작업을 이어서 진행.
+- 발견(독립 정적 검토): ① 열람 범위에 따라 이전 버전이 숨겨지면 화면이 남은 배열 index로 `v1`·`v2`를 붙여, **같은 version_id가 참여자마다 다른 번호**로 보였다. 리뷰 안내는 검토한 버전을 의견에 직접 적게 하므로 잘못된 버전을 가리킬 수 있었다. ② 정상 diff에서 추가할 원문이 `++ x`이면 diff 줄은 `+++ x`, 삭제 원문이 `-- x`이면 `--- x`인데, hunk 내부인지 보지 않고 접두사만으로 파일 헤더로 분류해 추가·삭제 강조가 사라졌다. ③ 안내 문구("형식만 확인")가 실제 서버 검사(부분 문자열 존재)보다 범위를 넓게 읽히게 했다.
+- 수정: [app.mjs](../talkabout/web/app.mjs)가 `version_revision`을 표시에 쓰고(없는 구버전은 version id), `@@ -a,b +c,d @@`의 라인 카운트로 hunk 상태를 추적해 hunk 내부의 `---`/`+++`를 삭제·추가로 유지한다. hunk 밖에서는 이전처럼 파일 헤더로 본다. [state.mjs](../talkabout/web/state.mjs) KO/EN 안내와 [domain.py](../talkabout/domain.py) 문서 문자열은 서버가 `--- `·`+++ ` 문자열만 확인한다는 사실을 그대로 적는다. **서버 검사 동작·채택 API·적용 금지 원칙은 바꾸지 않았다.**
+- 테스트: [test_artifact_review_ui.mjs](../tests/test_artifact_review_ui.mjs)에 2건 추가(hunk 내부 헤더 유사 줄, 숨겨진 버전 뒤 라벨 안정성)와 안내 문구가 실제 검사 대상을 언급하는지 확인하는 단언 추가. 해당 파일 9건, **표준 러너 전체 통과 — Python 1176 passed / 35 skipped / 7 deselected, Node 234 passed, exit 0**(증거: `.ci-results/2026-11-01/`), 산출물·공유 컨텍스트 Python 23 passed, `tools/docs_check.py` **0 new / 0 known**. 브라우저 실사용·실제 provider는 NOTRUN.
+- 환경 메모: 이 세션의 초기 파일 정책에서는 pytest `tmp_path`가 만든 디렉터리에 `WinError 5`로 접근할 수 없어 특정 테스트의 setup이 실패했다(코드 회귀 아님). 세션 파일 권한 정책이 전체 접근으로 바뀐 뒤 같은 명령이 통과했다. 이 과정에서 만든 임시 디렉터리와 진단 보고서는 삭제했고, `.ci-local/temp` 경고는 기존 상태로 남아 있다.
+
 ## 2026-10-31 — 2차 7개 저장소 분석 + 선행 계약 반영
 
 - 사용자 요청: 지정 저장소 7개(serena·codex·openbot·rakazo·open-duet·OpenMausBot·munder-difflin)를 정밀 분석해 TalkAbout 도입 가능 개선점을 도출하고, **라이선스 문제 없이 반영 가능한 부분**을 반영.

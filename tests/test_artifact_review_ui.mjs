@@ -52,6 +52,24 @@ test('patch is literal per-line text with diff classifications, never HTML',asyn
  assert.equal(byTag(pre,'img').length+byTag(pre,'script').length,0);
 });
 
+test('hunk body lines starting with --- or +++ stay additions and removals',async()=>{
+ const h=await harness();const patch='--- a/f\n+++ b/f\n@@ -1,3 +1,3 @@\n--- x\n+++ x\n context';
+ h.show([version('p',patch,{kind:'patch'})]);const pre=byTag(h.node('artifacts'),'pre')[0];
+ const lines=byClass(pre,'diff-line');
+ assert.deepEqual(lines.map(n=>n.className.replace('diff-line ','')),['diff-header','diff-header','diff-hunk','diff-remove','diff-add','diff-context']);
+ assert.equal(lines[3].textContent,'--- x\n');assert.equal(lines[4].textContent,'+++ x\n');
+ assert.equal(byClass(pre,'diff-header').length,2);
+ const headerOnly='--- a/f\n+++ b/f';h.show([version('q',headerOnly,{kind:'patch'})]);
+ assert.equal(byClass(byTag(h.node('artifacts'),'pre')[0],'diff-header').length,2);
+});
+
+test('version labels stay stable when earlier versions are hidden',async()=>{
+ const h=await harness();const first=version('first','old',{version_revision:1}),second=version('second','+new',{kind:'patch',version_revision:3});
+ h.show([first,second]);assert.deepEqual(byClass(h.node('artifacts'),'version-tag').map(n=>n.textContent),['v1','v3']);
+ h.show([second]);assert.deepEqual(byClass(h.node('artifacts'),'version-tag').map(n=>n.textContent),['v3']);
+ h.show([version('legacy-id','legacy')]);assert.equal(byClass(h.node('artifacts'),'version-tag')[0].textContent,'legacy-id');
+});
+
 test('ordinary text versions remain plain text even when lines look like a diff',async()=>{
  const h=await harness();const text='+not a patch\n<script>literal</script>\n-old';
  h.show([version('t',text,{kind:'text'})]);const pre=byTag(h.node('artifacts'),'pre')[0];
@@ -64,6 +82,7 @@ for(const language of ['ko','en'])test('patch review explains shape-only and ref
  h.show([version('validated','+a',{kind:'patch',input_references:{evidence:verified}}),version('legacy','+b',{kind:'patch',input_references:{evidence:'legacy_input_unverified'}}),version('missing','+c',{kind:'patch'}),version('unknown','+d',{kind:'patch',input_references:{evidence:'unexpected'}})],language);
  const root=h.node('artifacts'),items=byTag(root,'li');assert.equal(items.length,4);
  for(const item of items){assert.ok(item.textContent.includes(labels[language].patchReviewTitle));assert.ok(item.textContent.includes(labels[language].patchReviewCaution));}
+ assert.match(labels[language].patchReviewCaution,/---/);assert.match(labels[language].patchReviewCaution,/\+\+\+/);
  assert.ok(items[0].textContent.includes(labels[language].patchInputRefsValidated));
  assert.ok(!items[0].textContent.includes(labels[language].patchInputRefsUnverified));
  for(const item of items.slice(1)){assert.ok(item.textContent.includes(labels[language].patchInputRefsUnverified));assert.ok(!item.textContent.includes(labels[language].patchInputRefsValidated));}

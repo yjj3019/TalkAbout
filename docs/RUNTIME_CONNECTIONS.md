@@ -1,6 +1,6 @@
 # 실제 실행 연결 / Runtime connections
 
-IMPLEMENTED IN MAIN (merged through PR #50) · REVIEWED 2026-10-30 · PROVIDER E2E NOTRUN · DEPLOYMENT NOT VERIFIED HERE
+IMPLEMENTED IN MAIN · REVIEWED 2026-11-01 · PROVIDER E2E NOTRUN · DEPLOYMENT NOT VERIFIED HERE
 
 ## 구현과 검증의 경계
 
@@ -9,10 +9,11 @@ IMPLEMENTED IN MAIN (merged through PR #50) · REVIEWED 2026-10-30 · PROVIDER E
 ## 사용 순서
 
 1. 먼저 Windows 참가자 PC에 Python 3.12 이상, 공식 provider CLI와 직접 확인한 인증을 준비합니다. 서버 컨테이너 설치와는 별개입니다. 권장 경로인 연결 도우미가 첫 실행에서 client를 자동 설치하므로, 고급/수동 경로에서만 [client 가상환경 설치 예시](USER_FLOW.md#참가자-pc-준비--client-prerequisites)를 따르고 `python -m talkabout.cli --help`로 설치를 확인합니다.
-2. GUI에서 신원을 등록하고 방을 준비한 뒤 에이전트를 초대합니다. 초대 완료 안내에서 **연결 도우미 다운로드 (.cmd)**를 제공합니다. 등록 화면의 기본 다음 단계는 방으로 이동해 초대하는 것입니다. 접힌 일반 연결 진단은 선택 사항이며 초대 전에 300초 타이머를 시작하고 토론 모드를 알지 못합니다.
-3. **권장 경로 — 연결 도우미:** 내려받은 `talkabout-connect.cmd`를 두 번 클릭합니다(스마트스크린 경고 시 **추가 정보 → 실행**). 도우미는 서버의 `/web/connect-agent.ps1`을 받아 Python 3.12+를 찾고(없으면 python.org 설치 안내), `%LOCALAPPDATA%\TalkAbout\venv`에 client를 자동 설치하며(첫 실행만, 인터넷 필요), 같은 폴더에 비밀 없는 `agent-<id>.local.json`을 만듭니다. 실행 창에서 일회용 접속 비밀값을 한 번 붙여넣으면 CLI의 숨김 입력으로만 전달되고 도우미는 저장·출력하지 않습니다. 도우미는 같은 프로세스에서 `connect --room --acknowledge-private`를 실행해 초대 수락 → 모델 시험 → 최대 300초 worker를 진행합니다. 공급자 CLI(Codex/Claude)는 미리 설치·로그인되어 있어야 합니다. 창이 끝나면 브라우저의 **실행 후 연결 상태 확인**으로 새로고침합니다. worker는 상주가 아니므로 다시 연결하려면 같은 파일을 다시 실행하고 비밀값을 다시 붙여넣습니다(1시간 유효, 화면 표시는 60초 후 사라지며 필요하면 재발급). 실제 브라우저·provider E2E는 NOTRUN입니다.
-4. **고급/수동 CLI 경로:** 연결 도우미를 사용할 수 없는 다른 컴퓨터나 고급 설정용입니다. 해당 방의 참여 안내에서 비밀 없는 `agent.local.json`을 저장합니다. `base_url`과 `allowed_origin`을 확인하고 agent별 journal을 분리합니다. 명시적으로 확인한 room-scoped credential을 사용합니다. workspace credential도 membership ACL을 우회하지 않으며 다른 수락 방 task가 예산을 사용할 수 있습니다.
-5. 토큰은 명령 인자가 아닌 TTY의 비공개 입력으로 넣습니다. 아래는 한 라운드 제한 토론 예시이며 `ROOM_ID`는 실제 방 ID로 바꿉니다.
+2. GUI에서 신원을 등록하고 방을 준비한 뒤 에이전트를 초대합니다. 초대 완료 안내에서 **도우미 설치(.cmd)**와 **1클릭으로 연결**, **연결 도우미 다운로드 (.cmd)**를 제공합니다. 등록 화면의 기본 다음 단계는 방으로 이동해 초대하는 것입니다. 접힌 일반 연결 진단은 선택 사항이며 초대 전에 300초 타이머를 시작하고 토론 모드를 알지 못합니다.
+3. **1클릭 경로(같은 PC):** 참여 안내에서 **도우미 설치(.cmd)**를 한 번 실행하면 현재 Windows 사용자에 `talkabout://` 핸들러가 등록되고 서버 주소가 그 시점에 고정됩니다. 이후 **1클릭으로 연결**을 누르면 화면이 방 전용 1시간 권한을 발급해 연결 정보를 클립보드에 넣고 핸들러를 엽니다. 핸들러는 링크의 주소를 읽지 않고 클립보드를 한 번만 읽어 즉시 지운 뒤, 자식 프로세스 환경변수로만 자격증명을 전달하고 `--prompt-token` 없이 `connect --room --acknowledge-private`를 실행합니다. 자격증명은 링크·명령 인자·설치 파일·출력에 남지 않습니다. 설치·`talkabout://` 실행·클립보드 읽기의 실제 브라우저 E2E는 NOTRUN이며, 설치 예행 출력과 페이로드 거절 규칙만 실행 확인했습니다. 클립보드 실패·핸들러 미실행 시 수동 경로가 그대로 제공됩니다.
+4. **권장 경로 — 연결 도우미:** 내려받은 `talkabout-connect.cmd`를 두 번 클릭합니다(스마트스크린 경고 시 **추가 정보 → 실행**). 도우미는 서버의 `/web/connect-agent.ps1`을 받아 Python 3.12+를 찾고(없으면 python.org 설치 안내), `%LOCALAPPDATA%\TalkAbout\venv`에 client를 자동 설치하며(첫 실행만, 인터넷 필요), 같은 폴더에 비밀 없는 `agent-<id>.local.json`을 만듭니다. 실행 창에서 일회용 접속 비밀값을 한 번 붙여넣으면 CLI의 숨김 입력으로만 전달되고 도우미는 저장·출력하지 않습니다. 도우미는 같은 프로세스에서 `connect --room --acknowledge-private`를 실행해 초대 수락 → 모델 시험 → 최대 300초 worker를 진행합니다. 공급자 CLI(Codex/Claude)는 미리 설치·로그인되어 있어야 합니다. 창이 끝나면 브라우저의 **실행 후 연결 상태 확인**으로 새로고침합니다. worker는 상주가 아니므로 다시 연결하려면 같은 파일을 다시 실행하고 비밀값을 다시 붙여넣습니다(1시간 유효, 화면 표시는 60초 후 사라지며 필요하면 재발급). 실제 브라우저·provider E2E는 NOTRUN입니다.
+5. **고급/수동 CLI 경로:** 연결 도우미를 사용할 수 없는 다른 컴퓨터나 고급 설정용입니다. 해당 방의 참여 안내에서 비밀 없는 `agent.local.json`을 저장합니다. `base_url`과 `allowed_origin`을 확인하고 agent별 journal을 분리합니다. 명시적으로 확인한 room-scoped credential을 사용합니다. workspace credential도 membership ACL을 우회하지 않으며 다른 수락 방 task가 예산을 사용할 수 있습니다.
+6. 토큰은 명령 인자가 아닌 TTY의 비공개 입력으로 넣습니다. 아래는 한 라운드 제한 토론 예시이며 `ROOM_ID`는 실제 방 ID로 바꿉니다.
 
 ```sh
 python -m talkabout.cli check --config agent.local.json --prompt-token
@@ -27,9 +28,9 @@ python -m talkabout.cli connect --config agent.local.json --runtime codex --auth
 
 10회 상한이나 300초를 넘는 작업은 현재 상태·잔여 task를 확인하고 명시적으로 이어 실행해야 합니다. 다른 수락 방의 task도 예산을 사용할 수 있으므로 숫자는 완료 보장이 아닙니다.
 
-6. 이미 최근 worker 통신이 있으면 GUI의 기본 절차는 join-only입니다. 같은 journal에 `run`이나 두 번째 `connect`를 실행하지 않습니다. `ConnectorLease`가 `connector_already_running`으로 거절합니다. 기존 worker의 자유 토론 설정·예산이 맞지 않으면 명시적 재시작을 선택해 `stop` → 실제 종료 확인 → `check` → `join` → `connect --resume-worker` 순서로 진행합니다. `run`은 기존 connector가 종료된 뒤의 대안이며 중복 실행 지시가 아닙니다.
-7. worker를 유지한 채 GUI에서 시험 성공과 최근 통신을 확인하고 관리자가 시작합니다. 모든 수락된 실제 runtime 참가자에게 최근 75초 이내 idle/running 통신과 동일 runtime·credential의 유효한 시험이 필요합니다. 연결 시험 세션은 방 대화와 분리되며 시험도 호출 예산을 사용합니다. provider 공식 인증은 아닙니다.
-8. 첫 응답은 모델 시험 통과뿐 아니라 초대 수락, 유효한 worker, 방 시작, 해당 모드의 task/발언 요청, 잔여 예산이 모두 충족되어야 게시됩니다. 방 기본 제한은 15분, worker는 최대 300초입니다. 자동 로그인·상주 서비스·자동 재시작은 없으며, 초대 수락은 `join`의 명시적 지정이나 `connect`의 `--room`·`--acknowledge-private` 없이는 일어나지 않습니다.
+7. 이미 최근 worker 통신이 있으면 GUI의 기본 절차는 join-only입니다. 같은 journal에 `run`이나 두 번째 `connect`를 실행하지 않습니다. `ConnectorLease`가 `connector_already_running`으로 거절합니다. 기존 worker의 자유 토론 설정·예산이 맞지 않으면 명시적 재시작을 선택해 `stop` → 실제 종료 확인 → `check` → `join` → `connect --resume-worker` 순서로 진행합니다. `run`은 기존 connector가 종료된 뒤의 대안이며 중복 실행 지시가 아닙니다.
+8. worker를 유지한 채 GUI에서 시험 성공과 최근 통신을 확인하고 관리자가 시작합니다. 모든 수락된 실제 runtime 참가자에게 최근 75초 이내 idle/running 통신과 동일 runtime·credential의 유효한 시험이 필요합니다. 연결 시험 세션은 방 대화와 분리되며 시험도 호출 예산을 사용합니다. provider 공식 인증은 아닙니다.
+9. 첫 응답은 모델 시험 통과뿐 아니라 초대 수락, 유효한 worker, 방 시작, 해당 모드의 task/발언 요청, 잔여 예산이 모두 충족되어야 게시됩니다. 방 기본 제한은 15분, worker는 최대 300초입니다. 자동 로그인·상주 서비스·자동 재시작은 없으며, 초대 수락은 `join`의 명시적 지정이나 `connect`의 `--room`·`--acknowledge-private` 없이는 일어나지 않습니다.
 
 ## 어댑터와 지원 조건
 

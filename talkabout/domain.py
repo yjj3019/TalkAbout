@@ -102,15 +102,12 @@ def new_room(actor, room_id, topic, mode="bounded_rounds", now=None, preparing=F
 
 
 def patch_like(text):
-    """True when a change proposal carries a unified diff, not just prose.
-
-    This is a shape check, not an application: the platform never applies the patch.
-    """
+    """Check only for two marker substrings; this does not validate a diff."""
     return isinstance(text, str) and '--- ' in text and '+++ ' in text
 
 
 def deliverable_artifact_kind(room, text):
-    """Classify a co-creation version. A change proposal that is not a diff is refused."""
+    """Classify a co-creation version; change proposals require marker substrings."""
     if room.get("deliverable") != "change_proposal":
         return "text"
     require(patch_like(text), "invalid_patch", 422)
