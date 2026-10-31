@@ -46,10 +46,25 @@ function clockTime(at) {
 }
 // Review is a text-only projection of versions already visible to this member.
 // Never interpret patch paths, apply a patch, or treat formatting as validation.
+// Inside a hunk the first character is content, so "--- x" removes "-- x" and
+// "+++ x" adds "++ x". Hunk counts decide where the hunk body ends; without them
+// the next "--- "/"+++ " line is treated as a file header again.
+function hunkCounts(header){
+ const match=/^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@/.exec(header);
+ if(!match)return null;
+ const oldCount=match[1]===undefined?1:Number(match[1]),newCount=match[2]===undefined?1:Number(match[2]);
+ return oldCount>=0&&newCount>=0?{oldCount,newCount}:null;
+}
 function patchReviewText(text){
  const pre=make('pre',undefined,'version-text patch-diff');
+ let hunk=null;
  String(text).split('\n').forEach((line,index,lines)=>{
-  const kind=line.startsWith('+++ ')||line.startsWith('--- ')?'diff-header':line.startsWith('@@')?'diff-hunk':line.startsWith('+')?'diff-add':line.startsWith('-')?'diff-remove':'diff-context';
+  const first=line.charAt(0),inHunk=!!hunk&&(hunk.oldCount>0||hunk.newCount>0),kind=
+   inHunk?(first==='+'?'diff-add':first==='-'?'diff-remove':'diff-context')
+   :first==='@'&&line.startsWith('@@')?(hunk=hunkCounts(line),'diff-hunk')
+   :line.startsWith('+++ ')||line.startsWith('--- ')||line.startsWith('diff --git ')?'diff-header'
+   :first==='+'?'diff-add':first==='-'?'diff-remove':'diff-context';
+  if(inHunk&&hunk){if(first==='-'||first===' ')hunk.oldCount--;if(first==='+'||first===' ')hunk.newCount--;}
   pre.append(make('span',line+(index<lines.length-1?'\n':''),'diff-line '+kind));
  });
  return pre;
@@ -58,9 +73,10 @@ function artifactNode(room,a,effective){
  const node=make('article',undefined,'artifact'),head=make('header',undefined,'artifact-head');
  head.append(make('h3',t('version')+' '+a.revision));node.append(head);
  const list=make('ol',undefined,'version-list');
- a.versions.forEach((v,index)=>{
+ a.versions.forEach(v=>{
   const li=make('li',undefined,'version'),vh=make('header',undefined,'version-head'),patch=v.kind==='patch';
-  vh.append(make('span','v'+(index+1),'version-tag'),make('span',t('contributor')+': '+(room.members[v.actor_id]?.display_name||v.actor_id),'version-owner'));
+  const versionLabel=Number.isSafeInteger(v.version_revision)&&v.version_revision>0?'v'+v.version_revision:v.id;
+  vh.append(make('span',versionLabel,'version-tag'),make('span',t('contributor')+': '+(room.members[v.actor_id]?.display_name||v.actor_id),'version-owner'));
   if(a.adopted===v.id)vh.append(make('span',t('adopted'),'chip chip--ok'));
   if(patch){
    li.append(vh,make('h4',t('patchReviewTitle')),make('p',t('patchReviewCaution'),'field-help'));
