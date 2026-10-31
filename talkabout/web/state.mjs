@@ -204,7 +204,8 @@ Object.assign(labels.ko,{
  dispatchHeldHelp:'새 claim과 배정을 보류합니다. 이미 임대한 작업은 계속될 수 있습니다. 중단은 일시정지를 사용하세요.',
  receiptMeaning:'수신·읽기는 클라이언트의 명시적 확인입니다. 모델 이해·실행 승인·작업 완료를 뜻하지 않습니다. 불확실한 실행은 로컬 원장에서 확인하며 자동 재실행하지 않습니다.',
  deliveredThrough:'수신 확인 이벤트',readThrough:'읽기 확인 이벤트',approvalPending:'관리 승인 대기',storedMessage:'서버에 저장된 메시지',
- attemptLabel:'시도',generationLabel:'방 세대',storedCompletion:'서버의 작업 완료 기록 · 제공자 실행 증명 아님'
+ attemptLabel:'시도',generationLabel:'방 세대',storedCompletion:'서버의 작업 완료 기록 · 제공자 실행 증명 아님',
+ waitingReasonLabel:'대기 사유(관측 전용 · 검증 아님)',waitingReasonLoad:'대기 사유 보기',waitingReasonHelp:'관측 전용 정보입니다. 권한·검증·완료 증거가 아닙니다.',waiting_room_not_active:'방이 진행 중이 아님',waiting_dispatch_held:'새 작업 배정 보류',waiting_awaiting_worker_claim:'worker가 아직 가져가지 않음',waiting_worker_leased:'worker가 점유 중',waiting_lease_expired:'lease 만료 · 재배정 대기',waiting_awaiting_start_grant:'실행 시작 승인 대기',waiting_deadline_passed:'기한 경과',waiting_awaiting_human_resolution:'사람 확인 대기(자동 재실행 없음)'
 });
 Object.assign(labels.en,{
  holdDispatch:'Hold new dispatch',releaseDispatch:'Release new dispatch',dispatchHeld:'New dispatch held',
@@ -212,7 +213,8 @@ Object.assign(labels.en,{
  dispatchHeldHelp:'New claims and assignments are held. Already leased work may continue. Use pause to invalidate running work.',
  receiptMeaning:'Delivered/read are explicit client receipts, not model understanding, execution approval or completion. Inspect uncertain execution in the local journal; it is never automatically retried.',
  deliveredThrough:'Delivery acknowledged through event',readThrough:'Read acknowledged through event',approvalPending:'Management approval pending',storedMessage:'Message stored by server',
- attemptLabel:'Attempt',generationLabel:'Room generation',storedCompletion:'Server completion record · not provider execution attestation'
+ attemptLabel:'Attempt',generationLabel:'Room generation',storedCompletion:'Server completion record · not provider execution attestation',
+ waitingReasonLabel:'Waiting reason (observed only · not verification)',waitingReasonLoad:'Show waiting reasons',waitingReasonHelp:'Observation only; not permission, verification or completion evidence.',waiting_room_not_active:'Room is not active',waiting_dispatch_held:'New dispatch held',waiting_awaiting_worker_claim:'Awaiting worker claim',waiting_worker_leased:'Worker lease active',waiting_lease_expired:'Lease expired · awaiting reassignment',waiting_awaiting_start_grant:'Awaiting start grant',waiting_deadline_passed:'Deadline passed',waiting_awaiting_human_resolution:'Awaiting human review (no automatic retry)'
 });
 labels.ko.pendingParticipationGuide=labels.ko.inviteContinue;
 labels.en.pendingParticipationGuide=labels.en.inviteContinue;

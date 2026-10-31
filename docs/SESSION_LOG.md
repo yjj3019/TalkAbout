@@ -12,7 +12,8 @@
 - 추가 반영(독립 구현): [CLEAN_ROOM_IMPLEMENTATION.md](CLEAN_ROOM_IMPLEMENTATION.md) 정책·기록 템플릿 추가, W1 workspace **최종 구성요소 junction/reparse 거부**를 자체 로직(`Path.is_junction`)으로 구현 + 회귀 테스트 1건. serena/munder의 경로 봉쇄 **개념**만 참고했고 코드는 복사하지 않았다. 중간 구성요소·3회 재검증은 미반영.
 - 추가 반영(두 번째 독립 구현): **read-only 대기 사유 진단** — `talkabout/observation.py`(자체 enum 8종·자체 계산), `GET /api/v1/rooms/{id}/diagnostics`(human 전용, 상태·event·attempt 불변), [API_DRAFT.md](API_DRAFT.md)·[REPOSITORY_ADOPTION_PLAN.md](REPOSITORY_ADOPTION_PLAN.md) 계약 기록. openbot/rakazo/open-duet은 **문제 정의만** 참고했고 enum·규칙·응답·테스트는 자체 설계. 외부 코드·상수·문구 미복사.
 - 추가 반영(세 번째 독립 구현): **승인 effect-key·상태 판정 순수 함수** — [approval.py](../talkabout/approval.py)(자체 canonical JSON·5축 해시·닫힌 6상태·경계 검사, provider tool-call id 미입력), [test_approval_contract.py](../tests/test_approval_contract.py) 40 passed. rakazo/open-duet은 **문제 정의만** 참고, 승인·실행 경로 연결은 하지 않았다(A5/A6 승인 필요).
-- 검증(추가): [tests/test_room_diagnostics.py](../tests/test_room_diagnostics.py) **15 passed**, 기존 core/API 회귀 **85 passed / 1 skipped**, work-profile 회귀 **94 passed / 1 skipped**, approval 계약 **40 passed**, `docs_check` 0 new / 0 known.
+- 추가 반영(진단 UI): 태스크 영역에 **"대기 사유 보기" 버튼**과 관측 전용 안내 추가([index.html](../talkabout/web/index.html), [app.mjs](../talkabout/web/app.mjs), [state.mjs](../talkabout/web/state.mjs) KO/EN 라벨 10종). 자동 호출하지 않고, 거절·실패 시 태스크 표시를 유지하며, 이전 방의 늦은 응답은 무시한다. [test_room_diagnostics_ui.mjs](../tests/test_room_diagnostics_ui.mjs) **3 passed**.
+- 검증(추가): [tests/test_room_diagnostics.py](../tests/test_room_diagnostics.py) **15 passed**, 기존 core/API 회귀 **85 passed / 1 skipped**, work-profile 회귀 **94 passed / 1 skipped**, approval 계약 **40 passed**, Node UI 10파일 통과, `docs_check` 0 new / 0 known.
 - 미반영(다음): P1-3 A2 선언 scope 직렬화, P2(승인 스키마 확장·config flag 감지·capability token), P3 POSIX P4, 중간 junction 구성요소·3회 재검증, 진단 UI 표시, 승인 함수의 실제 경로 연결.
 
 ## 2026-10-30 — 초대 연결 단순화: Windows 연결 도우미
