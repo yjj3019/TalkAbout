@@ -44,7 +44,40 @@ function clockTime(at) {
   if (!Number.isFinite(at)) return '';
   return new Date(at * 1000).toLocaleTimeString(view.language === 'ko' ? 'ko-KR' : 'en-GB', {hour: '2-digit', minute: '2-digit', hour12: false});
 }
-function artifactNode(room,a,effective){const node=make('article',undefined,'artifact'),head=make('header',undefined,'artifact-head');head.append(make('h3',t('version')+' '+a.revision));node.append(head);const list=make('ol',undefined,'version-list');a.versions.forEach((v,index)=>{const li=make('li',undefined,'version'),vh=make('header',undefined,'version-head');vh.append(make('span','v'+(index+1),'version-tag'),make('span',t('contributor')+': '+(room.members[v.actor_id]?.display_name||v.actor_id),'version-owner'));if(a.adopted===v.id)vh.append(make('span',t('adopted'),'chip chip--ok'));const text=make('pre',v.text,'version-text'),actions=make('div',undefined,'version-actions'),button=document.createElement('button');button.textContent=t('download');button.onclick=async()=>{try{const data=await api(`rooms/${room.id}/artifacts/${a.id}/versions/${v.id}/download`);if(view.selected!==room.id)return;const url=URL.createObjectURL(new Blob([data.text],{type:'text/plain;charset=utf-8'}));const link=document.createElement('a');link.href=url;link.download='TalkAbout-text.txt';link.click();URL.revokeObjectURL(url);}catch{notice('rejected');}};actions.append(button);if(effective.includes('room:adopt')&&room.state==='active'){const adopt=document.createElement('button');adopt.textContent=t('adopt');adopt.onclick=()=>{if(view.selected!==room.id||!confirm(t('confirmAdopt')))return;const body={generation:room.generation,membership_revision:room.members[user.id].revision,expected_revision:a.revision,version_id:v.id};mutate('adopt',body,key=>api(`rooms/${room.id}/artifacts/${a.id}/adoptions`,{method:'POST',body,key}));};actions.append(adopt);}li.append(vh,text,actions);list.append(li);});node.append(list);return node;}
+// Review is a text-only projection of versions already visible to this member.
+// Never interpret patch paths, apply a patch, or treat formatting as validation.
+function patchReviewText(text){
+ const pre=make('pre',undefined,'version-text patch-diff');
+ String(text).split('\n').forEach((line,index,lines)=>{
+  const kind=line.startsWith('+++ ')||line.startsWith('--- ')?'diff-header':line.startsWith('@@')?'diff-hunk':line.startsWith('+')?'diff-add':line.startsWith('-')?'diff-remove':'diff-context';
+  pre.append(make('span',line+(index<lines.length-1?'\n':''),'diff-line '+kind));
+ });
+ return pre;
+}
+function artifactNode(room,a,effective){
+ const node=make('article',undefined,'artifact'),head=make('header',undefined,'artifact-head');
+ head.append(make('h3',t('version')+' '+a.revision));node.append(head);
+ const list=make('ol',undefined,'version-list');
+ a.versions.forEach((v,index)=>{
+  const li=make('li',undefined,'version'),vh=make('header',undefined,'version-head'),patch=v.kind==='patch';
+  vh.append(make('span','v'+(index+1),'version-tag'),make('span',t('contributor')+': '+(room.members[v.actor_id]?.display_name||v.actor_id),'version-owner'));
+  if(a.adopted===v.id)vh.append(make('span',t('adopted'),'chip chip--ok'));
+  if(patch){
+   li.append(vh,make('h4',t('patchReviewTitle')),make('p',t('patchReviewCaution'),'field-help'));
+   const evidence=v.input_references?.evidence==='worker_reported_server_validated_refs_not_model_read_receipt'?'patchInputRefsValidated':'patchInputRefsUnverified';
+   li.append(make('p',t(evidence),'chip chip--quiet'),patchReviewText(v.text));
+  }else li.append(vh,make('pre',v.text,'version-text'));
+  const actions=make('div',undefined,'version-actions'),button=document.createElement('button');
+  button.textContent=t('download');button.onclick=async()=>{try{const data=await api(`rooms/${room.id}/artifacts/${a.id}/versions/${v.id}/download`);if(view.selected!==room.id)return;const url=URL.createObjectURL(new Blob([data.text],{type:'text/plain;charset=utf-8'}));const link=document.createElement('a');link.href=url;link.download=patch?'TalkAbout-patch.diff':'TalkAbout-text.txt';link.click();URL.revokeObjectURL(url);}catch{notice('rejected');}};actions.append(button);
+  if(patch&&effective.some(scope=>scope==='room:question'||scope==='room:advice')&&room.state==='active'){
+   const review=action(t('patchReviewComment'),()=>{if(view.selected!==room.id||!user)return;roomTab('discussion',true);el('message-text').focus?.();notice('patchReviewCommentHelp');});actions.append(review);li.append(make('p',t('patchReviewCommentHelp'),'field-help'));
+  }
+  if(effective.includes('room:adopt')&&room.state==='active'){
+   const adopt=document.createElement('button');adopt.textContent=t('adopt');adopt.onclick=()=>{if(view.selected!==room.id||!user||!confirm(t(patch?'patchConfirmAdopt':'confirmAdopt')))return;const body={generation:room.generation,membership_revision:room.members[user.id].revision,expected_revision:a.revision,version_id:v.id};mutate('adopt',body,key=>api(`rooms/${room.id}/artifacts/${a.id}/adoptions`,{method:'POST',body,key}));};actions.append(adopt);
+  }
+  li.append(actions);list.append(li);
+ });node.append(list);return node;
+}
 function messageNode(room,m){const agent=m.actor_kind==='agent',node=make('article',undefined,'message '+(agent?'message--agent':'message--human'));node.append(make('span',(m.display_name||'?').trim().slice(0,1),'avatar'));const body=make('div',undefined,'message-body'),head=make('header',undefined,'message-head');head.append(make('strong',m.display_name||m.actor_id),make('span',t(agent?'agentBadge':'humanBadge'),'badge'+(agent?' badge--agent':'')),make('span',t(m.kind)||m.kind,'message-kind'));const time=clockTime(m.created_at);if(time)head.append(make('time',time));body.append(head,make('p',m.text,'message-text'));const meta=make('footer',undefined,'message-meta');meta.append(make('span',t('storedMessage'),'chip chip--quiet'));if(agent){const evidence=m.execution_evidence==='synthetic_test_only'?['journeySynthetic','chip--warn']:m.execution_evidence==='worker_reported_runtime'?['journeyWorkerEvidence','chip--ok']:['journeyUnverified',''];meta.append(make('span',t(evidence[0]),('chip '+evidence[1]).trim()));}if(m.input_evidence)meta.append(make('span',t(m.input_evidence==='worker_reported_server_validated_refs_not_model_read_receipt'?'inputVerified':'inputLegacy'),'chip chip--quiet'));for(const ref of m.attachment_refs||[])meta.append(action(t('viewTextAttachment'),()=>viewTextFile(room.id,ref.file_id)));body.append(meta);node.append(body);return node;}
 function taskNode(room,task){const li=document.createElement('li'),who=room.members[task.assignee]?.display_name||task.assignee;li.append(make('span',t(task.state)||task.state,'status-pill status-'+task.state),make('span',who+' · '+(t(task.purpose)||task.purpose),'task-name'));li.append(make('span',t('attemptLabel')+': '+task.attempt+' · '+t('generationLabel')+': '+task.generation+(task.state==='completed'?' · '+t('storedCompletion'):''),'task-meta'));
  const observedReasons=(taskDiagnostics&&Array.isArray(taskDiagnostics.tasks)?taskDiagnostics.tasks.find(entry=>entry&&entry.task_id===task.id)?.waiting_reasons:[])||[];

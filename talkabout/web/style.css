@@ -1467,6 +1467,11 @@ progress::-moz-progress-bar { background: var(--accent); border-radius: 999px; }
   border: 1px solid var(--line);
   border-radius: 8px;
 }
+.patch-diff { font-family: var(--font-mono); white-space: pre; overflow-x: auto; line-height: 1.5; }
+.diff-line { white-space: pre; }
+.diff-header, .diff-hunk { font-weight: 700; }
+.diff-add { background: rgba(31, 130, 90, .14); }
+.diff-remove { background: rgba(190, 65, 65, .14); }
 .version-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 9px; }
 .version-actions button { padding: 5px 11px; font-size: .76rem; box-shadow: none; }
 
