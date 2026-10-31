@@ -67,6 +67,43 @@ Codex exec-json work profile에서만 `command_execution`, `file_change` 및 계
 - 이 P0의 검증은 **합성 이벤트 스트림**에 한정한다. 실제 provider의 파일 수정·명령 실행
   턴은 별도의 명시적 예산·동의가 필요하며 현재 **NOTRUN**이다.
 
+## 관측 실패 ≠ 허용 (A0 후속 관측 경계, 2026-10-31)
+
+A0 도구 이벤트는 **사후 관찰**이며 권한·성공 판정이 아니다. 관측이 실패했거나 이벤트가 도착하지 않은 경우를
+"허용됨"·"문제 없음"·"테스트 통과"로 승격하지 않는다. 이 절은 [2차 외부 저장소 분석](../analysis/repo-review-2026-10-31/08-TALKABOUT-GAPS.md)의
+교차 결론을 TalkAbout 계약으로 옮긴 것이며, 외부 코드는 복사하지 않았다.
+
+| 상황 | 현재 처리 | 표시·판정 규칙 |
+| --- | --- | --- |
+| item schema 불일치·추가 필드·잘못된 타입 | `runtime_invalid_output`으로 turn 중단 | 성공으로 승격하지 않는다. prompt 전송 뒤에는 실행 여부를 단정하지 않고 `unknown`으로 둔다 |
+| 허용 목록 밖 도구(`mcp_tool_call`/`web_search` 등) | `runtime_tool_policy_violation` | 거절은 "도구가 실행되지 않았다"는 증거가 아니다. `unknown` 경계 유지 |
+| tool item이 `in_progress`로 남은 채 turn 종료 | `runtime_invalid_output` | 완료로 표시하지 않는다 |
+| 관측 이벤트 0건 | evidence `events: 0` | "변경 없음"·"허용"·"성공"이 아니라 **미관측**이다 |
+| parser/transport 예외 | turn `unknown`, 자동 재실행 없음 | R3 one-shot과 uncertain no-retry 경계를 유지한다 |
+
+- 이 규칙은 합성 fixture로 고정한다: [codex-exec 0.164 item fixture](../tests/fixtures/codex_exec_0164_items.json),
+  [회귀 테스트](../tests/test_work_profile_events.py). fixture는 **드리프트 감지용**이며 실제 설치된 binary 호환성이나 provider 실행 증거가 아니다.
+- 관측된 evidence는 `observed`/`agent_reported_unverified`이고, 접근 권한은 `not_enforced`로 표기한다. 관측≠권한이다.
+
+## 경로 경계 검증의 범위와 한계 (W1, 2026-10-31)
+
+`--work-workspace`는 provider workspace-write 정책의 대상 디렉터리를 고르는 **trust transfer**이며 sandbox가 아니다.
+현재 코드가 실제로 하는 검증과, 아직 하지 않는 검증을 구분한다.
+
+| 항목 | 현재 상태 |
+| --- | --- |
+| 최종 경로가 symlink | `runtime_work_workspace_invalid`로 거절 |
+| `..`·중간 구성요소 symlink | `resolve(strict=True)`로 **해석**한 뒤 판정한다(거부가 아님) |
+| 홈·파일시스템 루트 | `runtime_work_workspace_too_broad` |
+| TalkAbout 소스 트리 겹침 | `runtime_work_workspace_overlaps_platform` |
+| 쓰기 불가 | `runtime_work_workspace_not_writable` |
+| junction/reparse point(최종 구성요소) | `Path.is_junction` 자체 검사로 `runtime_work_workspace_invalid` 거절(2026-10-31). 중간 구성요소는 해석되며 전용 검사는 **미구현** |
+| 종료 후·turn 사이 재검증 | **미구현** — 현재는 예약 전 preflight와 runtime 생성 시 2회 확인 |
+| sandbox·egress 제한 | **미구현**. [TOOL_BROKER_PLAN.md](TOOL_BROKER_PLAN.md) 관문 유지 |
+
+최종 구성요소 junction 거부는 2026-10-31 자체 로직으로 반영했다. 중간 구성요소 전용 검사와 3회 재검증은 [2차 분석 후보](../analysis/repo-review-2026-10-31/08-TALKABOUT-GAPS.md)의 P1-1 잔여 항목이며,
+재구현 절차는 [독립 구현 정책](CLEAN_ROOM_IMPLEMENTATION.md)을 따른다.
+
 ## 제출된 작업 항목 집계 (A1)
 
 표준 work worker는 정상 반환·프로세스 정리 후 같은 턴의 관측 항목을 집계해 완료 메시지에 보낸다.

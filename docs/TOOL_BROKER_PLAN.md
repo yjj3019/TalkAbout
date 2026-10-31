@@ -64,6 +64,46 @@ GitHub 후보는 공식 [github/github-mcp-server](https://github.com/github/git
 
 현재 단계에서는 두 서비스에 접속·인증하지 않는다. 런타임 설치나 제공자별 MCP 지원을 완료된 것으로 간주하지 않는다.
 
+## A5/A6 선행 gate 1: 승인 데이터 계약 (PROPOSED, 2026-10-31)
+
+A5(browser)·A6(PDF)를 열기 전에 승인의 **데이터 요건**을 먼저 고정한다. 이 절은 권한 경로를 열지 않으며, API 배선은 아직 없다.
+[2차 외부 저장소 분석](../analysis/repo-review-2026-10-31/08-TALKABOUT-GAPS.md)의 교차 결론(승인 결정/전달/소비 분리, 자동승인 0)을
+TalkAbout 불변식으로 다시 쓴 것이며 외부 코드는 복사하지 않았다.
+
+**순수 계약 함수 구현(2026-10-31):** [approval.py](../talkabout/approval.py)의 `canonical_arguments`·`effect_key`·`approval_state`는
+저장소·provider·ACL과 분리된 **부작용 없는** 함수다. 서버가 발급한 `task_id`/`attempt`/`occurrence`로 효과 키를 만들고 **provider tool-call id를 입력으로 받지 않는다**.
+상태는 `ready`/`missing`/`mismatch`/`expired`/`consumed`/`delivery_unknown`만 반환하며 `ready`만 긍정이다. 테스트: [test_approval_contract.py](../tests/test_approval_contract.py).
+이 함수는 아직 어떤 승인·실행 경로에도 연결되지 않았고, 연결은 A5/A6 계획 승인 후 별도 PR에서 한다.
+
+| 필드 | 의미 | 규칙 |
+| --- | --- | --- |
+| `actor` | 승인한 인증된 human | 채팅 메시지·agent 보고·모델 판단은 승인 actor가 아니다 |
+| `source` | `human`/`saved_rule`/`timeout` | `saved_rule`·`timeout`은 `human`으로 집계하지 않는다. 자동 허용 기본 0건 |
+| `decision_at` / `delivered_at` / `consumed_at` | 결정·전달·소비 시각 | 전달 미확인은 `unknown`으로 보존하며 "승인됨=실행됨"으로 표시하지 않는다 |
+| `target_digest` | 승인 대상(tool·action·args) canonical digest | 대상이 바뀌면 기존 승인은 무효. 같은 digest만 replay |
+| `fence` | task/attempt/room generation/membership revision/lease/policy revision | 실행 직전과 결과 제출 때 다시 검증한다 |
+| `expires_at` / `single_use` | 만료·일회성 | 승인은 호출 단위이며 turn 전체·profile 전체 승인이 아니다 |
+
+**금지:** 자동 승인 기본값, 모델의 승인 대행, "항상 묻기" 예외를 자동화·저장 규칙이 우회하는 구성, provider tool-call id 단독 멱등키,
+승인 없는 실행을 성공으로 스크립트화하는 UI. 회수·정지·구성원 변경은 이전 승인을 즉시 무효화한다.
+
+## A5/A6 선행 gate 2: 격리·placement 계약표 (PROPOSED, 2026-10-31)
+
+"어디서 실행하는가"(placement)와 "무엇이 격리되는가"(isolation)와 "누가 실행을 승인하는가"(lease)를 한 표로 고정한다.
+**표에 없는 backend는 실행 전에 거절**한다. 이 표는 승인된 구현 목록이 아니라 **상태표**이며, 상태 열을 생략하면 안 된다.
+
+| placement | 현재 격리 범위 | 실행 경로 | 상태 |
+| --- | --- | --- | --- |
+| 소유자 Windows PC (W1 work profile) | provider workspace-write + Windows Job 수명 containment | `codex` exec-json만 | **구현(기본 꺼짐)**. sandbox 아님 |
+| 소유자 POSIX PC | C1 격리 계층(구현) | C2 활성화 보류 | **보류** — supervisor 사망 시 자식 회수(P4) 미구현 |
+| 원격 호스트/VM | 해당 없음 | 없음 | **NOTRUN / 거절** |
+| 컨테이너·클라우드 sandbox | 해당 없음 | 없음 | **NOTRUN / 거절** |
+| browser/PDF capability | 해당 없음 | 없음 | **A5/A6 관문 대기** |
+
+- `sandbox`·`격리됨`이라는 표현은 위 표의 상태와 근거가 일치할 때만 쓴다. Windows Job containment는 수명·정리 통제이며 파일·네트워크·비밀정보 격리가 아니다.
+- provider CLI가 스스로 보고하는 sandbox 설정은 **권한 근거가 아니라 진단 정보**다. 적용 여부가 확인되지 않으면 "꺼졌다"고 주장하지 않는다.
+- 실제 VM/컨테이너 도입과 공개 ingress는 별도 승인 대상이며, 이 표에 행을 추가하는 것만으로 허용되지 않는다.
+
 ## 명령 격리의 출시 관문
 
 Windows Job Object는 후손 프로세스 수명과 정리를 통제하는 수단이며, 파일·네트워크·비밀정보 접근을 제한하는 sandbox가 아니다. 현재 Windows containment를 shell 실행 허가 근거로 확대하지 않는다.

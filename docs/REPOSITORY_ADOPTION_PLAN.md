@@ -100,3 +100,28 @@ stream/events/snapshot은 read-only 관찰이며 task·room payload를 변경하
 
 각 단계는 작은 PR로 분리하고 synthetic 회귀·독립 review·문서 gate·필수 Windows/PostgreSQL 및 POSIX CI를 통과해야 한다.
 현재 분석 산출물은 승인된 설계 근거로 보존하며 제품 구현·테스트 통과의 영수증으로 쓰지 않는다.
+
+## 2026-10-31 2차 분석 반영 — 선행 계약 고정
+
+[2차 7개 저장소 분석](../analysis/repo-review-2026-10-31/08-TALKABOUT-GAPS.md)의 P0 후보 중 **코드 실행 경로를 열지 않고 반영 가능한 부분**만 반영했다.
+제품 runtime·provider 호출·sandbox 동작은 바뀌지 않았다.
+
+| 후보 | 반영 내용 | 위치 | 상태 |
+| --- | --- | --- | --- |
+| P0-1 관측 실패 ≠ 허용 | 계약 표·규칙 명문화 + 회귀 테스트(관측 실패가 `unknown`을 유지하고 성공으로 승격되지 않음) | [WORK_PROFILE.md](WORK_PROFILE.md), [tests/test_work_profile_events.py](../tests/test_work_profile_events.py) | **문서·합성 테스트 반영** |
+| P0-2 exec schema fixture | 버전 태그(`codex-cli-0.164`) 고정 fixture + 허용/거절 표 회귀 | [tests/fixtures/codex_exec_0164_items.json](../tests/fixtures/codex_exec_0164_items.json) | **테스트 반영**. 드리프트 감지용이며 provider 호환성 증거 아님 |
+| P0-3 승인 데이터 계약 | `source`·결정/전달/소비·digest·fence·자동승인 0 규칙 | [TOOL_BROKER_PLAN.md](TOOL_BROKER_PLAN.md)의 "A5/A6 선행 gate 1" | **문서 반영**. 구현·API 없음 |
+| P0-4 격리·placement 계약표 | placement×isolation×lease 상태표, 표 밖 backend 실행 거절, "sandbox" 표기 조건 | [TOOL_BROKER_PLAN.md](TOOL_BROKER_PLAN.md)의 "A5/A6 선행 gate 2" | **문서 반영**. 구현 없음 |
+| P1-1 경로 경계 보강 | 최종 구성요소 junction/reparse 거부를 자체 로직으로 구현 + 회귀 테스트. 중간 구성요소·3회 재검증은 문서로 한계 고정 | [WORK_PROFILE.md](WORK_PROFILE.md), [agent_runtime.py](../talkabout/agent_runtime.py), [tests/test_work_profile.py](../tests/test_work_profile.py) | **부분 반영** — 코드·테스트 반영. 중간 구성요소·3회 재검증 미반영 |
+| P1-2 read-only 진단 | `GET /rooms/{id}/diagnostics` — 닫힌 enum 대기 사유(room_not_active·dispatch_held·awaiting_worker_claim·worker_leased·lease_expired·awaiting_start_grant·deadline_passed·awaiting_human_resolution)를 **관측만** 계산. human 전용, 상태·event·attempt 불변 | [observation.py](../talkabout/observation.py), [api.py](../talkabout/api.py), [core.py](../talkabout/core.py), [tests/test_room_diagnostics.py](../tests/test_room_diagnostics.py) | **코드·테스트·API 반영** — UI 표시는 미반영 |
+| P2-2 승인 effect-key(순수) | `canonical_arguments`·`effect_key`·`approval_state` 자체 함수. provider tool-call id 미입력, 닫힌 상태 어휘, 결정/전달/소비 구분, 무변경 | [approval.py](../talkabout/approval.py), [tests/test_approval_contract.py](../tests/test_approval_contract.py) | **순수 함수·테스트 반영** — 승인/실행 경로 미연결(A5/A6 승인 필요) |
+| P1-3 A2 선언 scope 직렬화 | — | — | **미반영** (A2 실행 활성화 전 설계 대상) |
+| P2·P3(나머지) | — | — | **미반영** (승인 스키마 확장, config flag 감지, capability token, POSIX P4) |
+
+**P1-2 계약 요약.** 진단 응답은 `room_id·room_state·dispatch_held·last_seq·membership_revision·tasks[]`이고, 각 task는 `task_id·state·assignee·attempt·waiting_reasons`만 포함한다. 호출은 `store.snapshot` 읽기와 ACL 검사만 수행하며 event·task·attempt·cursor를 만들지 않는다. 빈 사유 목록은 "대기 없음(terminal)" 또는 "관측 대상 아님"을 뜻하며 **허용·검증·실행 증거가 아니다**. `uncertain`은 `awaiting_human_resolution` 하나로만 표시하고 일반 busy로 접지 않는다.
+
+**라이선스 원칙.** 이번 반영은 7개 저장소의 **설계 패턴만 참고**했고 코드·문서 문장을 복사하지 않았다.
+serena(GPL-3.0-or-later)와 openbot(PolyForm Noncommercial)은 라이선스상 코드 도입이 불가하므로 설계 논의만 인용했다.
+새 dependency·vendored code·asset은 추가하지 않았으며, TalkAbout 자체 작성 코드와 합성 fixture만 추가했다.
+출처·고정 revision·라이선스는 [2차 분석 소스 원장](../analysis/repo-review-2026-10-31/00-SOURCE-MANIFEST.md)에 기록했다.
+라이선스가 제약인 기술을 **자체 로직으로 재구현**할 때의 절차·금지·기록 양식은 [독립 구현 정책](CLEAN_ROOM_IMPLEMENTATION.md)을 따른다.

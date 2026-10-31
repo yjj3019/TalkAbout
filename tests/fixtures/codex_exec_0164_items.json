@@ -1,0 +1,133 @@
+{
+  "schema_version": "codex-cli-0.164",
+  "observed_on": "2026-10-31",
+  "provenance": "TalkAbout A0 observation contract. Synthetic fixture written for this repository; no provider execution and no external source code copied.",
+  "allowed_items": [
+    {
+      "type": "item.started",
+      "item": {
+        "id": "synthetic-command",
+        "type": "command_execution",
+        "command": "synthetic-command",
+        "aggregated_output": "",
+        "status": "in_progress",
+        "exit_code": null
+      }
+    },
+    {
+      "type": "item.completed",
+      "item": {
+        "id": "synthetic-command",
+        "type": "command_execution",
+        "command": "synthetic-command",
+        "aggregated_output": "SECRET-output",
+        "status": "completed",
+        "exit_code": 0
+      }
+    },
+    {
+      "type": "item.completed",
+      "item": {
+        "id": "synthetic-change",
+        "type": "file_change",
+        "changes": [{"path": "synthetic.txt", "kind": "update"}],
+        "status": "completed"
+      }
+    },
+    {
+      "type": "item.started",
+      "item": {
+        "id": "synthetic-plan",
+        "type": "todo_list",
+        "items": [{"text": "synthetic step", "completed": false}]
+      }
+    },
+    {
+      "type": "item.completed",
+      "item": {
+        "id": "synthetic-plan",
+        "type": "todo_list",
+        "items": [{"text": "synthetic step", "completed": true}]
+      }
+    }
+  ],
+  "expected": {
+    "events": 3,
+    "items": 2,
+    "changes": 1
+  },
+  "rejected": [
+    {
+      "name": "mcp_tool_call",
+      "phase": "completed",
+      "item": {"id": "x", "type": "mcp_tool_call"},
+      "error": "runtime_tool_policy_violation"
+    },
+    {
+      "name": "web_search",
+      "phase": "completed",
+      "item": {"id": "x", "type": "web_search"},
+      "error": "runtime_tool_policy_violation"
+    },
+    {
+      "name": "command_extra_field",
+      "phase": "completed",
+      "item": {
+        "id": "x",
+        "type": "command_execution",
+        "command": "synthetic-command",
+        "aggregated_output": "",
+        "status": "completed",
+        "exit_code": 0,
+        "extra": "unrecognized"
+      },
+      "error": "runtime_invalid_output"
+    },
+    {
+      "name": "command_exit_code_string",
+      "phase": "completed",
+      "item": {
+        "id": "x",
+        "type": "command_execution",
+        "command": "synthetic-command",
+        "aggregated_output": "",
+        "status": "completed",
+        "exit_code": "0"
+      },
+      "error": "runtime_invalid_output"
+    },
+    {
+      "name": "command_missing_aggregated_output",
+      "phase": "completed",
+      "item": {
+        "id": "x",
+        "type": "command_execution",
+        "command": "synthetic-command",
+        "status": "completed",
+        "exit_code": 0
+      },
+      "error": "runtime_invalid_output"
+    },
+    {
+      "name": "file_change_unknown_kind",
+      "phase": "completed",
+      "item": {
+        "id": "x",
+        "type": "file_change",
+        "changes": [{"path": "synthetic.txt", "kind": "rename"}],
+        "status": "completed"
+      },
+      "error": "runtime_invalid_output"
+    },
+    {
+      "name": "todo_completed_not_boolean",
+      "phase": "completed",
+      "item": {
+        "id": "x",
+        "type": "todo_list",
+        "items": [{"text": "synthetic step", "completed": 1}]
+      },
+      "error": "runtime_invalid_output"
+    }
+  ]
+}

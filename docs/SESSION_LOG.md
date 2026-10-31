@@ -1,5 +1,20 @@
 # TalkAbout session log
 
+## 2026-10-31 — 2차 7개 저장소 분석 + 선행 계약 반영
+
+- 사용자 요청: 지정 저장소 7개(serena·codex·openbot·rakazo·open-duet·OpenMausBot·munder-difflin)를 정밀 분석해 TalkAbout 도입 가능 개선점을 도출하고, **라이선스 문제 없이 반영 가능한 부분**을 반영.
+- 분석 산출물: [analysis/repo-review-2026-10-31/](../analysis/repo-review-2026-10-31/README.md) 10개 문서(소스 원장·저장소별 7편·통합 판정·README). 고정 revision 정적 분석만 했고 외부 빌드·테스트·설치·VM 실행은 NOTRUN. 링크 519개(로컬 239·GitHub pinned 272) 검사, 고정 SHA 경로 샘플 실존 확인.
+- 분석 결론: 7개는 모두 "에이전트를 자기 PC/샌드박스에서 상주시키는 제품"이라 TalkAbout room 모델과 방향이 반대다. **직접 이식 없음**. serena는 GPL-3.0-or-later, openbot은 PolyForm Noncommercial로 코드 도입 자체가 불가. 설계 참고 가치는 ① 관측≠권한·관측실패≠허용 ② 승인 결정/전달/소비 분리·자동승인 0 ③ 격리·placement 계약표 선행 ④ 대기·자원 점유의 read-only 관측 ⑤ provider schema fixture.
+- 반영(제품 runtime 동작 변화 없음): [WORK_PROFILE.md](WORK_PROFILE.md)에 "관측 실패 ≠ 허용(A0 후속 계약)"와 "경로 경계 검증의 범위와 한계" 추가, [TOOL_BROKER_PLAN.md](TOOL_BROKER_PLAN.md)에 **A5/A6 선행 gate 1(승인 데이터 계약)**·**gate 2(격리·placement 계약표)** 추가, [REPOSITORY_ADOPTION_PLAN.md](REPOSITORY_ADOPTION_PLAN.md)에 반영 결과·미반영 목록·라이선스 원칙, [SOURCES.md](SOURCES.md)에 7개 저장소 라이선스 기록.
+- 테스트: [codex_exec_0164_items.json](../tests/fixtures/codex_exec_0164_items.json) 버전 태그 고정 fixture 신규, [test_work_profile_events.py](../tests/test_work_profile_events.py)에 fixture 회귀 8건(허용 1·거절 7)과 "관측 실패 후 unknown 유지" 회귀 1건 추가.
+- 라이선스: 외부 코드·문장·asset을 복사하지 않았고 새 dependency·vendored code를 추가하지 않았다. GPL/PolyForm 저장소는 설계만 참고. 출처·revision·라이선스는 [소스 원장](../analysis/repo-review-2026-10-31/00-SOURCE-MANIFEST.md)에 기록.
+- 검증(실행): work-profile Python 회귀 **93 passed / 1 skipped**, `test_docs_contract` **7 passed**, Node UI 9파일 통과, `tools/docs_check.py` **0 new / 0 known**. 실제 provider·VM·브라우저 실행은 NOTRUN.
+- 추가 반영(독립 구현): [CLEAN_ROOM_IMPLEMENTATION.md](CLEAN_ROOM_IMPLEMENTATION.md) 정책·기록 템플릿 추가, W1 workspace **최종 구성요소 junction/reparse 거부**를 자체 로직(`Path.is_junction`)으로 구현 + 회귀 테스트 1건. serena/munder의 경로 봉쇄 **개념**만 참고했고 코드는 복사하지 않았다. 중간 구성요소·3회 재검증은 미반영.
+- 추가 반영(두 번째 독립 구현): **read-only 대기 사유 진단** — `talkabout/observation.py`(자체 enum 8종·자체 계산), `GET /api/v1/rooms/{id}/diagnostics`(human 전용, 상태·event·attempt 불변), [API_DRAFT.md](API_DRAFT.md)·[REPOSITORY_ADOPTION_PLAN.md](REPOSITORY_ADOPTION_PLAN.md) 계약 기록. openbot/rakazo/open-duet은 **문제 정의만** 참고했고 enum·규칙·응답·테스트는 자체 설계. 외부 코드·상수·문구 미복사.
+- 추가 반영(세 번째 독립 구현): **승인 effect-key·상태 판정 순수 함수** — [approval.py](../talkabout/approval.py)(자체 canonical JSON·5축 해시·닫힌 6상태·경계 검사, provider tool-call id 미입력), [test_approval_contract.py](../tests/test_approval_contract.py) 40 passed. rakazo/open-duet은 **문제 정의만** 참고, 승인·실행 경로 연결은 하지 않았다(A5/A6 승인 필요).
+- 검증(추가): [tests/test_room_diagnostics.py](../tests/test_room_diagnostics.py) **15 passed**, 기존 core/API 회귀 **85 passed / 1 skipped**, work-profile 회귀 **94 passed / 1 skipped**, approval 계약 **40 passed**, `docs_check` 0 new / 0 known.
+- 미반영(다음): P1-3 A2 선언 scope 직렬화, P2(승인 스키마 확장·config flag 감지·capability token), P3 POSIX P4, 중간 junction 구성요소·3회 재검증, 진단 UI 표시, 승인 함수의 실제 경로 연결.
+
 ## 2026-10-30 — 초대 연결 단순화: Windows 연결 도우미
 
 - 사용자 요청: 에이전트 초대 절차가 너무 복잡하다. "초대 → 내려받은 파일 실행 → 비밀값 1회 붙여넣기 → 브라우저에서 확인" 수준으로 줄인다.
