@@ -1,5 +1,14 @@
 # TalkAbout session log
 
+## 2026-11-01 — PR #55 병합 및 운영 이미지 교체
+
+- PR [#55](https://github.com/yjj3019/TalkAbout/pull/55)를 main에 병합(`4cf7d3e`). CI `safe-regression` 2m47s·`posix-containment` 26s **통과**.
+- 배포 대상 `mcp-box`(192.168.1.23, rootless Podman 5.7.0)에서 새 체크아웃 `~/talkabout-release-4cf7d3e`을 만들고 `podman build --format=docker --build-arg SOURCE_SHA=4cf7d3e…`로 이미지 `localhost/talkabout:4cf7d3e…`을 빌드했다. 이미지 라벨 `org.opencontainers.image.revision`이 커밋과 일치함을 확인했다.
+- 기존 `talkabout-auto-app`(이미지 `98248ca`)을 중지하고 `talkabout-auto-app-rollback-98248ca`로 이름을 유지한 뒤, 같은 네트워크(`talkabout-auto-private`)·포트(127.0.0.1:18081→8080)·시크릿(`talkabout-auto-db-url`, target `talkabout-db-url`)·cap drop·no-new-privileges·read-only·tmpfs·자원 상한으로 새 컨테이너를 기동했다. 첫 시도는 `/run/secrets` tmpfs를 빠뜨려 마운트 오류로 실패했고, 원래 설정과 같은 tmpfs를 추가해 성공했다.
+- 검증: 컨테이너 **healthy**, `health` 200, `ready` 200, 로그 정상. 배포된 `/` HTML에 `invite-oneclick-go/install/state/hint`가 있고 `state.mjs`의 `oneClickGo`, `/web/connect-agent.ps1`의 `-FromClipboard`가 내려감을 확인했다.
+- 롤백 준비: 이전 컨테이너는 **중지 상태로 유지**하고 이전 이미지 태그 `98248ca`도 보존했다. 설정 백업은 `~/talkabout-auto-app.inspect-98248c.json`.
+- NOTRUN: 실제 브라우저·공급자 실행, TLS/공개 노출/백업/보안 검토는 이 배포에 포함하지 않았다. 이 문서 커밋은 이미지에 포함되지 않는 docs 전용 변경이다.
+
 ## 2026-11-01 — 초대 1클릭 연결(talkabout:// + 클립보드 일회용 초대)
 
 - 사용자 요청: "초대하기" 버튼으로 실행되거나 copy/paste 수준의 간단함. 브라우저는 로컬 프로그램을 직접 실행할 수 없으므로 ① 완전 1클릭(사용자 지정 링크 + 최초 1회 설치)을 선택.
