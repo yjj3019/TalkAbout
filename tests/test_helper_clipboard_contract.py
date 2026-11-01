@@ -80,6 +80,13 @@ def test_expected_literals_exist(needle):
     assert needle in TEXT
 
 
+def test_clipboard_text_is_a_dry_run_diagnostic_only():
+    # A real run must never take a credential from the command line.
+    assert '-ClipboardText is a dry-run diagnostic only' in TEXT
+    assert 'if (-not [string]::IsNullOrWhiteSpace($ClipboardText) -and -not $DryRun.IsPresent)' in TEXT
+    assert 'InstallHelper does not accept -ClipboardText' in TEXT
+
+
 def test_static_asset_is_served_by_the_web_allowlist():
     api = (ROOT / 'talkabout' / 'api.py').read_text(encoding='utf-8')
     assert '"connect-agent.ps1"' in api

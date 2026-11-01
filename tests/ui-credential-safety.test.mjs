@@ -23,6 +23,14 @@ for(const boundary of ['logout','room navigation'])test('late credential respons
  assert.equal(h.node('credential-value').value,'');assert.equal(h.node('credential-dialog').open,false);assert.equal(response.token,'');
  assert.equal(h.calls.filter(c=>c.options?.method==='POST').length,1);assert.ok(h.calls.every(c=>!c.url.includes('synthetic-private-token')));
 });
+test('a same-room refresh keeps a pending credential response instead of discarding it',async()=>{
+ const h=await harness();h.run("issueCredential({id:'room'},{id:'agent'});");await new Promise(setImmediate);
+ h.run("view.select('room');"); // polling/SSE refresh increments the view epoch for the same room
+ const response={token:'synthetic-private-token',expires_at:2000000000};h.resolve(response);await new Promise(setImmediate);
+ assert.equal(h.node('credential-dialog').open,true);
+ assert.equal(h.node('credential-value').value,'synthetic-private-token');
+ assert.equal(response.token,'');
+});
 test('replayed credential metadata gives recovery instructions without displaying a secret',async()=>{
  const h=await harness();h.run("issueCredential({id:'room'},{id:'agent'});");await new Promise(setImmediate);
  h.resolve({token_not_recoverable:true});await new Promise(setImmediate);

@@ -265,11 +265,14 @@ test('one-click copies a room-scoped invite once and opens the pinned handler',a
  assert.equal(h.node('invite-oneclick-hint').hidden,false);
 });
 
-test('one-click never navigates or claims success when the clipboard is denied',async()=>{
+test('one-click keeps the issued secret and never claims success when the clipboard is denied',async()=>{
  const h=await harness(),response=issued();h.respond('POST','agents/'+agent.id+'/credentials',response);await h.open();h.failClipboard();
  h.node('invite-oneclick-go').onclick();await tick();await tick();
- assert.equal(response.token,'');assert.equal(h.node('invite-secret-value').value,'');
+ assert.equal(response.token,'');
+ // The manual path must remain usable: the issued secret stays visible for copying.
+ assert.equal(h.node('invite-secret-value').value,'synthetic-room-secret');
  assert.equal(h.node('invite-oneclick-state').textContent,labels.ko.oneClickClipboardFailure);
+ assert.equal(h.copies.length,0);
  assert.equal(h.run('location.href'),undefined);
 });
 
