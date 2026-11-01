@@ -71,3 +71,33 @@ Tests cover first install, retry without rotation, interruption before/after DB 
 컨테이너가 영속화된 뒤 실제 시작 전에 프로세스 중단/재부팅으로 created job이 남을 수 있습니다. installer는 예상 이름·설치 label·image/user/cmd·생성 argv와 config fingerprint를 확인합니다. 기존 버전의 fingerprint 없는 job은 정확한 기존 생성 argv가 일치할 때만 허용합니다. 실행/일시정지 중인 job은 건드리지 않습니다. 확인된 비실행 일회성 job만 immutable container ID로 `container rm`하며 force·volume 삭제 옵션을 사용하지 않습니다. 검사 이후 누군가 job을 시작하면 Podman이 제거를 거절해 설치를 중단합니다. 이름 교체로 다른 컨테이너를 삭제할 수 없고 DB/volume/secret을 삭제하지 않습니다. 확인 실패는 수동 검토를 요구하며 임의 정리하지 않습니다.
 
 A crash between persistent container creation and startup can leave a dormant one-shot job. The installer verifies expected name, installation labels, image/user/cmd and exact create argv/config fingerprint. Legacy jobs without the fingerprint require exact legacy argv. Running/paused/unknown states remain untouched. Only a matching nonrunning job is removed by immutable ID, with no force or volume-removal flag, then provisioning resumes with the same DB and credentials. A concurrent start makes Podman refuse removal; a replaced name cannot redirect removal to another container. Database containers and volumes are never selected for this cleanup.
+
+
+## 운영 인스턴스(mcp-box) — 재시작·백업·로그·정리
+
+이 절은 저장소의 일반 installer가 아니라 **이미 배포된 프로토타입 인스턴스**(rootless Podman, loopback publish)를 관리하는 절차입니다. 실제 호스트 이름·주소·자격증명은 이 문서에 쓰지 않습니다.
+
+### 재시작과 감독
+
+- 컨테이너는 `--restart=unless-stopped`로 생성합니다. 수동 `podman stop`은 재시작 정책을 무시하고 그대로 정지합니다.
+- rootless 재부팅 자동 복구는 사용자 linger와 `podman-restart.service`가 필요합니다.
+  `loginctl show-user "$USER" --property=Linger` → `yes`, `systemctl --user enable --now podman-restart.service`.
+- 상태 확인은 `curl -fsS http://127.0.0.1:18081/ready`입니다. `healthcheck.sh`는 5분 타이머로 결과만 기록하며 **자동 재시작하지 않습니다**(DB 단절 뒤 무한 재시작을 피하기 위해 운영자가 판단).
+
+### 백업
+
+- `backup.sh`는 `podman exec <db> pg_dump -Fc`로 덤프하고 sha256을 남기며, 기본 14개를 보존합니다. 암호는 컨테이너 안에서만 쓰고 호스트 인자·환경에 넣지 않습니다.
+- 설치: 스크립트를 `%h/bin/`에 두고 `systemd/`의 유닛을 `~/.config/systemd/user/`에 복사한 뒤 `systemctl --user daemon-reload && systemctl --user enable --now talkabout-backup.timer talkabout-health.timer`.
+- 복원 리허설은 별도 일회용 PostgreSQL에 `pg_restore`로 수행하고, 실제 운영 DB에 바로 덮어쓰지 않습니다. 리허설은 아직 NOTRUN입니다.
+
+### 로그·정리
+
+- 컨테이너 로그는 `--log-opt max-size=10m --log-opt max-file=3`으로 상한을 둡니다(k8s-file에서 허용됨).
+- 이미지/컨테이너 정리는 **TalkAbout 이름·label로 한정**합니다. 롤백용 중지 컨테이너는 최근 1~2개만 남기고, `podman image prune -f`는 dangling만 제거합니다. 다른 프로젝트 자원은 건드리지 않습니다.
+
+### 2026-11-01 사고 교훈(필수)
+
+- `/run/user/1000` tmpfs의 inode가 100%가 되면 이미지 빌드가 `no space left on device`로 실패합니다. 원인은 `libpod/tmp` 아래 누적된 빈 `rootlessport*` 디렉터리였습니다.
+- **실행 중 컨테이너가 있을 때 `/run/user/1000/libpod/tmp`를 통째로 삭제하지 마세요.** Podman이 실행 중 컨테이너 추적을 잃고, 컨테이너가 계속 살아 있어도 `podman start/exec`가 실패하며 네트워크 이름 해석도 깨질 수 있습니다.
+- 복구 순서: ① `podman inspect`로 대상 컨테이너 설정(이미지 digest·env·secret·volume·cap)을 확보 ② 고아 프로세스를 SIGTERM으로 정상 종료 ③ 같은 named volume·secret으로 DB 컨테이너 재생성 ④ 앱 컨테이너 재생성 ⑤ `/ready`와 행 수 확인. 백업이 최신인지 먼저 확인합니다.
+- 컨테이너를 멈추고 런타임 상태를 정리해야 할 때는 `podman stop`으로 정상 중지한 뒤, 실행 중 컨테이너가 없음을 확인하고 정리합니다.

@@ -362,6 +362,9 @@ function applyCameraMode(mode) {
     }
   }
 }
+function prefersReducedMotion(){
+  try{return !!(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches);}catch{return false;}
+}
 function startStageAnimation(room) {
   stopStageAnimation();
   const host = el('room-stage');
@@ -402,6 +405,31 @@ function startStageAnimation(room) {
     if (target && target.dataset.id) showStageProfile(room, target.dataset.id, event, host);
     else hideStageProfile(host);
   };
+
+  if (prefersReducedMotion()) {
+    // Render the seated scene once and never start the walking/camera loop.
+    for (const actor of actors) {
+      const point = pointOnRing(actor.seatAngle, 0.94);
+      const scale = 0.78 + (point.y - 260) / 700;
+      actor.node.setAttribute('transform',
+        `translate(${point.x.toFixed(1)} ${point.y.toFixed(1)}) scale(${scale.toFixed(3)})`);
+      actor.node.classList.add('seated');
+    }
+    if (spot) {
+      const speaker = actors.find(entry => entry.speaking);
+      if (speaker) {
+        const point = pointOnRing(speaker.seatAngle, 0.94);
+        spot.setAttribute('cx', point.x.toFixed(1));
+        spot.setAttribute('cy', (point.y - 6).toFixed(1));
+        spot.setAttribute('opacity', '1');
+      } else {
+        spot.setAttribute('opacity', '0');
+      }
+    }
+    svg.setAttribute('viewBox', `${BASE_VIEW.x} ${BASE_VIEW.y} ${BASE_VIEW.w} ${BASE_VIEW.h}`);
+    stageAnimation = { raf: 0 };
+    return;
+  }
 
   let last = performance.now();
   let view = { ...BASE_VIEW };
@@ -982,3 +1010,4 @@ for (const button of document.querySelectorAll('#stage-camera button')) {
   button.onclick = () => applyCameraMode(button.dataset.camera);
 }
 applyCameraMode(cameraMode);
+if(window.matchMedia){try{const motion=window.matchMedia('(prefers-reduced-motion: reduce)');motion.addEventListener?.('change',()=>{if(view.room)startStageAnimation(view.room);});}catch{}}
