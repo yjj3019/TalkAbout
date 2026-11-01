@@ -1,0 +1,9 @@
+[Unit]
+Description=TalkAbout database backup (prototype instance)
+Documentation=file:///%h/TalkAbout/deploy/podman/OPERATING.md
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh %h/bin/talkabout-backup
+StandardOutput=append:%h/backups/talkabout/backup.log
+StandardError=append:%h/backups/talkabout/backup.log

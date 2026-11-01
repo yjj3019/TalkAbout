@@ -101,3 +101,20 @@ def test_documented_build_supplies_revision_argument_without_external_label_inje
     runtime=containerfile.split(' AS build',1)[1].split('FROM ',1)[1]
     assert 'ARG SOURCE_SHA' in runtime and 'LABEL org.opencontainers.image.revision="${SOURCE_SHA}"' in runtime
     assert 'test "${#SOURCE_SHA}" -eq 40' in runtime
+
+
+def test_operating_helpers_and_timers_are_documented_and_present():
+    podman = ROOT/'deploy/podman'
+    backup = (podman/'backup.sh').read_text(encoding='utf-8')
+    assert 'pg_dump' in backup and 'TALKABOUT_BACKUP_KEEP' in backup
+    assert 'sha256sum' in backup
+    health = (podman/'healthcheck.sh').read_text(encoding='utf-8')
+    assert '/ready' in health and 'never restart' in health
+    for unit in ('talkabout-backup.service', 'talkabout-backup.timer',
+                 'talkabout-health.service', 'talkabout-health.timer'):
+        assert (podman/'systemd'/unit).is_file(), unit
+    assert 'talkabout-backup' in (podman/'systemd/talkabout-backup.service').read_text(encoding='utf-8')
+    assert 'OnCalendar=' in (podman/'systemd/talkabout-backup.timer').read_text(encoding='utf-8')
+    operating = (podman/'OPERATING.md').read_text(encoding='utf-8')
+    for phrase in ('restart=unless-stopped', 'libpod/tmp', 'podman-restart.service'):
+        assert phrase in operating
