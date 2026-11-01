@@ -49,7 +49,7 @@ for(const language of ['ko','en'])test('one room screen continues an existing in
 });
 
 test('inline registration invites once despite duplicate click and keeps the selected client',async()=>{
- const h=await harness();h.run('agents=[];view.room.members={};');h.node('invite-agent-id').value='__new';h.node('invite-new-name').value='New synthetic';h.node('invite-new-client').value='claude';
+ const h=await harness({manage:false});h.run('agents=[];view.room.members={};');h.node('invite-agent-id').value='__new';h.node('invite-new-name').value='New synthetic';h.node('invite-new-client').value='claude';
  let resolve;h.handlers.set('POST agents',()=>new Promise(done=>{resolve=done;}));
  h.handlers.set('POST rooms/room/memberships',async()=>{h.room.members[agent.id]={kind:'agent',status:'pending',revision:1,permissions};return {ok:true,json:async()=>h.room.members[agent.id]};});
  const first=h.node('invite-agent').onsubmit({preventDefault(){}});await tick();await h.node('invite-agent').onsubmit({preventDefault(){}});
@@ -289,6 +289,44 @@ test('helper installer pins the server origin and carries no invite or credentia
  assert.equal(h.calls.filter(c=>c.method==='POST').length,0);
 });
 
+test('the invite button offers invite-and-connect only when the helper could run',async()=>{
+ const h=await harness();h.run('agents=[];view.room.members={};');h.node('invite-agent-id').value='__new';h.node('invite-new-name').value='New synthetic';
+ h.run('renderInviteChoice()');
+ assert.equal(h.node('invite-submit').textContent,labels.ko.inviteConnect);
+ assert.equal(h.node('invite-choice-help').textContent,labels.ko.inviteConnectHelp);
+ for(const change of ["el('invite-new-client').value='grok'","el('invite-machine').value='other'","view.room.mode='free_discussion'"]){
+  h.run("el('invite-new-client').value='codex';el('invite-machine').value='same';view.room.mode='co_creation';renderInviteChoice();"+change+";renderInviteChoice();");
+  assert.notEqual(h.node('invite-submit').textContent,labels.ko.inviteConnect,change);
+ }
+ const noManage=await harness({manage:false});noManage.run('agents=[];view.room.members={};');noManage.node('invite-agent-id').value='__new';noManage.node('invite-new-name').value='New synthetic';noManage.run('renderInviteChoice()');
+ assert.notEqual(noManage.node('invite-submit').textContent,labels.ko.inviteConnect);
+});
+
+test('invite-and-connect issues once, copies the invite and opens the handler',async()=>{
+ const h=await harness();h.run('agents=[];view.room.members={};');h.node('invite-agent-id').value='__new';h.node('invite-new-name').value='New synthetic';h.node('invite-new-client').value='claude';
+ h.respond('POST','agents',agent);
+ h.handlers.set('POST rooms/room/memberships',async()=>{h.room.members[agent.id]={kind:'agent',status:'pending',revision:1,permissions};return {ok:true,json:async()=>h.room.members[agent.id]};});
+ const response=issued();h.respond('POST','agents/'+agent.id+'/credentials',response);
+ await h.node('invite-agent').onsubmit({preventDefault(){}});await tick();await tick();await tick();
+ assert.equal(h.calls.filter(c=>c.method==='POST'&&c.path.endsWith('/memberships')).length,1);
+ assert.equal(h.calls.filter(c=>c.method==='POST'&&c.path.endsWith('/credentials')).length,1);
+ assert.equal(h.node('onboarding-dialog').open,true);
+ assert.equal(h.confirms.length,1);assert.ok(h.confirms[0].includes(labels.ko.oneClickConfirm));
+ assert.equal(h.copies.length,1);const payload=JSON.parse(h.copies[0]);
+ assert.equal(payload.room,'room');assert.equal(payload.agent,agent.id);assert.equal(payload.runtime,'claude');
+ assert.equal(payload.token,'synthetic-room-secret');assert.equal(response.token,'');
+ assert.equal(h.node('invite-secret-value').value,'');
+ assert.equal(h.run('location.href'),'talkabout://connect');
+ assert.equal(h.node('invite-oneclick-state').textContent,labels.ko.oneClickStarted);
+});
+
+test('continuing an existing invitation keeps the manual guide and issues nothing',async()=>{
+ const h=await harness();h.run('renderParticipants(view.room);');h.node('invite-agent-id').value=agent.id;
+ assert.equal(h.node('invite-submit').textContent,labels.ko.inviteContinue);
+ await h.node('invite-agent').onsubmit({preventDefault(){}});await tick();
+ assert.equal(h.calls.filter(c=>c.method==='POST').length,0);assert.equal(h.copies.length,0);
+});
+
 test('connection helper stays hidden for unsupported runtime, remote host, closed state and free mode without consent',async()=>{
  const h=await harness();await h.open();
  for(const [change,expected] of [
@@ -309,3 +347,5 @@ test('connection helper stays hidden for unsupported runtime, remote host, close
  const noManage=await harness({manage:false});await noManage.open();
  assert.equal(noManage.node('invite-helper').hidden,true);
 });
+
+

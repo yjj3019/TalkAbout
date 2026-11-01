@@ -654,14 +654,15 @@ function clearCredential(){credentialEpoch++;if(credentialTimer!==null){window.c
 function clearOnboarding(){inviteEpoch++;inviteOneClickEpoch++;clearInviteSecret();onboardingContext=null;if(el('onboarding-dialog').open)el('onboarding-dialog').close?.();el('invite-oneclick-hint').hidden=true;for(const id of ['onboarding-prompt','onboarding-config'])el(id).value='';for(const id of ['onboarding-commands','invite-command','invite-error','invite-status','invite-key-state','invite-next-help','invite-host-warning','invite-oneclick-state'])el(id).textContent='';el('invite-summary').replaceChildren();}
 function renderInviteChoice(){
  const room=view.room,value=el('invite-agent-id').value,fresh=value==='__new',member=room?.members?.[value];el('invite-new-fields').hidden=!fresh;el('invite-new-name').required=fresh;
- el('invite-submit').textContent=t(fresh?'inviteCreateAndInvite':member?'inviteContinue':'inviteAgent');el('invite-submit').disabled=inviteSubmitBusy||!value||room?.state==='closed';
- el('invite-choice-help').textContent=t(member?'inviteAlreadyAdded':'inviteFlowHelp');
+ const canConnect=!member&&inviteConnectAvailable();
+ el('invite-submit').textContent=t(canConnect?'inviteConnect':fresh?'inviteCreateAndInvite':member?'inviteContinue':'inviteAgent');el('invite-submit').disabled=inviteSubmitBusy||!value||room?.state==='closed';
+ el('invite-choice-help').textContent=t(member?'inviteAlreadyAdded':canConnect?'inviteConnectHelp':'inviteFlowHelp');
 }
 async function submitRoomInvite(){
  const room=view.room,selected=el('invite-agent-id').value;if(inviteSubmitBusy||!room||room.state==='closed'||!selected)return;
  const member=room.members?.[selected];if(member){showOnboarding(room,agents.find(a=>a.id===selected)||{id:selected,...member});return;}
  if(!can('agent:manage')||!room.effective_permissions?.includes('room:manage_members'))return;
- const auth=authEpoch,flow=inviteEpoch,rid=room.id,current=()=>!!user&&auth===authEpoch&&flow===inviteEpoch&&view.selected===rid&&view.room?.state!=='closed';
+ const auth=authEpoch,flow=inviteEpoch,rid=room.id,autoConnect=inviteConnectAvailable(),current=()=>!!user&&auth===authEpoch&&flow===inviteEpoch&&view.selected===rid&&view.room?.state!=='closed';
  let agent=agents.find(a=>a.id===selected);el('invite-form-error').textContent='';
  if(selected==='__new'){
   const name=el('invite-new-name').value.trim();if(!name){el('invite-form-error').textContent=t('inviteNeedName');return;}
@@ -679,7 +680,8 @@ async function submitRoomInvite(){
   if(!view.room.members[agent.id])await api('rooms/'+rid+'/memberships',{method:'POST',body:{principal_id:agent.id,status:'pending',permissions:participantPermissions},key:'invite-member:'+rid+':'+agent.id});
   if(!current())return;
   el('invite-agent-id').value=agent.id;await refresh();
-  if(user&&auth===authEpoch&&view.selected===rid&&view.room){inviteDraft=null;el('invite-new-name').value='';el('invite-new-handle').value='';el('invite-agent-id').value=agent.id;renderInviteChoice();showOnboarding(view.room,agents.find(a=>a.id===agent.id)||agent);}
+  if(user&&auth===authEpoch&&view.selected===rid&&view.room){inviteDraft=null;el('invite-new-name').value='';el('invite-new-handle').value='';el('invite-agent-id').value=agent.id;renderInviteChoice();showOnboarding(view.room,agents.find(a=>a.id===agent.id)||agent);
+   if(autoConnect){await loadInviteCredentials();if(onboardingContext&&inviteOneClickPlan(onboardingContext))await oneClickConnect();}}
  }catch{if(current())el('invite-form-error').textContent=t(draft?.agent?'invitePartialFailure':'inviteCreateFailure');}
  finally{inviteSubmitBusy=false;renderInviteChoice();}
 }
@@ -696,6 +698,20 @@ function basicInviteCommands(ctx){
  if(mode==='join_only')return join||'';
  if(!connect)return '';
  return connect;
+}
+// One-click invite: offer the combined invite-and-connect action only when the
+// same-PC helper could run right away. The runtime choice comes from the invite
+// form for a new agent and from the connection defaults otherwise.
+function inviteConnectAvailable(){
+ const room=view.room;if(!room)return false;
+ if(inviteLoopback()&&el('invite-machine').value==='other')return false;
+ const fresh=el('invite-agent-id').value==='__new';
+ const runtime=fresh?(el('invite-new-client').value||'codex'):(connectionRuntimeChoices.get(el('invite-agent-id').value)||'codex');
+ if(!['codex','claude'].includes(runtime))return false;
+ if(!can('credential:manage')||!can('agent:manage'))return false;
+ if(room.state==='closed'||room.state==='paused'||room.dispatch_held)return false;
+ if(room.mode==='free_discussion')return false;
+ return room.effective_permissions?.includes('room:manage_members')===true;
 }
 // Connection helper: the GUI generates a Windows .cmd that fetches /web/connect-agent.ps1
 // from this server and runs it with the room, runtime and budget baked in. No secret is embedded.
