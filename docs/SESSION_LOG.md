@@ -1,5 +1,12 @@
 # TalkAbout session log
 
+## 2026-11-01 — 초대 버튼 하나로 연결까지(초대하고 연결)
+
+- 사용자 요청: "초대하기" 버튼만 누르면 실행되는 수준. 1클릭 연결이 이미 있어도 초대 → 안내 창 → 1클릭 순서가 남아 있었다.
+- 구현: [app.mjs](../talkabout/web/app.mjs)의 `inviteConnectAvailable()`가 같은 PC·지원 runtime·`credential:manage`·방 상태·비자유토론 조건을 확인하고, 조건이 맞으면 참여자 화면의 초대 버튼 라벨을 **초대하고 연결**로 바꾼다. 새 초대(또는 신규 등록)를 제출하면 초대 생성 후 자격증명 메타데이터를 읽고 기존 1클릭 흐름(1시간 권한 발급 → 클립보드 초대 → `talkabout://`)을 **확인 1회**로 실행한다. 이미 초대된 참가자를 계속하는 경로는 기존처럼 안내만 열고 쓰기를 하지 않는다. 클립보드 실패·핸들러 미실행 시 기존 수동 경로가 남는다.
+- 조건에서 제외: 다른 PC 선택, Grok/API runtime, `credential:manage` 없음, paused/closed/dispatch hold, 자유 토론(발언 동의 전).
+- 검증: [test_room_invite_flow.mjs](../tests/test_room_invite_flow.mjs) **42 passed**(신규 3건 — 라벨 조건, 초대+연결 단일 발급/클립보드/이동, 기존 초대 계속은 쓰기 0). 문서 [USER_FLOW.md](USER_FLOW.md)·[RUNTIME_CONNECTIONS.md](RUNTIME_CONNECTIONS.md)·[README.md](../README.md) 갱신. 실제 브라우저·provider E2E는 NOTRUN.
+
 ## 2026-11-01 — PR #55 병합 및 운영 이미지 교체
 
 - PR [#55](https://github.com/yjj3019/TalkAbout/pull/55)를 main에 병합(`4cf7d3e`). CI `safe-regression` 2m47s·`posix-containment` 26s **통과**.
