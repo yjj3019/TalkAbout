@@ -25,7 +25,7 @@ python -m venv .venv
 | --- | --- |
 | 합성 회귀 + 실제 PostgreSQL (Python 1188 / Node 243) | **통과** · 2026-11-01 |
 | 실제 공급자 모델 응답 | **부분 통과** — Codex·Claude·Grok 각각 별도 S1(2026-10-25) |
-| 프로토타입 인스턴스 배포 | **mcp-box에 이미지 배포 · healthy** (loopback 전용, TLS·재시작·백업 없음) |
+| 프로토타입 인스턴스 배포 | **mcp-box에 이미지 배포 · healthy** (loopback 전용, 재시작 정책·일일 백업·5분 헬스 타이머, TLS 없음) |
 | 운영 배포 | **안 됨** |
 
 정본은 [docs/STATUS.md](docs/STATUS.md) 하나입니다. 재현 명령과 남은 관문도 그 문서에 있습니다.

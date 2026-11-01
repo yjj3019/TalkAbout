@@ -77,6 +77,8 @@ A crash between persistent container creation and startup can leave a dormant on
 
 이 절은 저장소의 일반 installer가 아니라 **이미 배포된 프로토타입 인스턴스**(rootless Podman, loopback publish)를 관리하는 절차입니다. 실제 호스트 이름·주소·자격증명은 이 문서에 쓰지 않습니다.
 
+2026-11-01에 이 인스턴스에 `--restart=unless-stopped`·`--log-opt max-size=10m`로 앱/DB를 재생성하고, `podman-restart.service`와 `talkabout-backup.timer`(매일 03:30)·`talkabout-health.timer`(5분)를 설치했습니다. 백업 1회와 프로세스 SIGKILL 자동 재시작을 실제로 확인했습니다.
+
 ### 재시작과 감독
 
 - 컨테이너는 `--restart=unless-stopped`로 생성합니다. 수동 `podman stop`은 재시작 정책을 무시하고 그대로 정지합니다.

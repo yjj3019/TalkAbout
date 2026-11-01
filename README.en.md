@@ -27,7 +27,7 @@ The real order (prepare a room → invite → run the room guide's connection he
 | --- | --- |
 | Synthetic regression + real PostgreSQL (Python 1188 / Node 243) | **passing** · 2026-11-01 |
 | Real provider model response | **partial** — Codex, Claude and Grok each passed a separate S1 (2026-10-25) |
-| Prototype instance deployment | **image deployed on mcp-box · healthy** (loopback only; no TLS, restart or backup) |
+| Prototype instance deployment | **image deployed on mcp-box · healthy** (loopback only; restart policy, daily backup and five-minute readiness timer; no TLS) |
 | Operating deployment | **not deployed** |
 
 [docs/STATUS.md](docs/STATUS.md) is the single authoritative status document, including reproduction commands
