@@ -1,5 +1,16 @@
 # TalkAbout session log
 
+## 2026-11-01 — 자체 점검 권고 반영(보안·UI 펜싱·CI·문서)
+
+- 사용자 요청: 자체 점검([self-review-2026-11-01.md](../analysis/self-review-2026-11-01.md), PR #59) 권고 사항으로 진행.
+- **로그인 스로틀(`auth.py`):** 실패 창이 살아있는 키를 절대 축출하지 않도록 수정. 키 테이블이 1024에 도달하면 만료된 창만 정리하고, 그래도 자리가 없으면 `login_capacity`로 fail-closed 합니다. 회귀 테스트 `test_login_throttle_is_not_reset_by_a_key_flood`가 1024개 키 플러딩 후에도 피해자 429 유지와 포화 시 429를 단정합니다(테스트 결과 7 passed).
+- **자격증명 응답 펜싱(`app.mjs`):** `issueCredential`·`showCredentialMetadata`·`loadTaskDiagnostics`가 `view.epoch` 대신 **방 ID + 인증 epoch + 발급 ticket**으로 늦은 응답을 판정합니다. 같은 방 폴링/SSE로 epoch가 올라가도 응답을 버리지 않고, 다른 방/로그아웃 뒤에는 표시하지 않습니다. `finally`의 `data.token=''`는 객체일 때만 수행해 원 오류를 덮지 않습니다. 회귀 `ui-credential-safety.test.mjs` 10 passed(같은 방 갱신 유지 + 기존 폐기 경계).
+- **1클릭 클립보드 완화:** 클립보드 쓰기 실패 시 발급된 비밀값을 지우지 않고 수동 경로용으로 표시합니다. 확인·설치 안내 문구에 클립보드 기록/동기화 잔존 가능성과 덮어쓰기·철회 안내를 추가했습니다. `-ClipboardText`는 **`-DryRun` 전용**으로 제한하고 `-InstallHelper`와 함께 쓰면 거절합니다(실행 확인: dry-run exit 0·토큰 미출력, 비예행 exit 1).
+- **CI/이미지:** `.containerignore`에 `!talkabout/web/*.svg`·`/*.ps1` 추가(서버가 서빙하는 `connect-agent.ps1`·`favicon.svg` 명시). `safe-regression.yml`에 `container-image` 잡 추가 — ubuntu에서 이미지 빌드, revision 라벨 일치, `index.html`·`app.mjs`·`state.mjs`·`style.css`·`favicon.svg`·`connect-agent.ps1` 존재·비어있지 않음 단정. `tools/run_safe_regression.py`의 `--maxfail=1` 제거로 모든 실패를 보고합니다. 패키징 계약 테스트에 ignore 항목 단정 추가.
+- **문서 SSOT:** [STATUS.md](STATUS.md) 확인일 2026-11-01·최신 수치·프로토타입 배포 행·§2.2·항목 24 추가, [README.md](../README.md)·[README.en.md](../README.en.md) 상태표 갱신, [USER_FLOW.md](USER_FLOW.md) 배너와 영문 1클릭 안내, [RUNTIME_CONNECTIONS.md](RUNTIME_CONNECTIONS.md) 모순 문구와 영문 1클릭 요약 갱신.
+- **검증:** 최종 표준 러너 **Python 1188 passed / 35 skipped / 0 failed**, Node **243 passed**, `docs_check` 0 new / 0 known. 중간에 관찰된 3건은 수정 전 HEAD에서도 재현되는 이 환경의 프로세스·git 지연이었고 최종 실행에서는 통과했습니다.
+- **NOTRUN:** 새 `container-image` 잡의 실제 GitHub Actions 실행(PR에서 확인), 브라우저 실기기·스크린리더, 실제 provider 호출. 로컬 Windows에는 podman이 없어 이미지 빌드는 CI에서만 검증합니다.
+
 ## 2026-11-01 — PR #56 병합·배포와 런타임 상태 복구
 
 - PR [#56](https://github.com/yjj3019/TalkAbout/pull/56)을 main에 병합(`38a8a23`). CI `safe-regression` 2m24s·`posix-containment` 19s **통과**.

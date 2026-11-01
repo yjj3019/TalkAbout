@@ -67,6 +67,10 @@ def test_official_images_and_build_context_match_lock():
     assert [line for line in containerfile.splitlines() if line.startswith('ARG ')] == ['ARG SOURCE_SHA']
     ignore = (ROOT/'.containerignore').read_text().splitlines()
     assert ignore[0] == '**' and '!talkabout/*.py' in ignore
+    # The server serves these two files, so the build context must include them
+    # explicitly; dropping them breaks the one-click helper and the favicon.
+    for required in ('!talkabout/web/*.ps1', '!talkabout/web/*.svg'):
+        assert required in ignore
     assert not any(line.startswith('!') and any(x in line for x in ('.git', '.env', 'tests', 'secrets')) for line in ignore)
     for name in ('python', 'postgres'):
         assert images[name]['reference'].startswith('docker.io/library/')

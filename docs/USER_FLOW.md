@@ -1,6 +1,8 @@
 # 방 준비부터 에이전트 토론까지 / Room-to-agent workflow
 
-IMPLEMENTED IN REVIEW BRANCH / NOT DEPLOYED · 확인일 2026-10-16
+IMPLEMENTED · 확인일 2026-11-01
+
+> 이 문서는 사용 순서의 설명이며, 현재 배포 상태의 정본은 [STATUS.md](STATUS.md)입니다. 프로토타입 인스턴스는 mcp-box에 배포되어 있으나 운영 배포(TLS·백업·재시작)는 아닙니다.
 
 이 안내는 기존 [제품 계획](PRODUCT_PLAN.md)의 신원 관리·초대·토론 GUI를 연결한 구현을 설명합니다. 실제 모델 PoC는 아직 실행하지 않았습니다. 합성 worker와 실제 Chrome을 사용한 로컬 흐름 검증은 실제 공급자 실행 증거와 구분합니다.
 
@@ -46,6 +48,8 @@ py -3.12 -m venv .venv
 - 설치된 핸들러는 설치 시점의 서버 주소에 고정되며, 링크에 담긴 주소를 읽지 않습니다. 다른 서버용 초대는 해당 서버에서 다시 설치해야 합니다.
 - 클립보드 쓰기에 실패하거나 도우미가 실행되지 않으면 화면이 수동 경로(연결 도우미 다운로드·명령 복사·비밀값 표시)를 그대로 제공합니다. 이때 발급된 권한은 1시간 유효하며, 필요하면 기존 발급을 철회하고 다시 발급합니다.
 - 실제 브라우저 다운로드·설치·`talkabout://` 실행 E2E와 실제 provider 호출은 이 저장소의 검증 범위에서 **NOTRUN**입니다. 설치 스크립트의 예행 출력과 페이로드 거절 규칙은 PowerShell 5.1에서 실행해 확인했고, **합성 fixture 브라우저(headless Chrome)에서 초대하고 연결 클릭 → 확인 1회 → 클립보드 초대 9개 필드 전달**까지 확인했습니다(페이지 오류 0). `talkabout://` 탐색과 실제 도우미 실행은 그 E2E에 포함되지 않았습니다.
+
+**English:** install the helper once with **Install helper (.cmd)**; it registers `talkabout://` for the current Windows user and pins the server origin (no admin rights, no secret in the installer). In **Participants**, choosing a new agent turns the button into **Invite and connect**: one confirmation issues a one-hour room-scoped credential, puts the invite on the clipboard and launches the helper, which reads the clipboard once, clears it and runs `connect --room --acknowledge-private` without a secret prompt. Same PC only. The secret never appears in a link, a command argument, the installer or helper output. If the clipboard write fails, the issued secret stays visible for the manual path; if the helper does not run, the invite may remain on the clipboard — copy something else over it or revoke the credential. Real installer and `talkabout://` execution remain NOTRUN; a synthetic-fixture headless Chrome run confirmed the invite-and-connect click, the single confirmation and the nine-field clipboard invite.
 
 ### 연결 도우미 사용(권장) / Connection helper (recommended)
 

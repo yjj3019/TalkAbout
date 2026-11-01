@@ -88,6 +88,30 @@
           "run": "python -B -m pytest -q tests/test_posix_containment.py -p no:cacheprovider"
         }
       ]
+    },
+    "container-image": {
+      "runs-on": "ubuntu-latest",
+      "timeout-minutes": 25,
+      "steps": [
+        {
+          "uses": "actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "with": {
+            "persist-credentials": false
+          }
+        },
+        {
+          "name": "Build the container image from this commit",
+          "run": "podman build --format=docker --build-arg SOURCE_SHA=\"$GITHUB_SHA\" --file Containerfile --tag talkabout:ci ."
+        },
+        {
+          "name": "Assert the image records the reviewed commit",
+          "run": "test \"$(podman image inspect talkabout:ci --format '{{ index .Labels \"org.opencontainers.image.revision\" }}')\" = \"$GITHUB_SHA\""
+        },
+        {
+          "name": "Assert the image contains every served browser asset",
+          "run": "podman run --rm --entrypoint python talkabout:ci -c \"import pathlib, talkabout; root = pathlib.Path(talkabout.__file__).parent / 'web'; names = ('index.html', 'app.mjs', 'state.mjs', 'style.css', 'favicon.svg', 'connect-agent.ps1'); missing = [name for name in names if not (root / name).is_file() or (root / name).stat().st_size == 0]; print(sorted(p.name for p in root.iterdir())); raise SystemExit(1 if missing else 0)\""
+        }
+      ]
     }
   }
 }
