@@ -14,7 +14,7 @@
 | 실제 PostgreSQL 통합 19건 | **통과** (2026-10-25, 임시 18.6 클러스터; 이후 CI의 임시 픽스처로 계속 실행) | §2 |
 | CI(GitHub Actions) 동일 명령 | **통과** — PR #55·#56·#57·#58의 `safe-regression`·`posix-containment` | §2.2 |
 | 실제 공급자 S1 (Codex·Claude·Grok) | **각각 통과** — 소유 루프백 픽스처에서 연결 시험과 기여 기록. Grok 반복 턴·기본 20초 lease는 미검증 | [Codex](validation/actual-trial-2026-10-25.json) · [Claude](validation/actual-trial-2026-10-25-claude.json) · [Grok](validation/actual-trial-2026-10-25-grok.json) |
-| 프로토타입 인스턴스 배포 | **mcp-box에 이미지 교체 배포** — `localhost/talkabout:aafd347b…`, healthy, `/ready` 200. TLS·재시작·백업·모니터링 없음 | [SESSION_LOG](SESSION_LOG.md) 2026-11-01 |
+| 프로토타입 인스턴스 배포 | **mcp-box에 이미지 교체 배포** — `localhost/talkabout:6bc8aad…`, healthy, `/ready` 200, 재시작 정책·일일 백업·5분 헬스 타이머. TLS·재시작·백업·모니터링 없음 | [SESSION_LOG](SESSION_LOG.md) 2026-11-01 |
 | 실제 2-runtime 토론·pause 복구 (S2) | **미통과** | [RELEASE_GAP_MATRIX.md](RELEASE_GAP_MATRIX.md) |
 | 운영 배포·운영 계정·MFA | **미완료** | [DEPLOYMENT_RUNBOOK.md](DEPLOYMENT_RUNBOOK.md) |
 
@@ -173,6 +173,11 @@ pwsh tools/ci_postgres_fixture.ps1 -Action stop -BinDir <postgres>/bin -DataDir 
     - **CI:** `container-image` 잡 추가(ubuntu runner에서 이미지 빌드, revision 라벨 일치, `index.html`·`app.mjs`·`state.mjs`·`style.css`·`favicon.svg`·`connect-agent.ps1` 존재·비어있지 않음 단정). `.containerignore`가 `*.svg`·`*.ps1`을 명시적으로 포함합니다. 러너의 `--maxfail=1`을 제거해 모든 실패를 보고합니다.
     - **배포:** mcp-box에 `38a8a23` 이미지 교체, healthy/`/ready` 200, 데이터 보존 확인. 배포 중 호스트 tmpfs inode 고갈과 런타임 상태 유실을 겪었고 같은 volume·secret으로 컨테이너를 재생성해 복구했습니다([SESSION_LOG](SESSION_LOG.md)).
     - **검증 한계:** 실제 브라우저에서 `.cmd` 설치·`talkabout://` 실행·공급자 호출은 NOTRUN입니다. 합성 fixture + headless Chrome에서 초대하고 연결 → 확인 1회 → 9필드 클립보드 초대(43자 token)까지 확인했습니다.
+
+25. **2026-11-01 접근성·프로토타입 운영 통제.**
+    - **접근성:** 라이트 테마 `--faint` 3.0→5.2:1, `--accent` 4.2→5.2:1, 기본 버튼 3.2→5.0:1(WCAG AA). 폼 컨트롤에 `:focus-visible` 링 유지. 좁은 화면에서 task 메타 줄바꿈·파일 패널 상한·HUD/카메라 분리. `prefers-reduced-motion`이면 rAF 루프를 시작하지 않고 정적 배치하며, 설정 변경 리스너로 다시 렌더합니다.
+    - **운영:** `deploy/podman/backup.sh`(비밀번호 없는 `pg_dump -Fc`, sha256, 14개 보존), `healthcheck.sh`(`/ready`, 자동 재시작 없음), user systemd 서비스·타이머, `OPERATING.md`에 재시작·linger·로그 상한·정리·2026-11-01 사고 절차. 패키징 계약 테스트로 파일·유닛·문구를 고정.
+    - **한계:** 운영 타이머·재시작 정책은 mcp-box에 수동 설치했고 저장소 installer 범위가 아닙니다. 실제 복원 리허설과 알림 채널은 NOTRUN입니다.
 
 ## 4. 아직 남은 것 (완료로 표시하지 않음)
 

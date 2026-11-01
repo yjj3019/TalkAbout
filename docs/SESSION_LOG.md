@@ -1,5 +1,15 @@
 # TalkAbout session log
 
+## 2026-11-01 — 접근성·프로토타입 운영 통제(PR #62)
+
+- 사용자 요청: 자체 점검 권고의 남은 항목(접근성, 운영 정책) 진행.
+- **접근성:** 라이트 테마 `--faint` 3.0→5.2:1·`--accent` 4.2→5.2:1·기본 버튼 3.2→5.0:1(WCAG AA). `input:focus-visible` 아웃라인 추가(기존 `input:focus{outline:none}`이 덮던 문제). 좁은 화면 task 메타 줄바꿈·파일 패널 상한·카메라 버튼을 HUD 아래로. `prefers-reduced-motion`이면 stage rAF 루프를 시작하지 않고 정적 배치, 미디어 쿼리 변경 리스너로 재렌더. 신규 [ui-accessibility.test.mjs](../tests/ui-accessibility.test.mjs) 4건(대비 계산·포커스 링·reduced-motion 가드·좁은 화면 규칙).
+- **운영 자산:** [backup.sh](../deploy/podman/backup.sh)(`pg_dump -Fc`+sha256, 14개 보존, 비밀번호 미노출), [healthcheck.sh](../deploy/podman/healthcheck.sh)(`/ready` 기록 전용, 자동 재시작 없음), [systemd 유닛](../deploy/podman/systemd/), [OPERATING.md](../deploy/podman/OPERATING.md) 운영 절차·사고 교훈, [.gitattributes](../.gitattributes)로 `.sh`/유닛 LF 고정, 패키징 계약 테스트 확장.
+- **호스트 설치·배포(mcp-box):** 스크립트를 `~/bin`, 유닛을 `~/.config/systemd/user`에 설치하고 `talkabout-backup.timer`·`talkabout-health.timer`·`podman-restart.service`를 enable(linger는 이미 yes). 새 이미지 `6bc8aad…` 빌드 후 DB·앱을 `--restart=unless-stopped --log-opt max-size=10m`으로 재생성(같은 volume·secret, DB 데이터 보존: principals 3 · rooms 1). 백업 1회 실행(20,599 B + sha256), `podman exec … kill -9 1` 크래시 후 자동 재시작·`/ready` 200 실제 확인. `podman kill`/`stop`은 수동 정지로 재시작하지 않음도 확인.
+- **정리:** 오래된 talkabout 중지 컨테이너와 태그 이미지를 TalkAbout 범위로 한정해 정리(이미지 468→122, 8.33→3.48 GB, 회수 약 4.9 GB), 롤백 이미지 2개와 중지 컨테이너 1개 유지.
+- **검증:** PR [#62](https://github.com/yjj3019/TalkAbout/pull/62) CI `safe-regression` 3m20s·`posix-containment` 24s·`container-image` 28s 통과. 로컬 Node **247 passed**, 패키징 Python 7 passed, `docs_check` 0/0.
+- **NOTRUN:** 실제 복원 리허설, 알림 채널, 브라우저 실기기·스크린리더, 실제 provider 호출.
+
 ## 2026-11-01 — 자체 점검 권고 반영(보안·UI 펜싱·CI·문서)
 
 - 사용자 요청: 자체 점검([self-review-2026-11-01.md](../analysis/self-review-2026-11-01.md), PR #59) 권고 사항으로 진행.
