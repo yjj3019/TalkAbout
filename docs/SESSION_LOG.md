@@ -1,5 +1,14 @@
 # TalkAbout session log
 
+## 2026-11-01 — PR #56 병합·배포와 런타임 상태 복구
+
+- PR [#56](https://github.com/yjj3019/TalkAbout/pull/56)을 main에 병합(`38a8a23`). CI `safe-regression` 2m24s·`posix-containment` 19s **통과**.
+- 이미지 빌드가 `/run/user/1000` tmpfs의 inode 100%(292k 중 292,778 사용)로 실패했다. 원인은 `/run/user/1000/libpod/tmp` 아래 **빈 `rootlessport*` 디렉터리 73,117개**였다. 소켓·파이프가 남아 있어 `rmdir`로는 지워지지 않았고, `find … -exec rm -rf {} +`로 정리해 inode를 회복한 뒤 `XDG_RUNTIME_DIR=/tmp/xdg-build`로 빌드해 `localhost/talkabout:38a8a23…`을 만들었다.
+- **사고와 복구:** 정리 직전에 실행 중이던 앱을 중지했지만, `/run/user/1000/libpod/tmp`를 통째로 비우면서 podman이 실행 중이던 DB 컨테이너의 런타임 추적을 잃었다. 새 앱은 `talkabout-db` 이름 해석 실패로 `/ready` 503이었다. 복구 절차: ① 기존 `talkabout-auto-db` inspect 설정(이미지 digest·env·secret·volume·cap)을 확보, ② 고아 postgres 프로세스를 SIGTERM으로 정상 종료하고 잔여 runc 상태를 정리, ③ 같은 named volume `talkabout-auto-pg18-data`와 secret `talkabout-auto-db-password`로 DB 컨테이너를 재생성, ④ 앱 컨테이너를 새 이미지로 재생성.
+- 복구 검증: DB `pg_isready` 정상, 앱 **healthy**, `/health` 200, `/ready` 200(`{"status":"ready"}`), 데이터 보존 확인(`principals` 3 · `rooms` 1 · `events` 4), `/`에 `invite-oneclick*`, `state.mjs`에 `inviteConnect` 포함. inode 사용률 1%.
+- 교훈: **실행 중 컨테이너가 있으면 `/run/user/1000/libpod/tmp`를 삭제하지 않는다.** stale `rootlessport*`만 지우고, 런타임 상태가 필요하면 컨테이너를 먼저 정상 중지해야 한다.
+- NOTRUN: 실제 브라우저·공급자 실행, TLS/공개 노출/백업 정책. 이 배포는 기존 프로토타입 인스턴스 교체이며 운영 배포 완료를 뜻하지 않는다.
+
 ## 2026-11-01 — 초대 버튼 하나로 연결까지(초대하고 연결)
 
 - 사용자 요청: "초대하기" 버튼만 누르면 실행되는 수준. 1클릭 연결이 이미 있어도 초대 → 안내 창 → 1클릭 순서가 남아 있었다.
