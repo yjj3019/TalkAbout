@@ -14,7 +14,7 @@
 | 실제 PostgreSQL 통합 19건 | **통과** (2026-10-25, 임시 18.6 클러스터; 이후 CI의 임시 픽스처로 계속 실행) | §2 |
 | CI(GitHub Actions) 동일 명령 | **통과** — PR #55·#56·#57·#58의 `safe-regression`·`posix-containment` | §2.2 |
 | 실제 공급자 S1 (Codex·Claude·Grok) | **각각 통과** — 소유 루프백 픽스처에서 연결 시험과 기여 기록. Grok 반복 턴·기본 20초 lease는 미검증 | [Codex](validation/actual-trial-2026-10-25.json) · [Claude](validation/actual-trial-2026-10-25-claude.json) · [Grok](validation/actual-trial-2026-10-25-grok.json) |
-| 프로토타입 인스턴스 배포 | **mcp-box에 이미지 교체 배포** — `localhost/talkabout:38a8a23…`, healthy, `/ready` 200. TLS·재시작·백업·모니터링 없음 | [SESSION_LOG](SESSION_LOG.md) 2026-11-01 |
+| 프로토타입 인스턴스 배포 | **mcp-box에 이미지 교체 배포** — `localhost/talkabout:aafd347b…`, healthy, `/ready` 200. TLS·재시작·백업·모니터링 없음 | [SESSION_LOG](SESSION_LOG.md) 2026-11-01 |
 | 실제 2-runtime 토론·pause 복구 (S2) | **미통과** | [RELEASE_GAP_MATRIX.md](RELEASE_GAP_MATRIX.md) |
 | 운영 배포·운영 계정·MFA | **미완료** | [DEPLOYMENT_RUNBOOK.md](DEPLOYMENT_RUNBOOK.md) |
 
@@ -62,7 +62,7 @@ pwsh tools/ci_postgres_fixture.ps1 -Action stop -BinDir <postgres>/bin -DataDir 
 
 - **표준 러너**: Python **1188 passed / 35 skipped / 0 failed**, Node **243 passed**, `docs_check` **0 new / 0 known**. 같은 회귀는 당일 00:15에 1176 passed로 통과한 이력이 있고, 중간 실행에서 관찰된 3건(`test_process_cleanup`·`test_agent_runtime` stdin/EOF·git worktree)은 **수정 전 HEAD에서도 재현되는 이 환경의 프로세스·git 지연**이었으며 최종 실행에서는 통과했다.
 - **CI**: PR #55(`4cf7d3e`)·#56(`38a8a23`)·#57·#58에서 `safe-regression`(2m19s~2m56s)·`posix-containment`(18s~26s) 통과. PR #55부터 `container-image` 잡이 이미지 빌드·revision 라벨·서빙 자산 존재를 검사한다(이 문서 갱신 시점 CI 구성).
-- **배포**: `mcp-box`(192.168.1.23, rootless Podman 5.7.0)에 `localhost/talkabout:38a8a23…`을 배포했다. healthy·`/ready` 200·데이터 보존(principals 3 · rooms 1 · events 4) 확인. TLS·재시작·백업·모니터링·이미지 GC는 없다. 롤백용 중지 컨테이너와 이전 이미지 태그를 유지한다.
+- **배포**: `mcp-box`(192.168.1.23, rootless Podman 5.7.0)에 `localhost/talkabout:aafd347b…`을 배포했다. healthy·`/ready` 200·데이터 보존(principals 3 · rooms 1 · events 4) 확인. TLS·재시작·백업·모니터링·이미지 GC는 없다. 롤백용 중지 컨테이너와 이전 이미지 태그를 유지한다.
 
 ## 3. 이번 확인에서 달라진 점 (2026-10-25)
 

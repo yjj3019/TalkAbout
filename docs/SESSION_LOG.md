@@ -9,7 +9,8 @@
 - **CI/이미지:** `.containerignore`에 `!talkabout/web/*.svg`·`/*.ps1` 추가(서버가 서빙하는 `connect-agent.ps1`·`favicon.svg` 명시). `safe-regression.yml`에 `container-image` 잡 추가 — ubuntu에서 이미지 빌드, revision 라벨 일치, `index.html`·`app.mjs`·`state.mjs`·`style.css`·`favicon.svg`·`connect-agent.ps1` 존재·비어있지 않음 단정. `tools/run_safe_regression.py`의 `--maxfail=1` 제거로 모든 실패를 보고합니다. 패키징 계약 테스트에 ignore 항목 단정 추가.
 - **문서 SSOT:** [STATUS.md](STATUS.md) 확인일 2026-11-01·최신 수치·프로토타입 배포 행·§2.2·항목 24 추가, [README.md](../README.md)·[README.en.md](../README.en.md) 상태표 갱신, [USER_FLOW.md](USER_FLOW.md) 배너와 영문 1클릭 안내, [RUNTIME_CONNECTIONS.md](RUNTIME_CONNECTIONS.md) 모순 문구와 영문 1클릭 요약 갱신.
 - **검증:** 최종 표준 러너 **Python 1188 passed / 35 skipped / 0 failed**, Node **243 passed**, `docs_check` 0 new / 0 known. 중간에 관찰된 3건은 수정 전 HEAD에서도 재현되는 이 환경의 프로세스·git 지연이었고 최종 실행에서는 통과했습니다.
-- **NOTRUN:** 새 `container-image` 잡의 실제 GitHub Actions 실행(PR에서 확인), 브라우저 실기기·스크린리더, 실제 provider 호출. 로컬 Windows에는 podman이 없어 이미지 빌드는 CI에서만 검증합니다.
+- **CI·배포:** PR [#60](https://github.com/yjj3019/TalkAbout/pull/60)에서 `safe-regression`(3m25s)·`posix-containment`(23s)·**신규 `container-image`(25s)** 모두 통과. main `aafd347b`를 mcp-box에 배포: 이미지 빌드 → 기존 앱 `talkabout-auto-app-rollback-38a8a23`으로 보존 → 같은 네트워크·시크릿·tmpfs로 새 컨테이너 기동. healthy, `/health`·`/ready` 200, DB 데이터(principals 3 · rooms 1)와 배포 자산 확인. DB는 재시작하지 않았다.
+- **NOTRUN:** 브라우저 실기기·스크린리더, 실제 provider 호출. 로컬 Windows에는 podman이 없어 이미지 빌드는 CI와 배포 호스트에서 검증합니다.
 
 ## 2026-11-01 — PR #56 병합·배포와 런타임 상태 복구
 
