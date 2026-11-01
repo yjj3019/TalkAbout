@@ -90,3 +90,26 @@ def test_https_cookie_and_login_throttle(session_fixture):
     for _ in range(5):
         assert client.post("/api/v1/session", json=wrong, headers={"Origin": "https://testserver"}).status_code == 401
     assert client.post("/api/v1/session", json=wrong, headers={"Origin": "https://testserver"}).status_code == 429
+
+
+def test_login_throttle_is_not_reset_by_a_key_flood(session_fixture, monkeypatch):
+    # A flood of distinct usernames must never evict the victim's live window;
+    # a saturated table fails closed instead of reopening the window.
+    import talkabout.auth as auth_module
+    monkeypatch.setattr(auth_module, "verify_password", lambda password, record: False)
+    store, _, _, _, _ = session_fixture
+    client = TestClient(create_app(store, start_scheduler=False, allowed_hosts=["testserver"]))
+    headers = {"Origin": "http://testserver"}
+    victim = {"workspace_id": "fixture-workspace", "username": "owner", "password": "wrong-fixture-password"}
+    for _ in range(5):
+        assert client.post("/api/v1/session", json=victim, headers=headers).status_code == 401
+    assert client.post("/api/v1/session", json=victim, headers=headers).status_code == 429
+    for index in range(1023):
+        body = {"workspace_id": "flood-workspace", "username": "flood-%04d" % index, "password": "synthetic"}
+        response = client.post("/api/v1/session", json=body, headers=headers)
+        assert response.status_code in {401, 429}, response.text
+    assert client.post("/api/v1/session", json=victim, headers=headers).status_code == 429
+    overflow = {"workspace_id": "flood-workspace", "username": "flood-overflow", "password": "synthetic"}
+    response = client.post("/api/v1/session", json=overflow, headers=headers)
+    assert response.status_code == 429
+    assert response.json()["code"] == "login_capacity"

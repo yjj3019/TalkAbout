@@ -37,6 +37,13 @@ def bootstrap_human(store, workspace, display_name, handle, password):
 
 
 class HumanAuth:
+    # Failed-login windows are tracked per workspace:username. Evicting a live
+    # window would let an attacker with many usernames reset a victim's counter,
+    # so only expired windows leave the table and a full table fails closed.
+    MAX_TRACKED_KEYS = 1024
+    WINDOW_SECONDS = 60
+    MAX_ATTEMPTS = 5
+
     def __init__(self, store, ttl=900):
         self.store, self.ttl = store, ttl
         self.failures = {}
@@ -50,10 +57,15 @@ class HumanAuth:
         key = workspace + ":" + username
         with self.lock:
             now = time.monotonic()
-            if key not in self.failures and len(self.failures) >= 1024:
-                self.failures.pop(next(iter(self.failures)))
-            recent = [t for t in self.failures.get(key, []) if now - t < 60]
-            require(len(recent) < 5, "login_rate_limit", 429)
+            recent = [t for t in self.failures.get(key, []) if now - t < self.WINDOW_SECONDS]
+            require(len(recent) < self.MAX_ATTEMPTS, "login_rate_limit", 429)
+            if key not in self.failures:
+                if len(self.failures) >= self.MAX_TRACKED_KEYS:
+                    expired = [name for name, stamps in self.failures.items()
+                               if not any(now - stamp < self.WINDOW_SECONDS for stamp in stamps)]
+                    for name in expired:
+                        del self.failures[name]
+                require(len(self.failures) < self.MAX_TRACKED_KEYS, "login_capacity", 429)
             self.failures[key] = recent + [now]
         found = self.store.password_lookup(workspace, username)
         verified = verify_password(body.get("password"), found["record"] if found else self.dummy)

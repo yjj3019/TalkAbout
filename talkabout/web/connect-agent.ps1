@@ -463,6 +463,9 @@ if ($InstallHelper.IsPresent) {
     if ($FromClipboard.IsPresent) {
         Write-Fail 'InstallHelper runs alone; it does not connect.'
     }
+    if (-not [string]::IsNullOrWhiteSpace($ClipboardText)) {
+        Write-Fail 'InstallHelper does not accept -ClipboardText.'
+    }
     $helperDir = Join-Path $env:LOCALAPPDATA 'TalkAbout\helper'
     if ($DryRun.IsPresent) {
         $quotedOrigin = "'" + $Server + "'"
@@ -480,6 +483,12 @@ if ($InstallHelper.IsPresent) {
         exit 0
     }
     exit (Install-ConnectionHelper -Origin $Server)
+}
+
+if (-not [string]::IsNullOrWhiteSpace($ClipboardText) -and -not $DryRun.IsPresent) {
+    # The diagnostic text would put a credential in the command line and shell
+    # history, so it is accepted only for a dry run that executes nothing.
+    Write-Fail '-ClipboardText is a dry-run diagnostic only; omit it and use the clipboard.'
 }
 
 $clipboardToken = ''

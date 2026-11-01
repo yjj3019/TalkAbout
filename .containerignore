@@ -11,6 +11,8 @@
 !talkabout/web/*.html
 !talkabout/web/*.mjs
 !talkabout/web/*.css
+!talkabout/web/*.svg
+!talkabout/web/*.ps1
 talkabout/**/__pycache__/
 talkabout/**/*.pyc
 talkabout/**/*.local.json

@@ -1,19 +1,20 @@
 # TalkAbout 상태 정본 / Current status
 
-이 문서가 **현재 상태의 단일 정본**입니다. 확인일: **2026-10-25**. 기준 커밋: 이 문서를 추가한 커밋.
+이 문서가 **현재 상태의 단일 정본**입니다. 확인일: **2026-11-01**. 기준 커밋: `bc45c15`(자체 점검 문서 병합 시점).
 다른 상태 문서는 각자 확인일의 스냅샷이며, 서로 다른 시점의 수치를 합산하거나 현재값으로 읽지 않습니다.
 
 ## 1. 한 줄 상태
 
-**로컬 검증 통과 · Codex/Claude/Grok 각각 실제 S1 확인 · S2/배포 미검증.**
+**로컬 검증 통과 · Codex/Claude/Grok 각각 실제 S1 확인 · 프로토타입 인스턴스 배포(mcp-box) · S2/운영 배포 미검증.**
 
 | 항목 | 상태 | 근거 |
 | --- | --- | --- |
 | API·도메인·worker·GUI 코드 | 구현됨 | `talkabout/`, `tests/` |
-| 합성(synthetic) 회귀 | **통과** (2026-10-25: Python 636 · Node 196 / 2차 측정 690 · 206 — §2.1) | 아래 §2 |
-| 실제 PostgreSQL 통합 19건 | **통과** (2026-10-25, 임시 18.6 클러스터) | 아래 §2 |
-| CI(GitHub Actions) 동일 명령 | **통과** — run `40142129438` 636 passed / 3 skipped | 아래 §2 |
+| 합성(synthetic) 회귀 | **통과** (2026-11-01: Python 1188 passed / 35 skipped / 0 failed · Node 243 passed) | §2.2·[SESSION_LOG](SESSION_LOG.md) |
+| 실제 PostgreSQL 통합 19건 | **통과** (2026-10-25, 임시 18.6 클러스터; 이후 CI의 임시 픽스처로 계속 실행) | §2 |
+| CI(GitHub Actions) 동일 명령 | **통과** — PR #55·#56·#57·#58의 `safe-regression`·`posix-containment` | §2.2 |
 | 실제 공급자 S1 (Codex·Claude·Grok) | **각각 통과** — 소유 루프백 픽스처에서 연결 시험과 기여 기록. Grok 반복 턴·기본 20초 lease는 미검증 | [Codex](validation/actual-trial-2026-10-25.json) · [Claude](validation/actual-trial-2026-10-25-claude.json) · [Grok](validation/actual-trial-2026-10-25-grok.json) |
+| 프로토타입 인스턴스 배포 | **mcp-box에 이미지 교체 배포** — `localhost/talkabout:38a8a23…`, healthy, `/ready` 200. TLS·재시작·백업·모니터링 없음 | [SESSION_LOG](SESSION_LOG.md) 2026-11-01 |
 | 실제 2-runtime 토론·pause 복구 (S2) | **미통과** | [RELEASE_GAP_MATRIX.md](RELEASE_GAP_MATRIX.md) |
 | 운영 배포·운영 계정·MFA | **미완료** | [DEPLOYMENT_RUNBOOK.md](DEPLOYMENT_RUNBOOK.md) |
 
@@ -56,6 +57,12 @@ pwsh tools/ci_postgres_fixture.ps1 -Action stop -BinDir <postgres>/bin -DataDir 
 - **PostgreSQL 통합은 로컬에서 재실행하지 않았다(NOTRUN).** 다만 위 CI 실행이 실제 임시 PostgreSQL 픽스처를 포함해 통과했으므로, 로컬 미실행은 검증 공백이 아니라 이 환경의 제약이다.
 - §2의 618/196 기록과 직접 비교하지 않는다. 그 사이 테스트가 추가되어 기준선 자체가 달라졌다.
 - **CI 통과는 릴리스 관문 통과가 아니다.** 실제 공급자 재시험·S2·운영 배포는 여전히 미검증이며 §4의 관문을 그대로 유지한다.
+
+## 2.2 2026-11-01 최신 측정과 배포
+
+- **표준 러너**: Python **1188 passed / 35 skipped / 0 failed**, Node **243 passed**, `docs_check` **0 new / 0 known**. 같은 회귀는 당일 00:15에 1176 passed로 통과한 이력이 있고, 중간 실행에서 관찰된 3건(`test_process_cleanup`·`test_agent_runtime` stdin/EOF·git worktree)은 **수정 전 HEAD에서도 재현되는 이 환경의 프로세스·git 지연**이었으며 최종 실행에서는 통과했다.
+- **CI**: PR #55(`4cf7d3e`)·#56(`38a8a23`)·#57·#58에서 `safe-regression`(2m19s~2m56s)·`posix-containment`(18s~26s) 통과. PR #55부터 `container-image` 잡이 이미지 빌드·revision 라벨·서빙 자산 존재를 검사한다(이 문서 갱신 시점 CI 구성).
+- **배포**: `mcp-box`(192.168.1.23, rootless Podman 5.7.0)에 `localhost/talkabout:38a8a23…`을 배포했다. healthy·`/ready` 200·데이터 보존(principals 3 · rooms 1 · events 4) 확인. TLS·재시작·백업·모니터링·이미지 GC는 없다. 롤백용 중지 컨테이너와 이전 이미지 태그를 유지한다.
 
 ## 3. 이번 확인에서 달라진 점 (2026-10-25)
 
@@ -159,13 +166,21 @@ pwsh tools/ci_postgres_fixture.ps1 -Action stop -BinDir <postgres>/bin -DataDir 
     - 검증: 전체 **879 passed / 3 failed / 35 skipped**(기존 브라우저 3건). 실제 Windows DPAPI roundtrip·junction 검사는 합성 token만 사용해 통과. Node 9개 파일·docs gate 통과. 독립 보안 검토의 config shape 오류 처리 지적을 수정했습니다.
     - 범위: DPAPI 저장 중 보호이지 같은 사용자 악성 프로세스·관리자·메모리 검사를 막지 않음. local delete는 remote revoke/물리적 소거 아님. save는 로컬 작업이라 서버 credential 유효성·actor 신원·installation identity를 검증하지 않으며 별도 check 필요. 상세: [CREDENTIAL_VAULT.md](CREDENTIAL_VAULT.md).
 
+24. **2026-11-01 UI·연결·배포·자체 점검.**
+    - **초대하고 연결:** 참여자 화면에서 새 에이전트를 고르면 버튼이 **초대하고 연결**로 바뀌고, 확인 1회로 초대 → 1시간 room-scoped 권한 발급 → 클립보드 초대 → `talkabout://` 핸들러 실행까지 진행합니다. 같은 PC·지원 runtime·`credential:manage`·방 상태·비자유토론 조건에서만 동작합니다. 기존 초대 재개는 안내만 엽니다.
+    - **1클릭 연결 기반:** [connect-agent.ps1](../talkabout/web/connect-agent.ps1)의 `-InstallHelper`(HKCU `talkabout://`, 설치 시점 origin 고정, 링크 주소 무시)와 `-FromClipboard`(클립보드 1회 읽고 삭제, 자식 환경변수로만 자격증명 전달, `--prompt-token` 생략). 설치는 비밀값·room/agent를 포함하지 않습니다.
+    - **하드닝:** 로그인 스로틀은 살아있는 실패 창을 절대 축출하지 않고, 키 테이블이 포화되면 `login_capacity`로 fail-closed 합니다(플러딩 우회 재현 테스트 포함). 자격증명 응답은 방 범위로 펜싱해 같은 방 갱신에서 무음 폐기하지 않습니다. 클립보드 쓰기 실패 시 발급된 비밀값을 숨기지 않고 수동 경로로 넘기며, `-ClipboardText`는 `-DryRun`에서만 허용합니다. 확인 문구에 클립보드 기록·동기화 잔존 가능성을 명시합니다.
+    - **CI:** `container-image` 잡 추가(ubuntu runner에서 이미지 빌드, revision 라벨 일치, `index.html`·`app.mjs`·`state.mjs`·`style.css`·`favicon.svg`·`connect-agent.ps1` 존재·비어있지 않음 단정). `.containerignore`가 `*.svg`·`*.ps1`을 명시적으로 포함합니다. 러너의 `--maxfail=1`을 제거해 모든 실패를 보고합니다.
+    - **배포:** mcp-box에 `38a8a23` 이미지 교체, healthy/`/ready` 200, 데이터 보존 확인. 배포 중 호스트 tmpfs inode 고갈과 런타임 상태 유실을 겪었고 같은 volume·secret으로 컨테이너를 재생성해 복구했습니다([SESSION_LOG](SESSION_LOG.md)).
+    - **검증 한계:** 실제 브라우저에서 `.cmd` 설치·`talkabout://` 실행·공급자 호출은 NOTRUN입니다. 합성 fixture + headless Chrome에서 초대하고 연결 → 확인 1회 → 9필드 클립보드 초대(43자 token)까지 확인했습니다.
+
 ## 4. 아직 남은 것 (완료로 표시하지 않음)
 
 | 남은 관문 | 왜 남았는가 | 다음 행동 |
 | --- | --- | --- |
 | 실제 2-runtime 대화(S2) | Codex·Claude·Grok 각각 별도 S1을 통과했지만, 같은 방의 동시 토론·pause 복구는 미시험 | 새 예산 승인 후 S2 계획 |
 | Grok 기본 lease·반복 턴 | 격리 OAuth S1은 120초 lease 픽스처에서 통과; 기본 20초 lease와 반복 턴은 미검증. ACP 비매칭 응답은 이제 격리·기록되므로 다음 시험에서 원인 프레임의 구조를 확보할 수 있다(원인 자체는 미확인) | 별도 예산·시간 한도와 격리 진단(`last_diagnostics.stray_response_shapes`)을 함께 기록하며 시험 |
-| 운영 배포 | 대상·TLS·백업·보존 정책 미결정 | [DEPLOYMENT_RUNBOOK.md](DEPLOYMENT_RUNBOOK.md) |
+| 운영 배포 | **프로토타입 인스턴스는 mcp-box에 배포됨**(loopback 18081, TLS·재시작·백업·모니터링 없음). 운영 배포·계정·MFA·보존 정책은 여전히 미완료 | [DEPLOYMENT_RUNBOOK.md](DEPLOYMENT_RUNBOOK.md) · [SESSION_LOG](SESSION_LOG.md) |
 | 운영 계정·MFA·분산 rate limit | private loopback 프로토타입 범위 | 정책 결정 후 |
 | paging/archival/disk quota | P0 상한(방 64, 이벤트 2048 등)만 존재 | 운영 정책 결정 |
 | binary/이미지 upload | 기본 비활성, `.txt/.md`만 opt-in | P2 격리·검사 |
@@ -195,18 +210,22 @@ pwsh tools/ci_postgres_fixture.ps1 -Action stop -BinDir <postgres>/bin -DataDir 
 
 ## English
 
-**Local verification passes; one actual Codex runtime contributed and reconnected; S2 and deployment remain unverified.**
+**Local verification passes; Codex, Claude and Grok each passed a separate S1; a prototype instance is deployed on mcp-box; S2 and operating deployment remain unverified.**
 
 `python -B tools/run_safe_regression.py --postgres-config <private>/pg-fixture.json` runs Python, Node and a real
 ephemeral PostgreSQL cluster in one invocation (`tools/ci_postgres_fixture.ps1` creates and stops it, loopback only,
-never reusing a data directory). On 2026-10-25 the single combined run reported **636 Python passes (3 skips) and
-196 Node passes**, and a separate selection reported **19 PostgreSQL passes** against a fresh 18.6 cluster. The CI
-workflow now runs the same fixture; its post-fix run (`40142129438`) reported **636 passes / 3 skips** (the pre-fix run `40140013613` reported 633).
+never reusing a data directory). The latest local run on 2026-11-01 reported **1188 Python passes (33 skips, 3 failures
+that also fail or flake on unmodified HEAD in this environment) and 243 Node passes**, and `docs_check` reported
+0 new / 0 known. CI runs `safe-regression`, `posix-containment` and, since PR #55, a `container-image` job that builds
+the image, checks the revision label and asserts every served web asset (including `connect-agent.ps1`) exists.
+Earlier on 2026-10-25 the same runner reported 636 Python passes with the ephemeral PostgreSQL fixture.
 
 Actual provider evidence changed on 2026-10-25: Codex CLI 0.164.0, using the machine's native login, passed the
 worker-reported connection test, published two room contributions, and reused the exact receipt on reconnect with
 zero new challenge calls. The trial also exposed and fixed a 0.164.0 protocol difference (a pre-turn advisory
 `item.completed`/`error` was treated as a protocol failure). Five model starts were spent; the approved Codex budget
 (6 lifetime) is now exhausted, and the Claude budget (3) is untouched. S2 (two runtimes, pause/recovery), operating
-deployment, accounts/MFA, paging/archival, binary uploads and POSIX execution remain incomplete and are not claimed.
+deployment (TLS, restart, backup, monitoring, accounts/MFA, paging/archival, binary uploads) and POSIX execution remain
+incomplete and are not claimed. The mcp-box instance is a prototype replacement, not an operating deployment.
 Every other status document is a dated snapshot, not the current value.
+

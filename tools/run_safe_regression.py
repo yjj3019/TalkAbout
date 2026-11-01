@@ -44,7 +44,7 @@ def python_contracts(output, postgres_config=None):
             if report.when=='call' or report.failed or report.skipped:
                 with (output/'cases.jsonl').open('a',encoding='utf-8') as stream:
                     stream.write(json.dumps({'nodeid':report.nodeid,'phase':report.when,'outcome':report.outcome})+'\n')
-    arguments=['-q','-ra','tests','-p','no:cacheprovider','--maxfail=1',
+    arguments=['-q','-ra','tests','-p','no:cacheprovider',
                '--basetemp='+str(output/'temp')]
     if postgres_config is not None: arguments += ['--postgres-config', str(postgres_config)]
     return pytest.main(arguments,plugins=[Reports()])
