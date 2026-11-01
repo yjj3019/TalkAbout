@@ -14,7 +14,8 @@
 - 사용자 요청: "초대하기" 버튼만 누르면 실행되는 수준. 1클릭 연결이 이미 있어도 초대 → 안내 창 → 1클릭 순서가 남아 있었다.
 - 구현: [app.mjs](../talkabout/web/app.mjs)의 `inviteConnectAvailable()`가 같은 PC·지원 runtime·`credential:manage`·방 상태·비자유토론 조건을 확인하고, 조건이 맞으면 참여자 화면의 초대 버튼 라벨을 **초대하고 연결**로 바꾼다. 새 초대(또는 신규 등록)를 제출하면 초대 생성 후 자격증명 메타데이터를 읽고 기존 1클릭 흐름(1시간 권한 발급 → 클립보드 초대 → `talkabout://`)을 **확인 1회**로 실행한다. 이미 초대된 참가자를 계속하는 경로는 기존처럼 안내만 열고 쓰기를 하지 않는다. 클립보드 실패·핸들러 미실행 시 기존 수동 경로가 남는다.
 - 조건에서 제외: 다른 PC 선택, Grok/API runtime, `credential:manage` 없음, paused/closed/dispatch hold, 자유 토론(발언 동의 전).
-- 검증: [test_room_invite_flow.mjs](../tests/test_room_invite_flow.mjs) **42 passed**(신규 3건 — 라벨 조건, 초대+연결 단일 발급/클립보드/이동, 기존 초대 계속은 쓰기 0). 문서 [USER_FLOW.md](USER_FLOW.md)·[RUNTIME_CONNECTIONS.md](RUNTIME_CONNECTIONS.md)·[README.md](../README.md) 갱신. 실제 브라우저·provider E2E는 NOTRUN.
+- 검증: [test_room_invite_flow.mjs](../tests/test_room_invite_flow.mjs) **42 passed**(신규 3건 — 라벨 조건, 초대+연결 단일 발급/클립보드/이동, 기존 초대 계속은 쓰기 0). 문서 [USER_FLOW.md](USER_FLOW.md)·[RUNTIME_CONNECTIONS.md](RUNTIME_CONNECTIONS.md)·[README.md](../README.md) 갱신.
+- **실제 브라우저 E2E(합성 fixture, 수동 1회):** 저장소의 임시 memory fixture([browser_fixture_app.py](../tests/browser_fixture_app.py))와 로컬 Chrome(headless)으로 로그인 → 에이전트 등록 → 공동 창작 방 생성 → 참여자에서 에이전트 선택 순으로 진행했다. 초대 버튼 라벨이 **초대하고 연결**로 바뀌었고, 클릭 + 확인 1회 뒤 클립보드에서 `{v, origin, room, agent, runtime, auth_mode, max_model_calls, request_turn, token}` 9개 필드의 초대가 읽혔으며 token 길이는 43자였다. 페이지 오류 0. `talkabout://` 탐색은 headless에서 실행되지 않아 URL은 방 화면에 그대로 머물렀다. **실제 설치·`talkabout://` 실행·공급자 호출은 여전히 NOTRUN**이며, 이 E2E는 테스트 파일로 추가하지 않았다.
 
 ## 2026-11-01 — PR #55 병합 및 운영 이미지 교체
 
