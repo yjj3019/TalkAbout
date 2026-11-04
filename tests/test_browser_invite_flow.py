@@ -45,47 +45,62 @@ def test_browser_room_invitation_single_flow(request,language,width):
             page.locator('#invite-agent-id').select_option('__new')
             name='Synthetic participant '+language
             page.locator('#invite-new-name').fill(name);page.locator('#invite-new-client').select_option('claude')
+            assert page.locator('#invite-submit').inner_text()==('초대하고 연결' if language=='ko' else 'Invite and connect')
             page.locator('#invite-submit').click()
             pw.expect(page.locator('#onboarding-dialog')).to_be_visible()
             pw.expect(page.locator('#invite-summary')).to_contain_text(topic)
             pw.expect(page.locator('#invite-summary')).to_contain_text(name)
             pw.expect(page.locator('#invite-client')).to_have_value('claude')
-            pw.expect(page.locator('#invite-next')).to_have_text('이 방의 접속 권한 만들기' if language=='ko' else 'Create access for this room')
+            # On a loopback fixture the invite button is "Invite and connect": one explicit
+            # confirmation issues the room-scoped credential, hands the invite to the helper
+            # through the clipboard and leaves the manual download/copy step ready.
+            prepare='설정 파일 받고 명령 복사' if language=='ko' else 'Download settings and copy commands'
+            pw.expect(page.locator('#invite-next')).to_have_text(prepare)
+            pw.expect(page.locator('#invite-status')).to_contain_text('수락' if language=='ko' else 'awaiting acceptance')
             assert not page.locator('#invite-advanced').evaluate('(node)=>node.open')
             assert sum(p=='/api/v1/agents' for p in posts)==1
             assert sum(p.endswith('/memberships') for p in posts)==1
+            assert sum(p.endswith('/credentials') for p in posts)==1
+            assert len(confirmations)==1 and topic in confirmations[0] and name in confirmations[0]
             rid=page.evaluate('new URLSearchParams(location.search).get("room")')
             aid=page.locator('#invite-agent-id').input_value()
-            page.screenshot(path=str(Path(config['screenshots'])/('invite-'+language+'-before-key.png')),full_page=True)
-            page.locator('#invite-next').click()
-            pw.expect(page.locator('#invite-secret')).to_be_visible()
-            assert topic in confirmations[-1] and name in confirmations[-1]
-            secret=page.locator('#invite-secret-value').input_value()
-            assert secret and page.locator('#invite-secret-value').get_attribute('type')=='password'
+            page.wait_for_function('window.syntheticCopies.length===1')
+            invite=json.loads(page.evaluate('window.syntheticCopies')[0])
+            secret=invite.pop('token')
+            assert set(invite)=={'v','origin','room','agent','runtime','auth_mode','max_model_calls','request_turn'}
+            assert invite['v']==1 and invite['origin']==base and invite['room']==rid and invite['agent']==aid
+            assert invite['runtime']=='claude' and invite['auth_mode']=='native'
+            assert invite['max_model_calls']==4 and invite['request_turn'] is False
+            assert secret and len(secret)<=512
+            assert page.locator('#invite-secret').evaluate('(node)=>node.hidden')
+            assert page.locator('#invite-secret-value').input_value()==''
             for selector in ('#onboarding-config','#onboarding-prompt'):
                 assert secret not in page.locator(selector).input_value()
             assert secret not in page.locator('#onboarding-commands').text_content()
+            assert secret not in page.locator('#onboarding-dialog').text_content()
+            page.screenshot(path=str(Path(config['screenshots'])/('invite-'+language+'-invited.png')),full_page=True)
+            # Next step: download the settings file and copy the manual command.
             with page.expect_download() as downloaded:page.locator('#invite-next').click()
             settings=json.loads(Path(downloaded.value.path()).read_text(encoding='utf-8'))
             assert settings['base_url']==base and 'token' not in settings
             copied=page.evaluate('window.syntheticCopies')
-            assert copied and secret not in copied[-1] and '--runtime claude' in copied[-1]
+            assert len(copied)==2 and secret not in copied[-1] and '--runtime claude' in copied[-1]
             assert 'cli connect' in copied[-1] and '--room '+rid in copied[-1] and '--acknowledge-private' in copied[-1]
             assert 'cli join' not in copied[-1] and copied[-1].count('--prompt-token') == 1
             assert 'cli check' not in copied[-1] and '--retry-check' not in copied[-1]
-            assert 'awaiting acceptance' in page.locator('#invite-status').inner_text() if language=='en' else '수락' in page.locator('#invite-status').inner_text()
             before_posts=len(posts)
             page.keyboard.press('Escape')
             pw.expect(page.locator('#onboarding-dialog')).not_to_be_visible()
             assert page.locator('#invite-secret-value').input_value()==''
+            # Reopening an existing pending invitation issues nothing and reuses the key.
             page.locator('#invite-submit').click()
-            pw.expect(page.locator('#invite-next')).to_have_text('설정 파일 받고 명령 복사' if language=='ko' else 'Download settings and copy commands')
+            pw.expect(page.locator('#invite-next')).to_have_text(prepare)
             assert len(posts)==before_posts
             page.reload();page.locator('#detail').wait_for(state='visible')
             if language=='en':page.locator('#language').click()
             page.locator('[data-tab=participants]').click()
             page.locator('#invite-agent-id').select_option(aid);page.locator('#invite-submit').click()
-            pw.expect(page.locator('#invite-next')).to_have_text('설정 파일 받고 명령 복사' if language=='ko' else 'Download settings and copy commands')
+            pw.expect(page.locator('#invite-next')).to_have_text(prepare)
             assert len(posts)==before_posts
             page.locator('#invite-machine').select_option('other')
             pw.expect(page.locator('#invite-next')).to_be_disabled()

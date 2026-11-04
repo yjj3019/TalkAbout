@@ -15,7 +15,8 @@ from urllib.parse import urlsplit
 
 import httpx
 
-from .collaboration import ContextBudgetError, add_file_sources, fit_context, shared_context
+from .collaboration import (ContextBudgetError, REQUIRED_PREDECESSOR_LIMIT, add_file_sources, fit_context,
+                            required_predecessors_available, shared_context)
 from .domain import digest
 from .runtime import BudgetedClient, RuntimeTimeout, bounded_call, bounded_call_with_evidence, check_deadline, validate_adapter_policy
 from .storage_health import warn_if_journal_is_exposed
@@ -91,7 +92,9 @@ class APIClient:
     def request(self, method, path, body=None, key=None, params=None):
         headers = {"Idempotency-Key": key} if key else {}
         policy, started = self.retry_policy, time.monotonic()
-        safe = method.upper() == "GET" or bool(key)
+        # A turn request is an explicit one-shot action, even with an idempotency key.
+        safe = (method.upper() == "GET" or bool(key)) and not (
+            method.upper() == "POST" and path.endswith(('/turn-requests', '/input-unavailable')))
         for attempt in range(policy.attempts):
             check_deadline(self.deadline)
             if self.should_stop():
@@ -303,18 +306,54 @@ class Worker:
         validate_adapter_policy(adapter_policy or {"external": False, "allowed_tools": []})
         self.actor = self.client.request("GET", "agents/me")
         self.actor_id = self.actor["id"]
+        # Invocation-local only: never persist consent or reconstruct it from events.
+        self._turn_intent = None
+        self._turn_intent_finished = False
 
-    def request_turns(self):
-        """Explicit CLI opt-in only; never trigger recursively from replies or mentions."""
-        for room in self.client.request('GET', 'rooms'):
-            if room['mode'] != 'free_discussion' or room['state'] != 'active': continue
-            if any(t['assignee'] == self.actor_id and t['state'] in {'queued', 'leased'} for t in room['tasks']): continue
-            try:
-                self.client.request('POST', 'rooms/'+room['id']+'/turn-requests',
-                    {'generation': room['generation'], 'membership_revision': room['membership_revision']},
-                    'turn:'+room['id']+':'+str(room['generation'])+':'+str(room['last_seq']))
-            except httpx.HTTPStatusError as error:
-                if error.response.status_code != 409: raise
+    def request_turns(self, room_id):
+        """Request at most one turn in the explicitly selected room, never from events."""
+        import re
+        if not isinstance(room_id, str) or not re.fullmatch(r'[A-Za-z0-9-]{1,128}', room_id):
+            raise ValueError('invalid_room_identifier')
+        if self._turn_intent_finished:
+            return
+        try:
+            room = self.client.request('GET', 'rooms/' + room_id)
+        except httpx.HTTPStatusError as error:
+            if error.response.status_code not in {403, 404, 410}:
+                raise
+            self._turn_intent_finished = True
+            return
+        # Refuse incomplete projections rather than treating absent fields as stable.
+        required = {'id', 'topic', 'mode', 'limits', 'state', 'generation', 'membership_revision', 'tasks', 'last_seq'}
+        if (not isinstance(room, dict) or not required <= room.keys() or room['id'] != room_id
+                or room['mode'] != 'free_discussion' or room['state'] not in {'preparing', 'active'}
+                or type(room['generation']) is not int or type(room['membership_revision']) is not int
+                or not isinstance(room['limits'], dict) or not isinstance(room['tasks'], list)):
+            self._turn_intent_finished = True
+            return
+        # JSON snapshot avoids aliasing a mutable projection in local clients.
+        context = json.dumps([room['topic'], room['mode'], room['limits']], sort_keys=True)
+        binding = self._turn_intent
+        if binding is None:
+            binding = self._turn_intent = (room_id, room['membership_revision'], context, room['generation'])
+        elif (binding[:3] != (room_id, room['membership_revision'], context)
+              or room['generation'] != binding[3] + (1 if room['state'] == 'active' else 0)):
+            self._turn_intent_finished = True
+            return
+        if any(t['assignee'] == self.actor_id and t['state'] in {'queued', 'leased'} for t in room['tasks']):
+            self._turn_intent_finished = True
+            return
+        if room['state'] == 'preparing':
+            return 'preparing'
+        # Retire before sending: an ambiguous response is never another authorization.
+        self._turn_intent_finished = True
+        try:
+            self.client.request('POST', 'rooms/'+room_id+'/turn-requests',
+                {'generation': room['generation'], 'membership_revision': room['membership_revision']},
+                'turn:'+uuid.uuid4().hex)
+        except httpx.HTTPStatusError as error:
+            if error.response.status_code != 409: raise
 
     def _record_outcome(self, tid, rid, reservation, state):
         """Keep the outcome locally until the server accepts it, then report best-effort."""
@@ -337,10 +376,50 @@ class Worker:
                 return
             self.journal.served_outcome(reservation)
 
+    def _input_unavailable(self, tid, rid, task, payload, required):
+        # Retire locally before the best-effort report, including on crash or a
+        # lost response. A report is an assertion, never an execution authorization.
+        payload['error_code'] = 'required_input_unavailable'
+        if required:
+            payload['input_failure_key'] = 'input-failure:' + uuid.uuid4().hex
+            payload['input_failure_report'] = 'unknown'
+        self.journal.save(tid, 'failed', payload)
+        if not required:
+            return 'required_input_unavailable'
+        body = {k: task[k] for k in ('attempt', 'generation', 'membership_revision')}
+        # At most three attempts, all with the same idempotency key and body. Only a
+        # transport error or a 5xx is retried; a 4xx rejection (including a stale
+        # fence) is final, and a lost response stays "unknown" rather than assuming
+        # the report arrived. This never launches a runtime.
+        for attempt in range(3):
+            try:
+                response = self.client.request('POST', f'rooms/{rid}/tasks/{tid}/input-unavailable',
+                                               body, payload['input_failure_key'])
+            except httpx.HTTPStatusError as error:
+                if error.response.status_code < 500 or attempt == 2:
+                    return 'input_failure_report_unknown'
+            except (OSError, httpx.TransportError):
+                if attempt == 2:
+                    return 'input_failure_report_unknown'
+            except Exception:
+                return 'input_failure_report_unknown'
+            else:
+                if not isinstance(response, dict) or response.get('state') != 'failed':
+                    return 'input_failure_report_unknown'
+                break
+            time.sleep(0.05 * (attempt + 1))
+        payload['input_failure_report'] = 'acknowledged'
+        self.journal.save(tid, 'failed', payload)
+        return 'required_input_unavailable'
+
     def poll(self):
         cursor = self.journal.setting("cursor")
+        # Long-poll: the server already holds the request until an event arrives (up to
+        # 10s). Asking for wait_seconds=0 made an idle worker hit the API four times a
+        # second and take a full snapshot each time.
+        wait = {"wait_seconds": 2}
         try:
-            response = self.client.request("GET", "agents/me/events", params={"cursor": cursor, "wait_seconds": 0} if cursor else {"wait_seconds": 0})
+            response = self.client.request("GET", "agents/me/events", params={**wait, "cursor": cursor} if cursor else wait)
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code not in {409, 410}:
                 raise
@@ -434,7 +513,13 @@ class Worker:
                     self.journal.save(tid, "failed", payload)
                     return "unavailable"
                 payload["claim"] = {"generation": task["generation"], "membership_revision": task["membership_revision"],
-                                    "execution_protocol": "server_start_v1"}
+                                    "execution_protocol": "server_start_v1",
+                                    "input_protocol": "required_predecessors_v1"}
+                if task.get("input_protocol_required"):
+                    # Negotiated per claim: the server compares this capability with
+                    # the exact contract size and fails the node before leasing when
+                    # the worker cannot prepare every required result.
+                    payload["claim"]["required_predecessors_limit"] = REQUIRED_PREDECESSOR_LIMIT
                 # Durable for retries of this claim, distinct across worker journals.
                 payload["claim_key"] = f"claim:{tid}:{uuid.uuid4().hex}"
                 payload["runtime_started"] = False
@@ -449,11 +534,37 @@ class Worker:
                 if self.journal.stop_requested():
                     self.journal.stop_state("stopped")
                     return "stopped"
-                task = self.client.request("POST", prefix + "/claim", payload["claim"], payload["claim_key"])
+                try:
+                    task = self.client.request("POST", prefix + "/claim", payload["claim"], payload["claim_key"])
+                except httpx.HTTPStatusError as error:
+                    # The server can refuse to lease when the negotiated capability is
+                    # smaller than the exact contract. It records the node failure before
+                    # the 409, so this is a definitive, side-effect-free rejection: retire
+                    # the local entry and keep other tasks moving instead of exiting as
+                    # "uncertain" and telling the operator not to rerun.
+                    code = None
+                    try:
+                        detail = error.response.json()
+                        code = detail.get('code') if isinstance(detail, dict) else None
+                    except ValueError:
+                        code = None
+                    if error.response.status_code == 409 and code == 'required_input_unavailable':
+                        payload['error_code'] = 'required_input_unavailable'
+                        payload['input_failure_report'] = 'server_rejected_claim'
+                        self.journal.save(tid, 'failed', payload)
+                        return 'required_input_unavailable'
+                    raise
                 if (payload["claim"].get("execution_protocol") == "server_start_v1"
                         and task.get("execution_protocol") != "server_start_v1"):
                     self.journal.save(tid, "failed", payload)
                     raise ValueError("execution_protocol_not_supported")
+                # An older server can silently ignore an unfamiliar claim field and
+                # omit the required-contract marker from later projections. Refuse
+                # mixed-version execution rather than guessing that inputs are optional.
+                if (payload['claim'].get('input_protocol') == 'required_predecessors_v1'
+                        and task.get('input_protocol') != 'required_predecessors_v1'):
+                    self.journal.save(tid, 'failed', payload)
+                    return 'input_protocol_not_supported'
                 payload["task"] = task
                 self.journal.save(tid, "claimed", payload)
                 state = "claimed"
@@ -488,6 +599,14 @@ class Worker:
                     self.journal.save(tid, "cancelled", payload)
                     self.journal.stop_state("stopped")
                     return "stopped"
+                if latest.get('input_protocol_required') and (
+                        payload['task'].get('input_protocol') != 'required_predecessors_v1'
+                        or task.get('input_protocol') != 'required_predecessors_v1'):
+                    return self._input_unavailable(tid, rid, task, payload, True)
+                if latest.get('input_protocol_required') and (
+                        not isinstance(latest.get('plan_node'), dict)
+                        or 'required_predecessor_message_ids' not in latest['plan_node']):
+                    return self._input_unavailable(tid, rid, task, payload, bool(latest.get('input_protocol_required')))
                 context = {"room_id": rid, "generation": task["generation"], "membership_revision": task["membership_revision"], "agent_id": self.actor_id, "display_name": self.actor["display_name"], "role": task.get("role", "participant"),
                            "topic": room["topic"], "purpose": task["purpose"],
                            "deliverable": room.get("deliverable")}
@@ -497,6 +616,17 @@ class Worker:
                 context["phase"] = task.get("phase")
                 context["round"] = task.get("round")
                 claimed=payload['task']
+                # Only the freshly authorized room projection carries the current
+                # assignee's private plan node; claim responses intentionally omit it.
+                plan_node = latest.get('plan_node')
+                if isinstance(plan_node, dict):
+                    context['plan_node'] = {key: plan_node.get(key) for key in
+                                            ('node_id', 'title', 'instruction', 'write_scope', 'run_id')}
+                    # A fixed notice reveals no information about hidden dependencies.
+                    # fit_context accounts for it as required prompt metadata.
+                    context['plan_node']['predecessor_inputs_notice'] = (
+                        'Predecessor inputs are best-effort: they may be missing, inaccessible, '
+                        'or truncated. Do not assume they are complete.')
                 if claimed.get('attachment_refs'):
                     require_proof=claimed.get('lease_proof')
                     if not require_proof:raise ValueError('attachment_lease_proof_required')
@@ -515,11 +645,18 @@ class Worker:
                     # recall bytes already delivered to that runtime.
                     allowed=self.client.request('GET',f'rooms/{rid}/files')
                     current_files={item['file_id'] for item in allowed}
-                    room_now=self.client.request('GET',f'rooms/{rid}')
-                    latest=next((item for item in room_now['tasks'] if item['id']==tid),None)
+                    # Prefer the small projection; older servers do not expose this route.
+                    try:
+                        fence=self.client.request('GET',f'rooms/{rid}/fence',params={'task_id':tid})
+                        latest=fence.get('task')
+                    except httpx.HTTPStatusError as error:
+                        if error.response.status_code != 404:
+                            raise
+                        fence=self.client.request('GET',f'rooms/{rid}')
+                        latest=next((item for item in fence['tasks'] if item['id']==tid),None)
                     if (not all(ref['file_id'] in current_files for ref in claimed['attachment_refs'][:4])
-                            or room_now['state']!='active' or room_now['generation']!=claimed['generation']
-                            or room_now['membership_revision']!=claimed['membership_revision']
+                            or fence['state']!='active' or fence['generation']!=claimed['generation']
+                            or fence['membership_revision']!=claimed['membership_revision']
                             or not latest or latest['state']!='leased' or latest['assignee']!=self.actor_id
                             or any(latest[k]!=claimed[k] for k in ('attempt','generation','membership_revision'))
                             or latest['lease_expires_at']<=time.time() or latest['deadline']<=time.time()):
@@ -532,9 +669,19 @@ class Worker:
                 try:
                     fit_context(context, work_workspace=self.work_prompt_workspace)
                 except ContextBudgetError as error:
-                    # Refuse before any provider call: an unbounded input is not a turn.
+                    # A failed fit may already have trimmed a required message.
+                    if (isinstance(plan_node, dict) and 'required_predecessor_message_ids' in plan_node
+                            and not required_predecessors_available(
+                                plan_node['required_predecessor_message_ids'], context, room)):
+                        return self._input_unavailable(tid, rid, task, payload, bool(latest.get('input_protocol_required')))
+                    if error.code == 'required_input_unavailable':
+                        return self._input_unavailable(tid, rid, task, payload, bool(latest.get('input_protocol_required')))
                     self.journal.save(tid, 'failed', payload)
                     return error.code
+                if (isinstance(plan_node, dict) and 'required_predecessor_message_ids' in plan_node
+                        and not required_predecessors_available(
+                            plan_node['required_predecessor_message_ids'], context, room)):
+                    return self._input_unavailable(tid, rid, task, payload, bool(latest.get('input_protocol_required')))
                 # Stop before authorization when unacknowledged reports fill the ledger.
                 if len(self.journal.outcomes(self.journal.pending_limit)) >= self.journal.pending_limit:
                     return "backpressure"
@@ -566,7 +713,8 @@ class Worker:
                         self.journal.save(tid, "cancelled", payload)
                         return "stopped"
                     granted = self.client.request("POST", prefix + "/start",
-                                                  {**fence, "reservation_id": reservation},
+                                                  {**fence, "reservation_id": reservation,
+                                                   "input_manifest": context.get('input_manifest')},
                                                   f"start:{reservation}")
                 if granted.get("execute") is not True:
                     if granted.get("replay") and granted.get("state") in {"reserved", "started"}:
@@ -625,6 +773,13 @@ class Worker:
                     result = {"client_message_id": f"{tid}:{task['attempt']}", "text": text,
                               "reply_to": None, "mentions": [],
                               "input_manifest": context.get("input_manifest")}
+                    # A provider-issued session handle is optional; runtimes that cannot
+                    # expose one simply omit it and the server records a legacy report.
+                    receipt = getattr(self.runtime, 'execution_receipt', None)
+                    if callable(receipt):
+                        reported = receipt()
+                        if reported:
+                            result["execution_receipt"] = reported
                     if evidence is not None:
                         result["work_evidence"] = {name: getattr(evidence, name) for name in
                             ('version', 'command_items', 'file_change_items', 'failed_items')}

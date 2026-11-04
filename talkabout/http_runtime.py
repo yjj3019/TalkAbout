@@ -59,6 +59,7 @@ class HttpChatRuntime:
         self.auth_mode = "api_key"
         self.session_id = None
         self.thread_id = None
+        self.last_usage = None
         self.last_outcome = "not_started"
         self.runtime_version = "http/" + provider.id + ("/" + self.model if self.model else "")
         self._verified_executable = None
@@ -209,10 +210,36 @@ class HttpChatRuntime:
         if not isinstance(content, str) or not content.strip():
             raise AdapterError("runtime_invalid_output")
         text = content.strip()[:MAX_OUTPUT]
+        usage = data.get("usage") if isinstance(data, dict) else None
         with self._lock:
             self.session_id = f"{self.provider_id}:{data.get('id') or uuid.uuid4().hex}"
+            self.last_usage = self._bounded_usage(usage)
             self.last_outcome = "completed"
         return text
+
+    @staticmethod
+    def _bounded_usage(value):
+        """Keep only bounded integer token counters; never guess or aggregate."""
+        if not isinstance(value, dict):
+            return None
+        keys = {"input_tokens": "prompt_tokens", "output_tokens": "completion_tokens"}
+        bounded = {}
+        for key, source in keys.items():
+            count = value.get(source)
+            if type(count) is int and 0 <= count <= 10 ** 9:
+                bounded[key] = count
+        return bounded or None
+
+    def execution_receipt(self):
+        """Report the provider response id and any bounded usage for corroboration."""
+        session = getattr(self, 'session_id', None)
+        if not isinstance(session, str) or not session:
+            return None
+        receipt = {'runtime': self.provider_id, 'session_id': session}
+        usage = getattr(self, 'last_usage', None)
+        if usage:
+            receipt['usage'] = dict(usage)
+        return receipt
 
     def shutdown(self):
         with self._lock:

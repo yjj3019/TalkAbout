@@ -161,7 +161,7 @@ def test_saved_completion_drains_at_total_or_room_cap_without_new_work(fixture,t
         value.request=track;return value
     monkeypatch.setattr(cli,'APIClient',tracked_client);monkeypatch.setattr(cli,'Worker',Worker)
     args=['talkabout','connect','--config',str(config),'--runtime','codex','--approve-external',
-          '--max-model-calls',str(total),'--steps','3','--request-turn']
+          '--max-model-calls',str(total),'--steps','3','--request-turn','--request-turn-room',rid]
     if room is not None:args+=['--max-room-calls',str(room)]
     monkeypatch.setattr(sys,'argv',args);cli.main()
     output=[json.loads(line) for line in capsys.readouterr().out.splitlines() if line.startswith('{')]

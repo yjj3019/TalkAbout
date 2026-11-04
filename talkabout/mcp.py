@@ -37,11 +37,30 @@ TOOLS += [
     tool('ack_room', 'Explicit delivered or read receipt for a returned session cursor. Not model understanding, approval or task completion.',
          {**CONTEXT, 'cursor': 'string', 'state': 'string'}),
     tool('room_notifications', 'Metadata only: unread count, oldest time and held/available/empty. No wake or model execution.', SESSION),
+    tool('request_turn', 'Explicitly request the floor in a free_discussion room under the current generation and membership revision. Only this explicit call creates a request: mentions and replies never create one and it never recurses. The request is not bound to a client session. The server may turn it into a pending turn task, and a connected worker with sufficient permissions may then claim that task and call an external provider, incurring cost; this tool does not claim, run a model or prove that any worker exists.',
+         {**ROOM, 'generation': 'integer', 'membership_revision': 'integer', 'client_mutation_id': 'string'}),
     tool('claim_turn', 'Claim an existing assigned task under its lease and room limits. Does not execute a model.',
          {**CONTEXT, 'task_id': 'string', 'client_mutation_id': 'string'}),
-    tool('post_message', 'Complete a claimed turn with text using its attempt fencing. Stored response is not proof of provider execution. No unsolicited turns.',
-         {**CONTEXT, 'task_id': 'string', 'attempt': 'integer', 'text': 'string', 'client_mutation_id': 'string'}),
+    tool('post_message', 'Complete a claimed turn with text using its attempt fencing. Optional reply_to references a visible message; mentions may name up to four active agents. Neither implies understanding or automatically wakes an agent. Stored response is not proof of provider execution. No unsolicited turns.',
+         {**CONTEXT, 'task_id': 'string', 'attempt': 'integer', 'text': 'string', 'client_mutation_id': 'string', 'reply_to': 'string', 'mentions': 'array'},
+         [*CONTEXT, 'task_id', 'attempt', 'text', 'client_mutation_id']),
+    tool('propose_collaboration', 'Record a private, owner-reviewed collaboration suggestion for an existing leased task. Does not wake an agent, create a task, dispatch work or call a provider; approval is not execution.',
+         {**ROOM, 'task_id': 'string', 'attempt': 'integer', 'generation': 'integer', 'membership_revision': 'integer',
+          'target_id': 'string', 'kind': 'string', 'summary': 'string', 'requested_output': 'string', 'client_mutation_id': 'string', 'done_when': 'array'},
+         ['room_id', 'task_id', 'attempt', 'generation', 'membership_revision', 'target_id', 'kind', 'summary', 'requested_output', 'client_mutation_id']),
+    tool('get_agent_invite_policy', 'Read the delegated agent-invitation policy this credential holds in one room. Read-only: grants nothing, records nothing and accepts nothing.', ROOM),
+    tool('request_agent_invitation', "Record a pending invitation request under this credential's current room invitation policy. Records a read-only pending row only: it does not accept membership, wake an agent or start a model; the invitee must still accept it explicitly. No unsolicited turns.",
+         {**ROOM, 'target_id': 'string', 'expected_generation': 'integer', 'expected_membership_epoch': 'integer', 'expected_membership_revision': 'integer', 'expected_policy_revision': 'integer', 'client_mutation_id': 'string'}),
 ]
+
+# Optional metadata is validated locally and again by the common API.
+_post_schema = next(item['inputSchema'] for item in TOOLS if item['name'] == 'post_message')
+_post_schema['properties']['reply_to'].update(minLength=1, maxLength=128)
+_post_schema['properties']['mentions'].update(items={'type': 'string', 'minLength': 1, 'maxLength': 128}, maxItems=4, uniqueItems=True)
+_proposal_schema = next(item['inputSchema'] for item in TOOLS if item['name'] == 'propose_collaboration')
+_proposal_schema['properties']['done_when'].update(
+    items={'type': 'string', 'minLength': 1, 'maxLength': 200}, minItems=1, maxItems=8,
+    description='Untrusted completion criteria for owner review, not an approval or an execution instruction.')
 
 
 class MCPServer:
@@ -86,9 +105,23 @@ class MCPServer:
         if set(arguments) - set(schema["properties"]) or not set(schema.get("required", [])) <= set(arguments):
             return self.error(request_id, -32602, "Invalid arguments")
         for key, value in arguments.items():
-            expected = {'integer': int, 'boolean': bool, 'string': str}[schema["properties"][key]["type"]]
+            expected = {'integer': int, 'boolean': bool, 'string': str, 'array': list}[schema["properties"][key]["type"]]
             if type(value) is not expected:
                 return self.error(request_id, -32602, "Invalid argument type")
+        if name == 'post_message':
+            reply = arguments.get('reply_to')
+            if reply is not None and not 1 <= len(reply) <= 128:
+                return self.error(request_id, -32602, 'Invalid reply id')
+            mentions = arguments.get('mentions', [])
+            if (len(mentions) > 4 or any(type(pid) is not str or not 1 <= len(pid) <= 128 for pid in mentions)
+                    or len(set(mentions)) != len(mentions)):
+                return self.error(request_id, -32602, 'Invalid mentions')
+        if name == 'propose_collaboration' and 'done_when' in arguments:
+            from .proposal_done_when import valid_done_when
+            if not valid_done_when(arguments['done_when']):
+                return self.error(request_id, -32602, 'Invalid completion criteria')
+        if name == 'request_agent_invitation' and not 1 <= len(arguments['target_id']) <= 128:
+            return self.error(request_id, -32602, 'Invalid target id')
         if "room_id" in arguments and not re.fullmatch(r"[A-Za-z0-9-]{1,64}", arguments["room_id"]):
             return self.error(request_id, -32602, "Invalid room id")
         try:
@@ -100,6 +133,8 @@ class MCPServer:
                 data = self.client.request('GET', 'agents/me/invitations')
             elif name == 'list_participants':
                 data = self.client.request('GET', 'rooms/' + arguments['room_id'] + '/memberships')
+            elif name == 'get_agent_invite_policy':
+                data = self.client.request('GET', 'rooms/' + arguments['room_id'] + '/agent-invite-policy/me')
             elif name in {'poll_room', 'room_notifications'}:
                 params = {k: v for k, v in arguments.items() if k != 'room_id'}
                 data = self.client.request('GET', 'rooms/' + arguments['room_id'] + ('/events' if name == 'poll_room' else '/notifications'), params=params)
@@ -121,6 +156,23 @@ class MCPServer:
                     path += '/tasks/' + arguments['task_id'] + ('/claim' if name == 'claim_turn' else '/complete')
                     if name == 'post_message':
                         body.update(attempt=arguments['attempt'], result={'client_message_id': mutation_id, 'text': arguments['text']})
+                        for field in ('reply_to', 'mentions'):
+                            if field in arguments:
+                                body['result'][field] = arguments[field]
+                elif name == 'request_turn':
+                    # The REST body carries context only; a client session is not part of this request.
+                    path += '/turn-requests'
+                    body = {k: arguments[k] for k in ('generation', 'membership_revision')}
+                elif name == 'propose_collaboration':
+                    path += '/collaboration-proposals'
+                    body = {k: arguments[k] for k in ('task_id', 'attempt', 'generation', 'membership_revision',
+                                                       'target_id', 'kind', 'summary', 'requested_output')}
+                    if 'done_when' in arguments:
+                        body['done_when'] = arguments['done_when']
+                elif name == 'request_agent_invitation':
+                    path += '/agent-invitations'
+                    body = {k: arguments[k] for k in ('target_id', 'expected_generation', 'expected_membership_epoch',
+                                                      'expected_membership_revision', 'expected_policy_revision')}
                 else:
                     path += '/artifacts'
                     body = {k: arguments[k] for k in ('text', 'generation', 'membership_revision')}

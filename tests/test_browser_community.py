@@ -55,6 +55,11 @@ def test_browser_register_invite_setup_start_and_text_artifact(tmp_path):
             page.locator('[data-tab=participants]').click()
             page.locator('#invite-agent-id').select_option(label='Fixture Blue @fixture-blue');page.locator('#invite-agent button[type=submit]').click()
             playwright.expect(page.locator('#members')).to_contain_text('초대 완료 · 수락 대기')
+            # "Invite and connect" opens the participation guide (and issues one room-scoped
+            # credential on this loopback fixture); close it before driving the room below.
+            playwright.expect(page.locator('#onboarding-dialog')).to_be_visible()
+            page.locator('#onboarding-close').click()
+            playwright.expect(page.locator('#onboarding-dialog')).not_to_be_visible()
             page.screenshot(path=str(shots/'community-invitation-ko.png'),full_page=True)
             participant=page.locator('#members .member-card',has_text='Fixture Blue')
             # Prepare a missing-scope fixture through the authenticated owner API.
@@ -71,20 +76,25 @@ def test_browser_register_invite_setup_start_and_text_artifact(tmp_path):
                     page.locator('#refresh').click()
             set_permissions([p for p in permissions if p!='room:contribute'])
             participant.get_by_role('button',name='연결 이어가기',exact=True).click()
+            playwright.expect(page.locator('#onboarding-dialog')).to_be_visible()
+            # The command block lives inside the collapsed advanced section; open it
+            # before reading the rendered text.
+            page.locator('#invite-advanced').evaluate('(node)=>node.open=true')
             assert 'cli connect' not in page.locator('#onboarding-commands').inner_text()
             playwright.expect(page.locator('#onboarding-commands')).to_contain_text('작업 권한')
             page.locator('#onboarding-close').click();set_permissions(permissions)
             participant.get_by_role('button',name='연결 이어가기',exact=True).click()
+            playwright.expect(page.locator('#onboarding-dialog')).to_be_visible()
             assert 'Synthetic shared text' in page.locator('#onboarding-prompt').input_value()
             assert 'TALKABOUT_TOKEN' not in page.locator('#onboarding-prompt').input_value()
             config=page.locator('#onboarding-config').input_value();assert base in config
             playwright.expect(page.get_by_role('dialog',name='에이전트 초대·연결',exact=True)).to_be_visible()
             commands=page.locator('#onboarding-commands').inner_text()
             room_id=page.evaluate('new URLSearchParams(location.search).get("room")')
+            # A pending participant gets the single connect step that joins, acknowledges
+            # privacy and connects in one launch; no separate check/join lines remain.
             expected_commands=[
-                'python -m talkabout.cli check --config agent.local.json --prompt-token',
-                'python -m talkabout.cli join --config agent.local.json --room '+room_id+' --acknowledge-private --prompt-token',
-                'python -m talkabout.cli connect --config agent.local.json --runtime codex --auth-mode native --approve-external --max-model-calls 4 --steps 1000 --max-seconds 300 --prompt-token',
+                'python -m talkabout.cli connect --config agent.local.json --runtime codex --auth-mode native --approve-external --max-model-calls 4 --steps 1000 --max-seconds 300 --prompt-token --room '+room_id+' --acknowledge-private',
             ]
             assert page.locator('#onboarding-action').input_value()=='start'
             assert [line for line in commands.splitlines() if line.startswith('python -m talkabout.cli ')]==expected_commands
@@ -114,7 +124,9 @@ def test_browser_register_invite_setup_start_and_text_artifact(tmp_path):
             participant.get_by_role('button',name='1시간 토큰 발급',exact=True).click()
             page.locator('#credential-dialog').wait_for(state='visible');page.locator('#credential-close').click()
             participant.get_by_role('button',name='자격증명 상태',exact=True).click()
-            playwright.expect(participant.locator('.credential-list li')).to_have_count(2)
+            # One room-scoped credential came from "Invite and connect", plus the two
+            # explicitly issued above.
+            playwright.expect(participant.locator('.credential-list li')).to_have_count(3)
             playwright.expect(participant.locator('.credential-list')).to_contain_text('room:read')
             assert raw not in participant.locator('.credential-list').inner_text()
             page.screenshot(path=str(shots/'community-credential-metadata-ko.png'),full_page=True)

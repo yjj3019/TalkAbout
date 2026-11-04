@@ -30,9 +30,9 @@ def room_fixture(*, messages=(), artifacts=(), pinned=None, last_seq=9):
             'messages': list(messages), 'artifacts': list(artifacts)}
 
 
-def message(mid, seq, text, actor='a'):
+def message(mid, seq, text, actor='a', reply_to=None):
     return {'id': mid, 'actor_id': actor, 'actor_kind': 'agent', 'display_name': actor,
-            'seq': seq, 'kind': 'contribution', 'text': text}
+            'seq': seq, 'kind': 'contribution', 'text': text, 'reply_to': reply_to}
 
 
 def artifact(aid, revision, versions, adopted=None):
@@ -179,3 +179,81 @@ def test_artifact_versions_carry_a_stable_revision_number(fixture):
                               'text': 'second text', 'sources': []})
     versions = appended['versions'] if 'versions' in appended else appended['artifact']['versions']
     assert [version['version_revision'] for version in versions] == [1, 2]
+
+
+# --- Reply threads: only the newest messages may pull a few visible ancestors. ---
+
+def thread(*, replies, count, pinned=None, handoff=None):
+    messages = [message('m' + str(index), index + 1, 'line ' + str(index),
+                        reply_to=replies.get(index)) for index in range(count)]
+    room = room_fixture(messages=messages, pinned=pinned, last_seq=count + 1)
+    task = {'id': 'task-one'}
+    if handoff:
+        task['handoff'] = {'message_id': handoff}
+    return room, task
+
+
+def test_newest_replies_pull_up_to_three_visible_ancestors():
+    room, task = thread(replies={33: 'm32', 34: 'm33', 35: 'm34', 36: 'm35',
+                                 38: 'm37', 39: 'm38'}, count=40)
+    context = shared_context(room, task)
+    ids = [item['id'] for item in context['inputs']]
+    assert len(ids) == 8 and len(set(ids)) == 8
+    assert ids == sorted(ids, key=lambda mid: int(mid[1:]))
+    assert {'m36', 'm37', 'm38', 'm39'} <= set(ids)
+    # Seeds are the newest four only; m36's chain contributes three nearest ancestors,
+    # then the remaining slot is filled with the newest unselected message.
+    assert {'m35', 'm34', 'm33'} <= set(ids)
+    assert 'm32' in ids and 'm31' not in ids
+    manifest = context['input_manifest']
+    assert manifest['omissions']['messages']['count'] == len(room['messages']) - len(ids)
+    assert manifest['event_range'][0] == min(item['seq'] for item in context['inputs'])
+    assert manifest['evidence'] == 'prepared_worker_input_not_model_read_receipt'
+    assert len({source['source_id'] for source in manifest['sources']}) == len(manifest['sources'])
+    assert sum(item['utf8_end'] for item in context['inputs']) <= 72000
+    assert all(item['utf8_end'] <= 6000 for item in context['inputs'])
+    assert all('reply_to' not in item for item in context['inputs'])
+
+
+def test_no_ancestors_are_imported_when_the_newest_four_have_no_reply():
+    # An old, busy thread must not be revived: the newest four carry no reply_to.
+    replies = {5: 'm4', 6: 'm5', 7: 'm6', 8: 'm7'}
+    room, task = thread(replies=replies, count=20)
+    context = shared_context(room, task)
+    ids = {item['id'] for item in context['inputs']}
+    assert ids == {'m' + str(index) for index in range(12, 20)}
+    assert not ids & {'m5', 'm6', 'm7', 'm8'}
+
+
+def test_deep_thread_keeps_only_three_nearest_ancestors():
+    replies = {index: 'm' + str(index - 1) for index in range(1, 10)}
+    room, task = thread(replies=replies, count=10)
+    context = shared_context(room, task)
+    ids = [item['id'] for item in context['inputs']]
+    # Newest four are m6..m9; the chain continues to m5, m4, m3 only (three hops).
+    assert {'m6', 'm7', 'm8', 'm9'} <= set(ids)
+    assert {'m5', 'm4', 'm3'} <= set(ids)
+    assert 'm1' not in ids and 'm0' not in ids
+    assert len(ids) == 8
+
+
+def test_missing_cyclic_and_forward_parents_are_ignored():
+    room, task = thread(replies={7: 'm8', 8: 'm7', 6: 'm6', 5: 'ghost'}, count=9)
+    context = shared_context(room, task)
+    ids = [item['id'] for item in context['inputs']]
+    assert len(ids) == 8 and len(set(ids)) == 8
+    assert set(ids) <= {item['id'] for item in room['messages']}
+    assert 'ghost' not in ids
+
+
+def test_pinned_and_handoff_leave_only_remaining_slots_for_ancestors():
+    replies = {index: 'm' + str(index - 1) for index in range(1, 20)}
+    room, task = thread(replies=replies, count=20, pinned='m0', handoff='m1')
+    context = shared_context(room, task)
+    ids = [item['id'] for item in context['inputs']]
+    assert len(ids) == 8
+    assert {'m0', 'm1'} <= set(ids)
+    # Four newest + pinned/handoff leave two slots: nearest ancestors only.
+    assert {'m16', 'm17', 'm18', 'm19'} <= set(ids)
+    assert {'m15', 'm14'} <= set(ids)
+    assert 'm13' not in ids and 'm2' not in ids

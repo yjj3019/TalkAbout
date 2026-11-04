@@ -3,9 +3,11 @@
 The caller supplies an ACL-filtered public room. Nothing here calls a provider, reads
 a file, generates a summary or grants a permission. What this module adds is the
 difference between "the worker says it sent something" and "the server can check that
-each reference exists, belongs to this room and viewer, and matches the byte range".
+each reference exists, belongs to this room and viewer, matches the byte range, and
+hashes to the stored bytes".
 """
 import copy
+import hashlib
 
 from .agent_runtime import MAX_INPUT, prompt_text, work_prompt_text
 
@@ -13,6 +15,15 @@ MAX_SHARED_TEXT_BYTES = 72000
 MAX_MESSAGES = 8
 MAX_VERSIONS = 4
 MAX_FILE_SOURCES = 4
+# The worker-side negotiated ceiling for exact predecessor message inputs. The
+# server stores up to 15 and accepts any per-claim capability in 1..15, but the
+# current worker prepares at most this many before failing closed.
+REQUIRED_PREDECESSOR_LIMIT = 8
+# Thread context is enrichment, not a licence to revive old conversations: only the
+# newest messages may seed an ancestor walk, and only a few hops of it.
+MAX_RECENT_MESSAGES = 4
+MAX_THREAD_ANCESTORS = 3
+MAX_THREAD_HOPS = 3
 
 
 class ContextBudgetError(ValueError):
@@ -33,6 +44,11 @@ def excerpt(text, budget):
     used = len(selected.encode('utf-8'))
     return selected, {'utf8_start': 0, 'utf8_end': used,
                       'total_utf8_bytes': len(raw), 'truncated': used < len(raw)}
+
+
+def _sha256(text):
+    """Bind a manifest source to the exact UTF-8 bytes it says were included."""
+    return hashlib.sha256(text.encode('utf-8')).hexdigest()
 
 
 def source_id(source):
@@ -92,19 +108,71 @@ def project_task(task, messages, artifacts):
 def shared_context(room, task):
     """Build the bounded inputs a worker may hand to a runtime, with a manifest.
 
-    Priority: pinned message, newest messages, adopted version, then recent versions.
-    Text is cut at UTF-8 boundaries and every cut is described in the manifest.
+    Priority: visible exact direct predecessor messages, then pinned/handoff,
+    then the newest messages (four when available), then visible ancestors, then newest
+    remaining messages. Versions: adopted, then recent.
+    Ancestors are only followed from the newest messages: an older thread is never
+    revived merely because it exists or has more replies. Text is cut at UTF-8
+    boundaries and every cut is described in the manifest.
     """
     messages = sorted(room['messages'], key=lambda item: item['seq'])
     versions = [(artifact, _revision(version, index), version)
                 for artifact in room['artifacts']
                 for index, version in enumerate(artifact['versions'])]
+    # Claim/GET snapshots need not carry plan_node. Use only the matching fresh
+    # public-room task, and only when its identity and fencing fields agree.
+    current = next((item for item in room.get('tasks', []) if item.get('id') == task.get('id')), None)
+    fence = ('assignee', 'attempt', 'generation', 'membership_revision', 'state')
+    matching = (current is not None and all(key in task and current.get(key) == task[key] for key in fence)
+                and current.get('generation') == room.get('generation')
+                and current.get('membership_revision') == room.get('membership_revision')
+                and current.get('state') == 'leased')
+    plan = current.get('plan_node') if matching else None
     task = project_task(task, messages, room['artifacts'])
+    by_id = {item['id']: item for item in messages}
     chosen_messages = []
-    for mid in (room.get('pinned_message_id'), (task.get('handoff') or {}).get('message_id')):
-        match = next((item for item in messages if item['id'] == mid), None)
-        if match and match not in chosen_messages:
+    predecessor_ids = plan.get('predecessor_message_ids', []) if isinstance(plan, dict) else []
+    if not isinstance(predecessor_ids, list):
+        predecessor_ids = []
+    required_opt_in = isinstance(plan, dict) and 'required_predecessor_message_ids' in plan
+    required_ids = plan.get('required_predecessor_message_ids') if required_opt_in else []
+    valid_required = (isinstance(required_ids, list)
+                      and all(isinstance(mid, str) and mid for mid in required_ids)
+                      and len(set(required_ids)) == len(required_ids)
+                      and len(required_ids) <= MAX_MESSAGES)
+    required_unavailable = required_opt_in and not valid_required
+    if required_opt_in and valid_required:
+        required_unavailable = any(sum(m['id'] == mid for m in messages) != 1 for mid in required_ids)
+        predecessor_ids = required_ids + predecessor_ids
+    else:
+        required_ids = []
+    for mid in predecessor_ids:
+        match = by_id.get(mid) if isinstance(mid, str) else None
+        if match and match not in chosen_messages and len(chosen_messages) < MAX_MESSAGES:
             chosen_messages.append(match)
+    for mid in (room.get('pinned_message_id'), (task.get('handoff') or {}).get('message_id')):
+        match = by_id.get(mid) if isinstance(mid, str) else None
+        if match and match not in chosen_messages and len(chosen_messages) < MAX_MESSAGES:
+            chosen_messages.append(match)
+    newest = messages[-MAX_RECENT_MESSAGES:]
+    for item in newest:
+        if item not in chosen_messages and len(chosen_messages) < MAX_MESSAGES:
+            chosen_messages.append(item)
+    ancestors_left = min(MAX_THREAD_ANCESTORS, MAX_MESSAGES - len(chosen_messages))
+    for seed in reversed(newest):
+        if ancestors_left <= 0:
+            break
+        child, hops, path = seed, 0, {seed['id']}
+        parent_id = child.get('reply_to')
+        while parent_id and hops < MAX_THREAD_HOPS and ancestors_left > 0:
+            parent = by_id.get(parent_id)
+            if parent is None or parent['id'] in path or parent['seq'] >= child['seq']:
+                break
+            path.add(parent['id'])
+            if parent not in chosen_messages:
+                chosen_messages.append(parent)
+                ancestors_left -= 1
+            child, hops, parent_id = parent, hops + 1, parent.get('reply_to')
     for item in reversed(messages):
         if item not in chosen_messages and len(chosen_messages) < MAX_MESSAGES:
             chosen_messages.append(item)
@@ -124,13 +192,24 @@ def shared_context(room, task):
             chosen_versions.append(pair)
     chosen_versions = chosen_versions[:MAX_VERSIONS]
     budget = MAX_SHARED_TEXT_BYTES
+    required_set = set(required_ids)
+    required_sizes = {}
+    if required_opt_in and not required_unavailable:
+        try:
+            required_sizes = {mid: len(by_id[mid]['text'].encode('utf-8')) for mid in required_ids}
+            required_unavailable = sum(required_sizes.values()) > budget
+        except (KeyError, AttributeError, UnicodeError):
+            required_unavailable = True
+    if not required_unavailable:
+        budget -= sum(required_sizes.values())
     inputs, proposals, references = [], [], []
     for artifact, revision, version in chosen_versions:
         text, limits = excerpt(version['text'], min(12000, budget))
         budget -= limits['utf8_end']
         reference = {'kind': 'artifact_version', 'room_id': room['id'], 'artifact_id': artifact['id'],
                      'version_id': version['id'], 'revision': revision,
-                     'actor_id': version['actor_id'], 'seq': version['seq'], **limits}
+                     'actor_id': version['actor_id'], 'seq': version['seq'], **limits,
+                     'sha256': _sha256(text)}
         reference['source_id'] = source_id(reference)
         references.append(reference)
         proposals.append({**reference, 'text': text, 'head_snapshot_revision': artifact['revision'],
@@ -140,10 +219,17 @@ def shared_context(room, task):
                           'omitted_sources': max(0, len(version.get('sources', [])) - 4),
                           'untrusted_data': True})
     for index, item in enumerate(chosen_messages):
-        text, limits = excerpt(item['text'], min(6000, budget // (len(chosen_messages) - index)))
-        budget -= limits['utf8_end']
+        if item['id'] in required_sizes and not required_unavailable:
+            text, limits = excerpt(item['text'], required_sizes[item['id']])
+        else:
+            remaining = sum(m['id'] not in required_set for m in chosen_messages[index:])
+            # Keep the original divisor exactly when no required inputs were reserved.
+            divisor = remaining if required_opt_in and not required_unavailable else len(chosen_messages) - index
+            text, limits = excerpt(item['text'], min(6000, budget // max(1, divisor)))
+            budget -= limits['utf8_end']
         reference = {'kind': 'message', 'room_id': room['id'], 'message_id': item['id'],
-                     'actor_id': item['actor_id'], 'seq': item['seq'], **limits}
+                     'actor_id': item['actor_id'], 'seq': item['seq'], **limits,
+                     'sha256': _sha256(text)}
         reference['source_id'] = source_id(reference)
         references.append(reference)
         inputs.append({key: item[key] for key in ('id', 'actor_id', 'actor_kind', 'display_name', 'seq', 'kind')}
@@ -159,8 +245,54 @@ def shared_context(room, task):
                                                               lambda v: v['id'])},
                 'evidence': 'prepared_worker_input_not_model_read_receipt'}
     pinned = room.get('pinned_message_id')
-    return {'inputs': inputs, 'artifact_proposals': proposals, 'input_manifest': manifest,
-            'pinned_message_id': pinned if pinned in selected_messages else None}
+    result = {'inputs': inputs, 'artifact_proposals': proposals, 'input_manifest': manifest,
+              'pinned_message_id': pinned if pinned in selected_messages else None}
+    if required_opt_in:
+        result['_required_context'] = {'message_ids': required_ids, 'unavailable': required_unavailable}
+    return result
+
+
+def required_predecessors_available(required_ids, context, room):
+    """Verify the final prompt carries each required message and its complete source."""
+    if (not isinstance(required_ids, list)
+            or any(not isinstance(mid, str) or not mid for mid in required_ids)
+            or len(set(required_ids)) != len(required_ids)):
+        return False
+    inputs = context.get('inputs')
+    manifest = context.get('input_manifest')
+    sources = manifest.get('sources') if isinstance(manifest, dict) else None
+    messages = room.get('messages')
+    if not all(isinstance(value, list) for value in (inputs, sources, messages)):
+        return False
+    for mid in required_ids:
+        originals = [m for m in messages if isinstance(m, dict) and m.get('id') == mid]
+        entries = [m for m in inputs if isinstance(m, dict) and m.get('id') == mid]
+        refs = [s for s in sources if isinstance(s, dict) and s.get('kind') == 'message'
+                and s.get('message_id') == mid]
+        if len(originals) != 1 or len(entries) != 1 or len(refs) != 1:
+            return False
+        original, entry, ref = originals[0], entries[0], refs[0]
+        text = original.get('text')
+        if not isinstance(text, str) or entry.get('text') != text:
+            return False
+        try:
+            size = len(text.encode('utf-8'))
+        except UnicodeError:
+            return False
+        limits = {'utf8_start': 0, 'utf8_end': size, 'total_utf8_bytes': size, 'truncated': False}
+        if any(type(obj.get(k)) is not type(v) or obj.get(k) != v
+               for obj in (entry, ref) for k, v in limits.items()):
+            return False
+        if (ref.get('room_id') != room.get('id') or ref.get('actor_id') != original.get('actor_id')
+                or ref.get('seq') != original.get('seq') or not isinstance(entry.get('source_id'), str)
+                or entry['source_id'] != ref.get('source_id')):
+            return False
+        try:
+            if ref['source_id'] != source_id(ref):
+                return False
+        except (KeyError, TypeError):
+            return False
+    return True
 
 
 def add_file_sources(context, excerpts, *, available_count=None):
@@ -194,6 +326,11 @@ def fit_context(context, *, work_workspace=None):
     work workspace, count the same work-mode header and workspace prefix as the runtime.
     """
     manifest = context['input_manifest']
+    required = context.pop('_required_context', None)
+    if required is not None and required['unavailable']:
+        context['_required_context'] = required
+        raise ContextBudgetError('required_input_unavailable')
+    required_ids = set(required['message_ids']) if required is not None else set()
     manifest['budget'] = {'max_serialized_utf8_bytes': MAX_INPUT}
     target = context.get('review_target') or {}
     while True:
@@ -202,6 +339,8 @@ def fit_context(context, *, work_workspace=None):
         candidates = []
         for group in ('inputs', 'artifact_proposals', 'file_excerpts'):
             for item in context.get(group, []):
+                if group == 'inputs' and item.get('id') in required_ids:
+                    continue
                 length = len(item['text'].encode('utf-8'))
                 protected = ((group == 'inputs' and item.get('id') == context.get('pinned_message_id')) or
                              (group == 'artifact_proposals' and item.get('version_id') == target.get('version_id')))
@@ -209,7 +348,10 @@ def fit_context(context, *, work_workspace=None):
                 if length > floor:
                     candidates.append((not protected, length, group, item, floor))
         if not candidates:
-            raise ContextBudgetError('invalid_runtime_budget')
+            if required is not None:
+                context['_required_context'] = required
+            raise ContextBudgetError('required_input_unavailable' if required is not None and required_ids
+                                     else 'invalid_runtime_budget')
         _, length, group, item, floor = max(candidates, key=lambda value: value[:2])
         item['text'], limits = excerpt(item['text'], max(floor, length // 2))
         if group == 'file_excerpts':
@@ -223,14 +365,16 @@ def fit_context(context, *, work_workspace=None):
             item['utf8_end'] = limits['utf8_end']
             item['truncated'] = item['utf8_end'] < item['total_utf8_bytes']
             ref = next(source for source in manifest['sources'] if source['source_id'] == item['source_id'])
-            ref.update(utf8_end=item['utf8_end'], truncated=item['truncated'])
+            ref.update(utf8_end=item['utf8_end'], truncated=item['truncated'],
+                       sha256=_sha256(item['text']))
 
 
 def validate_manifest(manifest, room, task):
     """Validate worker-reported immutable references against current authorized data.
 
-    This proves reference existence, scope and byte range. It does not prove delivery,
-    comprehension or anything about the provider. Legacy clients may omit the manifest.
+    This proves reference existence, scope, byte range and SHA-256 byte identity for
+    messages and artifact versions. It does not prove delivery, comprehension or
+    anything about the provider. Legacy clients may omit the manifest.
     """
     from .domain import require
     if manifest is None:
@@ -285,9 +429,15 @@ def validate_manifest(manifest, room, task):
                     and type(source.get('total_utf8_bytes')) is int and source['total_utf8_bytes'] == total
                     and source.get('truncated') is (end < total), 'invalid_input_source', 422)
             try:
-                original['text'].encode('utf-8')[:end].decode('utf-8')
+                raw = original['text'].encode('utf-8')
+                raw[:end].decode('utf-8')
             except UnicodeError:
                 require(False, 'invalid_input_source', 422)
+            # Byte binding: the reported range must hash to the stored bytes. This is
+            # not delivery evidence; it only rejects a range/content mismatch.
+            require(isinstance(source.get('sha256'), str)
+                    and source['sha256'] == hashlib.sha256(raw[:end]).hexdigest(),
+                    'invalid_input_source', 422)
             keys = ('kind', 'room_id', 'actor_id', 'seq', 'utf8_start', 'utf8_end', 'total_utf8_bytes', 'truncated')
             normalized = {key: source[key] for key in keys}
             normalized.update({key: source[key] for key in

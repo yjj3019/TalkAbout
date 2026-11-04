@@ -8,7 +8,7 @@ import sys
 import urllib.request
 
 from .api import create_app
-from .config import database_config
+from .config import database_config, validate_libpq_environment
 from .store import PostgresStore
 
 SECRET = Path('/run/secrets/talkabout-db-url')
@@ -55,6 +55,7 @@ def main(argv=None):
     if os.name != 'nt' and os.geteuid() == 0:
         parser.error('nonroot_container_user_required')
     try:
+        validate_libpq_environment(container=True)
         store = PostgresStore(read_secret(initialize=args.action in {'init-db','provision-db'}))
     except ValueError as error:
         parser.error(str(error))

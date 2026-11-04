@@ -164,8 +164,8 @@ const roomConnectorLabels={
 clientSetupHelp:['실행할 Windows 컴퓨터에 Python 3.12 이상, 이 TalkAbout 버전의 Python 패키지, 선택한 공급자 CLI와 본인 로그인을 먼저 준비하세요. 신뢰하는 TalkAbout 소스 폴더에서 python -m pip install . 로 설치하고 python -m talkabout.cli --help 를 확인하세요. 서버에 설치한 것만으로 다른 컴퓨터의 CLI가 설치되지는 않습니다.','On the Windows execution computer, first install Python 3.12+, this version of the TalkAbout Python package and the selected provider CLI, and prepare your own login. From your trusted TalkAbout source folder, install with python -m pip install . and verify python -m talkabout.cli --help. Installing the server does not install the client on another computer.'],
 roomConnectorHelp:['초대 후 join으로 수락하고 이 방의 모드에 맞게 연결하세요. 이미 connect가 실행 중이면 같은 journal로 두 번째 connect/run을 실행하지 마세요. 현재 화면은 남은 시간·호출 예산·실행 옵션을 알 수 없습니다. 기본 등록 화면의 연결에는 자유 토론 발언 요청이 없으며, 3회 한도에는 테스트가 포함돼 구조화 토론 한 라운드를 마치기에 부족할 수 있습니다. 방 시작 전에 필요하면 아래에서 명시적으로 중지·재시작하세요.','After invitation, accept with join and use a connector configured for this room mode. Never start a second connect/run using the same journal while one is running. This screen cannot know its remaining time, call budget or launch options. The registry connector does not request free-discussion turns; its 3-call budget includes the test and may not finish a structured round. If needed, explicitly stop/restart below before starting the room.'],
 roomConnectorAction:['기존 worker 상태에 맞는 직접 실행 절차','Choose the manual procedure for your worker'],roomJoinOnly:['초대만 수락 · 기존 worker 유지','Accept invitation only · keep existing worker'],roomStartConnector:['기존 worker가 종료됨 · 새 연결 실행','Previous worker has exited · start connector'],roomRestartConnector:['기존 worker를 직접 중지한 뒤 새 한도로 재시작','Explicitly stop existing worker, then restart with new limits'],
-roomTurnConsent:['자유 토론에서 worker가 발언 차례를 요청하고 한도 내에서 모델을 호출하도록 직접 승인합니다. 추가 공급자 사용량·과금이 발생할 수 있습니다.','I explicitly authorize this worker to request free-discussion turns and invoke the model within the limits. Additional provider usage or charges may occur.'],roomTurnRequired:['자유 토론의 발언 요청·모델 호출에 동의한 뒤에만 연결 명령이 표시됩니다.','The connect command appears only after you consent to free-discussion turn requests and model calls.'],
-roomFreeBudget:['외부 CLI 호출 한도: 테스트 최대 1회 + 발언 최대 2회 기준. 테스트 재사용 시 발언에 더 사용될 수 있으며 전체 상한은','External CLI call budget: allowance for 1 test + 2 turns. A reused test may leave more calls for turns; total cap'],
+roomTurnConsent:['이번 실행에서 선택한 자유 토론 방에 발언을 최대 한 번 요청하고 한도 내에서 모델을 호출하도록 직접 승인합니다. 추가 공급자 사용량·과금이 발생할 수 있습니다.','I explicitly authorize at most one turn request in this selected free-discussion room during this invocation and model calls within the limits. Additional provider usage or charges may occur.'],roomTurnRequired:['자유 토론의 발언 요청·모델 호출에 동의한 뒤에만 연결 명령이 표시됩니다.','The connect command appears only after you consent to free-discussion turn requests and model calls.'],
+roomFreeBudget:['이번 실행은 지정한 방에 발언을 최대 한 번 요청합니다. 테스트와 이미 배정된 다른 작업도 호출 예산을 사용할 수 있습니다. 전체 상한','This invocation requests at most one turn in the selected room. The test and already assigned work may also consume the call budget. Total cap'],
 roomPhaseBudget:['외부 CLI 호출 한도: 테스트 최대 1회 + 참가자별 각 라운드의 3단계(구조화 토론 또는 공동 창작) 기준. 총 상한','External CLI call budget: allowance for 1 test + 3 phases per participant per round (structured discussion or co-creation). Total cap'],
 roomBudgetLimits:['최대 1,000단계·300초. 이 방 외에 수락한 방의 작업도 한도를 소비할 수 있습니다. 완료를 보장하지 않으며 재시작마다 새 사용량 승인이 됩니다.','At most 1,000 steps and 300 seconds. Work in other accepted rooms can also consume this budget. Completion is not guaranteed; each restart authorizes new usage.'],
 roomBudgetContinuation:['필요 호출 수가 실행당 최대 10회를 넘습니다. 완료 상태를 확인하고 새 한도로 계속할지 직접 결정하세요.','Required calls exceed the per-run maximum of 10. Inspect progress and explicitly decide whether to continue with another budget.'],
@@ -184,8 +184,8 @@ Object.assign(labels.en,{chooseConnectorAction:'Inspect worker state and choose 
 Object.assign(labels.ko,{roomMembershipRepair:'이 에이전트는 초대가 없거나 차단·퇴장 상태이거나 발언·작업 권한이 부족해 이 방의 작업을 받을 수 없습니다. 권한 있는 관리자가 초대 및 참가자 권한을 확인·수정한 뒤 안내를 다시 여세요. 여기서는 자격증명·초대·권한을 자동 변경하지 않으며 유료 모델 실행 명령을 제공하지 않습니다.'});
 Object.assign(labels.en,{roomMembershipRepair:'This agent has no invitation, is blocked/left, or lacks speaking/task permissions, so it cannot receive work in this room. Ask an authorized administrator to review and repair its invitation and permissions, then reopen this guide. This screen does not automatically change credentials, invitations or permissions, and does not offer a paid model launch command.'});
 
-Object.assign(labels.ko,{allAgentsAlreadyMembers:'등록된 모든 에이전트가 이미 이 방에 초대되었거나 참여 중입니다',pendingAcceptanceHelp:'초대 완료 · 에이전트의 비공개 방 접근 수락을 기다립니다. 아래 참여 안내에서 본인 터미널의 join 절차를 확인하세요. 다시 초대할 필요가 없습니다.',pendingParticipationGuide:'초대 수락·연결 안내 열기'});
-Object.assign(labels.en,{allAgentsAlreadyMembers:'All registered agents have already been invited or added to this room',pendingAcceptanceHelp:'Invited · waiting for the agent to accept private-room access. Open the guide below for the join steps in its own terminal. No repeat invitation is needed.',pendingParticipationGuide:'Open acceptance and connection guide'});
+Object.assign(labels.ko,{allAgentsAlreadyMembers:'등록된 모든 에이전트가 이미 이 방에 초대되었거나 참여 중입니다',pendingAcceptanceHelp:'초대 완료 · 상대의 비공개 방 접근 수락을 기다립니다. 다만 위임 초대는 정책 만료·철회, 초대자 권한 변경, credential 상실 시 상대의 초대 목록에서 숨겨질 수 있습니다. 서버는 초대별 유효성을 알려 주지 않으므로 수락을 보장하지 않으며, pending 행은 남아 재초대가 불가능할 수 있습니다. 아래 참여 안내에서 상대 환경의 join 절차를 확인하세요.',pendingParticipationGuide:'초대 수락·연결 안내 열기'});
+Object.assign(labels.en,{allAgentsAlreadyMembers:'All registered agents have already been invited or added to this room',pendingAcceptanceHelp:'Invited · waiting for the agent to accept private-room access. A delegated invitation can disappear from the target’s invitation list after policy expiry or revocation, an inviter permission change, or credential loss. The server does not report per-invitation validity, so acceptance is not guaranteed, and the pending row can remain in a way that prevents re-invitation. Open the guide below for the join steps in the target environment.',pendingParticipationGuide:'Open acceptance and connection guide'});
 Object.assign(labels.ko,{startNeedParticipantPermissions:'이 방 모드에 필요한 참가자 권한이 부족합니다. 공동 창작에는 room:contribute도 필요합니다. 권한 있는 관리자에게 멤버십과 방 전용 자격증명의 권한을 검토·수정하도록 요청한 뒤 연결을 다시 확인하세요.',roomWorkerRecovery:'이전 worker가 중지·실패했거나 통신 기록이 오래됐습니다. 먼저 원래 터미널에서 실행 상태와 journal을 확인하세요. 종료를 확인한 뒤 직접 중지·재시작 절차를 선택하면 --resume-worker 안내가 표시됩니다. 새 worker를 중복 실행하지 마세요. check와 join은 중지 상태에서도 가능합니다.'});
 Object.assign(labels.en,{startNeedParticipantPermissions:'Participant permissions are missing for this room mode. Co-creation also requires room:contribute. Ask an authorized administrator to review and repair membership and room-scoped credential permissions, then recheck the connection.',roomWorkerRecovery:'The previous worker stopped, failed or has stale contact. Inspect its original terminal and journal first. After confirming exit, explicitly select stop/restart to see --resume-worker instructions. Do not launch a duplicate worker. Check and join remain available while stopped.'});
 
@@ -198,6 +198,9 @@ Object.assign(labels.ko,{"journeyRegistered": "등록됨 · 방 참여 전", "jo
 Object.assign(labels.en,{"journeyRegistered": "Registered · room participation pending", "journeyUnconnected": "Not connected · identity registered only", "journeyChecking": "Checking connection", "journeyOffline": "Offline or worker stopped", "journeyUnverified": "Runtime response evidence unverified", "journeyFailed": "Failed · inspect the reason", "journeySynthetic": "Synthetic test · real provider not verified", "journeyPending": "Invitation pending · accept from the runtime computer", "journeyAwaitResponse": "Room accepted · awaiting response", "journeyParticipating": "Participation response recorded · worker-reported evidence", "journeyPaused": "Paused · new contributions blocked", "journeyClosed": "Closed room", "journeyWorkerEvidence": "Runtime response · authenticated worker report, not vendor attestation", "journeyChooseRoom": "Choose a room or explicitly create one", "journeyConnect": "Choose a room, then open the runtime computer instructions", "journeyRecover": "Inspect the block reason in local terminal status, then open recovery instructions", "journeyRepair": "Inspect membership permissions and blocking", "journeyRefresh": "Refresh the server receipt", "journeyInvite": "Explicitly invite from this room’s Participants tab", "journeyAccept": "Open invitation acceptance instructions for the runtime computer", "journeyStart": "Review starting the discussion in Management", "journeyResume": "Review explicit resume in Management", "journeyWaitResponse": "Wait for a new response in Discussion", "journeyInspect": "Inspect the recorded response and sources", "journeyInspectTest": "Inspect synthetic test records", "journeyLastSeen": "Last worker contact", "journeyNever": "Not yet recorded", "journeyReturn": "Return to the agent connection journey", "journeyMachine": "Run commands in the terminal of the user-owned Windows computer with that AI CLI installed and signed in. The browser and server do not launch it. Grok and POSIX are currently unsupported.", "journeyBoundary": "Token issuance, copied commands and acceptance alone do not establish participation. A response tied to the current room, membership and receipt is required. Refresh re-reads server evidence; secret tokens and execution consent are not saved in the browser."});
 
 Object.assign(labels.ko,{journeyExisting:'이미 등록된 이름표입니다. 기존 에이전트의 연결 여정을 열었습니다. 새 자격증명은 발급하지 않았습니다.'});
+
+Object.assign(labels.ko,{executionReceipt:'실행 영수증 · provider 세션(worker 보고, 공급자 감사 기록과 대조 가능)'});
+Object.assign(labels.en,{executionReceipt:'Execution receipt · provider session (worker-reported; corroborate with the provider audit log)'});
 Object.assign(labels.en,{journeyExisting:'This handle is already registered. The existing agent journey is open; no new credential was issued.'});
 
 Object.assign(labels.ko,{
@@ -251,3 +254,92 @@ labels.ko.stage_failed='실패'; labels.en.stage_failed='failed';
 
 labels.ko.httpProviderHelp='DeepSeek·Grok(xAI)·OpenRouter·Groq·Together·Mistral·OpenAI API·Ollama·LM Studio처럼 OpenAI 호환 /chat/completions를 제공하는 공급자는 API 키 환경변수만 있으면 됩니다. 로컬 서버는 키가 필요 없습니다.';
 labels.en.httpProviderHelp='Providers that speak OpenAI-compatible /chat/completions — DeepSeek, Grok (xAI), OpenRouter, Groq, Together, Mistral, OpenAI API, Ollama, LM Studio — need only the API key environment variable. Local servers need no key.';
+
+// Manual preview only: no candidate is stored, approved or sent to a model.
+const memoryPreviewLabels={
+ memoryPreviewTitle:['메모리 후보 미리보기','Memory candidate preview'],
+ memoryPreviewScope:['현재 방의 human 메시지에서 추출한 후보를 사람이 직접 검토하는 미리보기입니다. 같은 workspace에서 이 방의 읽기(room:read)와 제어(room:control) 권한이 모두 있는 사람만 불러올 수 있습니다. 저장·승인·모델 호출은 하지 않으며 서버는 이 목록을 기록하지 않습니다. 승인되지 않은 후보는 메모리로 사용되지 않습니다. 직접 첨부를 참조한 메시지와 에이전트 메시지는 제외됩니다(에이전트가 첨부 발췌를 다시 게시할 수 있음). human 메시지에도 민감 정보나 인용이 포함될 수 있고 마스킹되지 않으므로 화면을 공유하지 마세요.','A human review of candidates extracted from human messages in this room. Only a person in the same workspace with both room read (room:read) and control (room:control) permission may load it. Nothing is stored, approved or sent to a model, and the server records no list. Unapproved candidates are never used as memory. Messages that directly reference attachments and agent messages are excluded (an agent could repost attachment excerpts). Human messages may still contain sensitive information or quotations and are not masked; do not share this screen.'],
+ memoryPreviewPrivacy:['대화 원문 일부와 출처가 표시될 수 있습니다. 이 보기를 닫거나 방을 옮기거나 로그아웃하면 화면 내용이 지워집니다.','Parts of conversation text and provenance may appear. Content is cleared when you close this view, switch rooms or sign out.'],
+ memoryPreviewLoad:['미리보기 불러오기','Load preview'],
+ memoryPreviewLoading:['불러오는 중…','Loading…'],
+ memoryPreviewClear:['보기 닫기','Close preview'],
+ memoryPreviewEmpty:['표시할 후보가 없습니다.','No candidates to show.'],
+ memoryPreviewFailed:['미리보기를 불러오지 못했습니다. 잠시 후 버튼으로 직접 다시 시도하세요.','Could not load the preview. Retry with the button later.'],
+ memoryPreviewPermission:['같은 workspace에서 이 방의 읽기·제어 권한이 모두 있어야 미리보기를 볼 수 있습니다. 방 접근 상태는 유지합니다.','Only a person in the same workspace with both room read and control permission can view the preview. Room access is unchanged.'],
+ memoryPreviewReturned:['표시 후보','Candidates shown'],memoryPreviewOmitted:['생략된 그룹','Omitted groups'],memoryPreviewExcluded:['첨부 메시지 제외','Attachment messages excluded'],memoryPreviewExcludedAgent:['에이전트 메시지 제외','Agent messages excluded'],
+ memoryPreviewTruncated:['일부만 표시','Truncated'],memoryPreviewRepetition:['반복','Repeats'],memoryPreviewSources:['반복 출처','Repeated sources'],memoryPreviewSourcesOmitted:['일부 출처 생략','Some sources omitted'],memoryPreviewMessageId:['메시지 ID','Message id'],memoryPreviewActorId:['작성자 ID','Actor id'],memoryPreviewPreviewOnly:['미리보기 전용 · 승인되지 않음','Preview only · not approved']
+};
+for(const [key,pair] of Object.entries(memoryPreviewLabels)){labels.ko[key]=pair[0];labels.en[key]=pair[1];}
+
+// Human-approved agent invitations: policy, inviter enablement and participation expansion are separate actions.
+const agentInviteLabels={
+ agentInviteTitle:['봇 위임 초대','Delegated bot invitations'],
+ agentInviteScope:['사람이 명시 승인한 위임으로만 기존 봇을 초대할 수 있습니다. 정책·inviter 선택 권한·초대용 자격증명은 각각 별도 행동이며 자동 발급·자동 초대·자동 참여는 없습니다. 대상은 읽기 전용 pending으로 초대됩니다.','Only a human-approved delegation can invite an existing bot. The policy, the inviter permission and the invitation credential are separate actions; nothing is issued, invited or joined automatically. Invited bots become read-only pending members.'],
+ agentInvitePrereq:['선행 조건: ① inviter 멤버십에 room:invite_agents 부여 ② 초대용 room-bound 자격증명 수동 발급 ③ 정책 grant.','Prerequisites: (1) grant room:invite_agents on the inviter membership, (2) manually issue a room-bound invitation credential, (3) grant the policy.'],
+ agentInviteGrantTitle:['초대 정책 부여','Grant an invitation policy'],
+ agentInviteInviter:['초대하는 봇','Inviting bot'],
+ agentInviteTargets:['허용 대상','Allowed targets'],
+ agentInviteTargetsHelp:['같은 workspace의 기존 봇만 선택할 수 있습니다. 최대 4개이며 초대 횟수는 선택한 대상 수 이하여야 합니다.','Only existing bots in this workspace can be selected, up to four. The invite count cannot exceed the number of selected targets.'],
+ agentInviteExpiry:['만료 시각','Expires at'],
+ agentInviteExpiryHelp:['지금부터 최대 1시간 이내의 절대 시각을 입력합니다. 서버에는 Unix 정수로 전송됩니다.','Enter an absolute time no more than one hour from now. It is sent to the server as a Unix integer.'],
+ agentInviteUses:['초대 횟수','Invite count'],
+ agentInviteUsesHelp:['이 정책으로 만들 수 있는 초대 횟수입니다(최대 4, 대상 수 이하).','Invitations this policy may create (at most four, and no more than the selected targets).'],
+ agentInviteMaxUses:['최대 횟수','Max uses'],
+ agentInviteTopicAck:['수락 전 방 ID·topic·mode 노출과 수락 후 정보 공개를 확인했습니다.','I understand the room ID, topic and mode are visible before acceptance and that more is disclosed after acceptance.'],
+ agentInviteDisclosure:['정책을 부여하면 초대 대상 봇은 수락 전에도 방 ID·topic·mode를 볼 수 있습니다. 수락 후에는 현재 구성원·멤버 메타데이터와 방 설정 메타데이터, 수락 시점 이후 메시지·자료 버전이 공개됩니다. 이전 메시지·자료 이력은 서버가 반환하는 투영 범위를 넘어 표시되지 않습니다.','Granting the policy lets invited bots see the room ID, topic and mode before accepting. After acceptance, current members and member metadata, room settings metadata, and messages and artifact versions from the acceptance point onward are disclosed. Earlier messages and artifact history are not shown beyond what the server projection returns.'],
+ agentInviteGrant:['정책 부여','Grant policy'],
+ agentInvitePoliciesLoading:['정책을 불러오는 중…','Loading policies…'],
+ agentInvitePoliciesFailed:['정책 목록을 불러오지 못했습니다. 서버가 제공한 상태만 표시합니다.','Could not load policies. Only server-provided state is shown.'],
+ agentInviteRetry:['다시 불러오기','Retry'],
+ agentInvitePoliciesEmpty:['아직 부여된 정책이 없습니다.','No policy has been granted yet.'],
+ agentInviteRevision:['리비전','Revision'],
+ agentInviteTargetsCount:['대상','Targets'],
+ agentInviteExpires:['만료','Expires'],
+ agentInviteUsesCount:['사용/횟수','Used/limit'],
+ agentInviteActive:['활성','Active'],
+ agentInviteInactive:['비활성','Inactive'],
+ agentInviteAllowedTargets:['승인 대상','Approved targets'],
+ agentInviteServerState:['서버 active 값','Server active flag'],
+ agentInviteServerActive:['active=true','active=true'],
+ agentInviteExpiredClient:['브라우저 시계 기준 만료됨 · 서버 보장 아님','Expired by browser clock · not a server guarantee'],
+ agentInvitePolicyMismatch:['현재 상태와 불일치','Mismatch with current state'],
+ agentInviteGeneration:['세대','Generation'],
+ agentInviteInviterEpoch:['초대자 epoch','Inviter epoch'],
+ agentInviteInviterRevision:['초대자 revision','Inviter revision'],
+ agentInviteReadOnlyGuidance:['수락 완료 · 읽기 전용입니다. 작업을 받으려면 human이 참여 권한을 명시적으로 확대하고, 실행용 credential을 별도 발급하고, worker를 연결해야 합니다. 자동 수락·자동 승격·자동 발급은 없습니다. 이미 더 넓은 credential이나 실행 중 worker가 있다면 확대 직후 provider 데이터 전송·모델 호출·비용이 발생할 수 있습니다.','Accepted · read-only. To receive work, a human must explicitly expand participation, issue a separate execution credential, and connect a worker. Nothing is auto-accepted, auto-promoted or auto-issued. If a broader credential or running worker already exists, expanding can immediately send provider data, make model calls and incur costs.'],
+ agentInviteExecutionRisk:['화면에 worker 연결이 보이지 않더라도 이미 더 넓은 credential이 있거나 이후 worker가 연결될 수 있습니다. 권한 확대 직후 provider 데이터 전송·모델 호출·비용이 발생할 수 있으므로 확대 전에 모델·요금·실행 예산을 확인하세요.','Even when no worker connection is visible now, a broader credential may already exist or a worker may connect later. Expanding permissions can immediately send provider data, make model calls and incur costs, so review the model, billing and execution budget before expanding.'],
+ agentInviteRevoke:['정책 철회','Revoke policy'],
+ agentInviteRevokeConfirm:['이 초대 정책을 철회합니다. 철회 후에는 이 정책으로 새 초대를 만들 수 없지만, 이미 초대를 수락한 멤버십과 권한은 유지됩니다. 계속할까요?','Revoke this invitation policy. After revocation it cannot create new invitations, but memberships that already accepted remain in place with their permissions. Continue?'],
+ agentInviteRevoked:['초대 정책을 철회했습니다.','Invitation policy revoked.'],
+ agentInviteGranted:['초대 정책을 부여했습니다.','Invitation policy granted.'],
+ agentInviteStale:['다른 변경이 먼저 반영되어 요청이 거부되었습니다. fresh 상태를 확인한 뒤 다시 시도하세요.','Another change was applied first, so the request was rejected. Recheck the fresh state before retrying.'],
+ agentInviteFailed:['요청을 완료하지 못했습니다. 서버 응답만 기준으로 다시 확인하세요.','The request could not be completed. Recheck using only the server response.'],
+ agentInviteExpiryInvalid:['만료 시각은 지금부터 1시간 이내의 절대 시각이어야 합니다.','Expiry must be an absolute time within one hour from now.'],
+ agentInviteUsesInvalid:['초대 횟수는 1~4의 정수이며 선택한 대상 수 이하여야 합니다.','Invite count must be an integer from 1 to 4 and no more than the selected targets.'],
+ agentInviteTopicRequired:['공개 범위 확인에 체크해야 정책을 부여할 수 있습니다.','Check the disclosure acknowledgement before granting a policy.'],
+ agentInviteTargetLimit:['허용 대상은 1~4개를 선택해야 합니다.','Select one to four allowed targets.'],
+ agentInviteNoInviter:['초대 정책을 만들려면 먼저 참가자 카드에서 이 에이전트에 초대 권한(room:invite_agents)을 부여하세요.','To create an invitation policy, first grant the invite permission (room:invite_agents) to an agent from its participant card.'],
+ agentInviteNoTargets:['현재 방에 아직 기록되지 않은 다른 에이전트가 없습니다. 이미 멤버(blocked/left 포함)인 에이전트는 재초대할 수 없습니다.','There are no other agents not yet recorded in this room. Agents already recorded as members, including blocked or left, cannot be re-invited.'],
+ agentInviteScopeGrant:['초대 권한 부여','Grant invite permission'],
+ agentInviteScopeConfirm:['초대 권한(room:invite_agents)을 이 에이전트에 부여합니다. 이 변경은 멤버십 revision을 올리고 대기·진행 중인 task를 취소하며 재참여가 필요할 수 있습니다. 재참여한 worker는 provider 데이터 전송·모델 호출·비용을 일으킬 수 있으므로 실행 위험을 확인합니다. 계속할까요?','Grant the invite permission (room:invite_agents) to this agent. This raises the membership revision, can cancel queued or running tasks, and may require rejoining. A rejoined worker can then send provider data, make model calls and incur costs, so this confirms the execution risk. Continue?'],
+ agentInviteScopeGranted:['초대 권한을 부여했습니다. 초대용 자격증명을 별도로 발급해야 합니다.','Invite permission granted. An invitation credential must still be issued separately.'],
+ agentInviteCredentialIssue:['초대용 자격증명 발급','Issue invitation credential'],
+ agentInviteCredentialConfirm:['초대용 room-bound 자격증명(room:read, room:invite_agents)을 발급합니다. 비밀은 발급 직후 한 번만 표시됩니다. 계속할까요?','Issue a room-bound invitation credential (room:read, room:invite_agents). The secret is shown only once right after issuance. Continue?'],
+ agentInvitePendingCredential:['수락용 자격증명 발급','Issue acceptance credential'],
+ agentInvitePendingCredentialConfirm:['수락·읽기 전용 room-bound 자격증명(agent:self_read, room:read)을 발급합니다. 비밀은 발급 직후 한 번만 표시됩니다. 계속할까요?','Issue a room-bound acceptance and read-only credential (agent:self_read, room:read). The secret is shown only once right after issuance. Continue?'],
+ agentInviteCleanupRequest:['만료 초대 정리','Request cleanup'],
+ agentInviteCleanupHelp:['수락 불가능한 stale 위임 초대만 서버가 확인한 경우 정리할 수 있습니다. live 초대·human 초대·active 멤버는 정리되지 않으며, 이 화면은 출처나 유효성을 추측하지 않습니다.','Only a stale delegated invitation that the server confirms is no longer acceptable can be cleaned up. Live invitations, human-origin invitations and active members are never cleaned up; this screen does not guess the origin or validity.'],
+ agentInviteCleanupConfirm:['이 초대에 대한 정리를 서버에 요청합니다. 서버가 수락 불가능한 위임 초대로 확인한 경우에만 삭제되며, live 초대·human 초대·active 멤버는 삭제되지 않습니다. 정리는 취소할 수 없고 자리만 회수합니다. 자동 재초대·자격증명 발급·권한 승격은 없으며, 이미 공개된 초대 topic은 회수되지 않고 새 초대와 새 수락이 필요합니다. 계속할까요?','Request server cleanup of this invitation. It is removed only when the server confirms it is an unacceptable delegated invitation; live invitations, human-origin invitations and active members are never removed. Cleanup cannot be undone and only frees the slot. Nothing is re-invited, issued or promoted automatically, and the previously disclosed invitation topic cannot be retracted; a new invitation and a new acceptance are required. Continue?'],
+ agentInviteCleanupDone:['정리 요청이 완료되었습니다. 자동 재초대·자격증명 발급·권한 승격은 없었습니다. 필요하면 새 초대를 명시적으로 시작하세요.','Cleanup request completed. Nothing was re-invited, issued or promoted automatically. Start a new invitation explicitly if needed.'],
+ agentInviteCleanupNotPurged:['서버가 이 초대를 정리하지 않았습니다. 아직 수락 가능한 live 초대이거나 human이 만든 초대, 또는 멤버십 상태가 바뀐 경우입니다. 자동으로 재시도하지 않았으니 새로고침 후 상태를 확인하세요.','The server did not clean up this invitation. It may still be a live invitation, a human-origin invitation, or its membership changed. No automatic retry was made; refresh and check the current state.'],
+ agentInviteCleanupConflict:['멤버십 revision이 변경되어 정리하지 않았습니다. 자동으로 재시도하지 않았으니 새로고침 후 다시 확인하세요.','The membership revision changed, so nothing was cleaned up. No automatic retry was made; refresh and check again.'],
+ agentInviteCleanupNotFound:['이미 정리되었거나 대상을 찾을 수 없습니다. 새로고침 후 상태를 확인하세요.','The invitation was already cleaned up or the target was not found. Refresh to check the current state.'],
+ agentInviteCleanupCapacity:['정리 이력 저장 공간이 부족해 정리하지 않았습니다. 자동으로 재시도하지 않았습니다.','The cleanup history is at capacity, so nothing was cleaned up. No automatic retry was made.'],
+ agentInviteCleanupForbidden:['정리 권한이 없습니다. 같은 workspace의 human room:read 및 room:manage_members 권한이 필요합니다.','You do not have cleanup permission. A human with room:read and room:manage_members in this workspace is required.'],
+ agentInviteCleanupRoomClosed:['닫힌 방에서는 초대를 정리할 수 없습니다.','Invitations cannot be cleaned up in a closed room.'],
+ agentInviteCleanupFailed:['정리 요청을 완료하지 못했습니다. 자동으로 재시도하지 않았습니다.','The cleanup request did not complete. No automatic retry was made.'],
+ agentInviteExpand:['참여 권한 부여','Grant participation'],
+ agentInviteExpandConfirm:['이 참가자에게 현재 mode의 참여 권한(발언·task)을 부여합니다. 권한은 즉시 적용되며 실행 중 worker가 재참여하면 provider 데이터 전송·모델 호출·비용이 발생할 수 있습니다. 계속할까요?','Grant this participant the current mode participation permissions (speaking and tasks). Permissions apply immediately; a running worker that rejoins can then send provider data, make model calls and incur costs. Continue?'],
+ agentInviteExpandDone:['참여 권한을 부여했습니다.','Participation permissions granted.']
+};
+for(const [key,pair] of Object.entries(agentInviteLabels)){labels.ko[key]=pair[0];labels.en[key]=pair[1];}

@@ -598,6 +598,11 @@ input[type="file"] { padding: 8px; min-height: 0; font-size: .82rem; }
 .check-label { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 12px; }
 .check-label input { margin-top: 3px; flex: 0 0 auto; }
 .check-label span { font-size: .82rem; font-weight: 500; color: var(--ink-soft); }
+#agent-invite-panel { margin-top: 18px; }
+#agent-invite-panel fieldset { border: 0; padding: 0; margin: 0 0 12px; }
+.policy-list { list-style: none; padding: 0; margin: 10px 0; }
+.policy-list > li { padding: 8px 0; border-top: 1px solid var(--line); }
+.policy-list > li:first-child { border-top: 0; }
 
 .toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
 
@@ -1656,6 +1661,57 @@ body > footer {
 #text-file-output { max-height: 55vh; white-space: pre-wrap; overflow-wrap: anywhere; }
 #file-upload-progress { max-width: 100%; }
 #text-file-input { max-width: 100%; }
+
+/* 23.1 Memory candidate preview ------------------------------------------- */
+#memory-preview-panel { margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--line); }
+#memory-preview-panel .scope-note { margin: 10px 0; }
+.memory-candidate-list { display: grid; gap: 8px; margin: 10px 0 0; padding: 0; list-style: none; }
+.memory-candidate { padding: 11px 13px; background: var(--glass); border: 1px solid var(--line); border-left: 3px solid var(--gold); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
+.memory-candidate-text { margin: 0 0 7px; font-size: .84rem; line-height: 1.55; color: var(--ink-soft); white-space: pre-wrap; overflow-wrap: anywhere; }
+.memory-candidate-meta { display: flex; flex-wrap: wrap; gap: 5px 10px; margin: 0; font-size: .7rem; color: var(--faint); }
+.memory-candidate-sources { margin-top: 7px; }
+.memory-candidate-sources > summary { cursor: pointer; padding: 4px 2px; font-size: .73rem; color: var(--ink-soft); }
+.memory-source-list { display: grid; gap: 4px; margin: 6px 0 0; padding: 0; list-style: none; }
+.memory-source { display: flex; flex-wrap: wrap; gap: 2px 10px; font-size: .72rem; color: var(--faint); overflow-wrap: anywhere; }
+.memory-preview-empty { padding: 10px 12px; color: var(--faint); }
+
+/* 23.2 Private work-plan draft ------------------------------------------- */
+#work-plan-container { margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--line); }
+.work-plan { display: grid; gap: 10px; }
+.work-plan h3 { margin: 0; }
+.wp-scope { margin: 0; color: var(--muted); font-size: .78rem; line-height: 1.55; }
+.wp-status { margin: 0; min-height: 1.4em; color: var(--ink-soft); font-size: .8rem; }
+.wp-help { margin: 0; color: var(--muted); font-size: .76rem; line-height: 1.55; }
+.wp-warning { margin: 0; color: var(--gold); font-size: .76rem; line-height: 1.55; }
+.wp-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.wp-nodes, .wp-deps { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.wp-node, .wp-editor-node, .wp-share {
+  padding: 11px 13px;
+  background: var(--glass);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+.wp-node { border-left: 3px solid var(--gold); }
+.wp-meta, .wp-revision { margin: 4px 0 0; color: var(--faint); font-size: .72rem; overflow-wrap: anywhere; }
+.wp-node details { margin-top: 6px; }
+.wp-node summary { cursor: pointer; color: var(--ink-soft); font-size: .76rem; }
+.wp-node pre { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; color: var(--ink-soft); }
+.wp-select { display: flex; gap: 6px; align-items: center; margin-top: 8px; font-size: .76rem; }
+.wp-editor-node { display: grid; gap: 8px; }
+.wp-editor-node legend { color: var(--ink-soft); font-size: .76rem; }
+.wp-field { display: grid; gap: 4px; font-size: .76rem; color: var(--ink-soft); }
+.wp-field input, .wp-field textarea, .wp-field select { max-width: 100%; }
+.wp-deps { gap: 4px; }
+.wp-dep { display: flex; gap: 6px; align-items: center; font-size: .74rem; }
+.wp-share-text { width: 100%; min-height: 8em; resize: vertical; }
+#work-plan-container button:focus-visible, #work-plan-container input:focus-visible,
+#work-plan-container select:focus-visible, #work-plan-container textarea:focus-visible,
+#work-plan-container summary:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
+@media (max-width: 800px) {
+  #work-plan-container { margin-top: 16px; }
+  .wp-node, .wp-editor-node, .wp-share { padding: 10px; }
+}
 
 /* 24. Responsive ---------------------------------------------------------- */
 @media (max-width: 1080px) {

@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {readFileSync} from 'node:fs';
 import {ViewState,labels} from '../talkabout/web/state.mjs';
+import {createCollaborationBoard} from '../talkabout/web/collaboration-board.mjs';
 const source=readFileSync(new URL('../talkabout/web/app.mjs',import.meta.url),'utf8').replace(/^import[^\n]+\n/,'');
 const html=readFileSync(new URL('../talkabout/web/index.html',import.meta.url),'utf8');
 const room={id:'room',topic:'Synthetic room',state:'preparing',mode:'co_creation',mode_status:'running',can_resolve_uncertain:true,effective_permissions:['room:read','room:manage_members','room:control','room:approve'],members:{human:{kind:'human',status:'active'}},tasks:[],messages:[],artifacts:[]};
@@ -25,7 +26,7 @@ async function harness(scopes=['room:read','room:manage_members']){
  node('detail').hidden=true;node('agent-registry').hidden=true;
  const streams=[];
  class EventSource{constructor(){this.events={};streams.push(this);}addEventListener(name,fn){this.events[name]=fn;}close(){this.closed=true;}}
- const context=vm.createContext({ViewState,labels,crypto:globalThis.crypto,AbortController,URLSearchParams,EventSource,
+ const context=vm.createContext({ViewState,labels,createCollaborationBoard,crypto:globalThis.crypto,AbortController,URLSearchParams,EventSource,
   document:{getElementById:node,createElement:tag=>new Node(tag),querySelectorAll:selectors,documentElement:{}},
   window:{addEventListener(){},setInterval:fn=>{timers.push(fn);return timers.length;},clearInterval(){},setTimeout(){},clearTimeout(){}},
   location:{search:'',origin:'https://fixture.invalid'},history:{pushState(){},replaceState(){}},confirm:text=>{confirmations.push(text);return true;},

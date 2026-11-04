@@ -11,6 +11,34 @@ from .domain import require
 from .text_files import filter_refs, public_task
 
 
+def artifact_replay_metadata(snapshot):
+    """Retain only the immutable snapshot boundary, never version contents."""
+    return {'_artifact_snapshot_v1': True, 'id': snapshot['id'],
+            'revision': snapshot['revision'], 'adopted': snapshot.get('adopted'),
+            'version_ids': [version['id'] for version in snapshot.get('versions', [])]}
+
+
+def project_artifact_response(room, actor, snapshot):
+    """Rehydrate an exact historical boundary and apply current read visibility."""
+    from .core import public_room
+    member = room['members'].get(actor['id'])
+    require(member and member['status'] == 'active' and 'room:read' in member['permissions']
+            and 'room:read' in actor['scopes']
+            and (not actor.get('room_id') or actor['room_id'] == room['id']), 'not_found', 404)
+    require(isinstance(snapshot, dict), 'not_found', 404)
+    metadata = snapshot if snapshot.get('_artifact_snapshot_v1') is True else artifact_replay_metadata(snapshot)
+    view = public_room(room, actor)
+    visible = next((a for a in view['artifacts'] if a['id'] == metadata['id']), None)
+    require(visible is not None, 'not_found', 404)
+    versions = {v['id']: v for v in visible['versions']}
+    selected = [copy.deepcopy(versions[vid]) for vid in metadata['version_ids'] if vid in versions]
+    require(selected, 'not_found', 404)
+    adopted = metadata.get('adopted')
+    return {'id': metadata['id'], 'revision': metadata['revision'],
+            'adopted': adopted if adopted in {v['id'] for v in selected} else None,
+            'versions': selected}
+
+
 def project_task_response(room, actor, response):
     """Project a task or complete-response snapshot using current read/file ACLs.
 
@@ -54,6 +82,8 @@ def project_task_response(room, actor, response):
         if not isinstance(snapshot, dict) or snapshot.get('id') not in visible_messages:
             return None
         result = copy.deepcopy(snapshot)
+        if result.get('reply_to') not in visible_messages:
+            result['reply_to'] = None
         if 'attachment_refs' in result:
             result['attachment_refs'] = filter_refs(actor, room, member, result['attachment_refs']) if readable else []
         return result
@@ -67,6 +97,8 @@ def project_task_response(room, actor, response):
                               if (aid, version.get('id')) in visible_versions]
         if not result['versions']:
             return None
+        if result.get('adopted') not in {version.get('id') for version in result['versions']}:
+            result['adopted'] = None
         for version in result['versions']:
             references = version.get('input_references')
             if not references:

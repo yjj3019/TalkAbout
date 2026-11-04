@@ -187,6 +187,7 @@ def test_codex_exec_tolerates_pre_turn_advisory_item_without_output():
         {'type': 'turn.completed', 'status': 'completed'}])
     assert runtime._codex_exec('prompt') == 'ready'
     assert runtime.session_id == 'thread-1' and runtime._transport.sent == ['prompt']
+    assert runtime.execution_receipt() == {'runtime': 'codex', 'session_id': 'thread-1'}
 
 
 def test_codex_exec_still_rejects_unknown_item_and_event_types():
@@ -815,6 +816,7 @@ def test_preflight_only_local_help_version_never_auth_or_prompt(monkeypatch, kin
     result = adapter.preflight()
     assert result['safety_flags_verified'] and not result['provider_verified']
     assert adapter.runtime_version and adapter.calls == 0 and adapter.session_id is None
+    assert adapter.execution_receipt() is None
     first_count = len(seen)
     adapter.preflight()
     assert len(seen) == first_count  # unchanged executable capability result cached
