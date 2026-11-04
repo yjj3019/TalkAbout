@@ -14,3 +14,5 @@ dist/
 /.talkabout-fixture-*/
 /.ci-results/
 .tmp-verify/
+.tmp-perf/
+.analysis-repos/
