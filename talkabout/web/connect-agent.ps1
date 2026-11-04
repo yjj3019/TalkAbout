@@ -163,7 +163,7 @@ function ConvertFrom-InvitePayload {
     if ([string]$payload.origin -ne $PinnedOrigin) {
         Write-Fail ('The invite is for ' + [string]$payload.origin + ' and this helper is installed for ' + $PinnedOrigin + '. Install the helper for that server first.')
     }
-    if (([string]$payload.room) -cnotmatch '^[A-Za-z0-9-]{1,128}$') {
+    if (([string]$payload.room) -cnotmatch '^[A-Za-z0-9-]{1,128}\z') {
         Write-Fail 'The invite payload does not name a valid room.'
     }
     if (([string]$payload.agent) -cnotmatch '^[A-Za-z0-9-]{1,64}$') {
@@ -421,7 +421,7 @@ function Get-ConnectArguments {
         '--max-seconds', [string]$SecondLimit
     )
     if ($WantTurn) {
-        $arguments += '--request-turn'
+        $arguments += '--request-turn', '--request-turn-room', $RoomId
     }
     if ($PromptToken) {
         $arguments += '--prompt-token'
@@ -511,7 +511,7 @@ if ($FromClipboard.IsPresent) {
     $invite = ConvertFrom-InvitePayload -Text $payloadText -PinnedOrigin $Server
     if ([string]::IsNullOrWhiteSpace($Room)) { $Room = $invite.Room }
     if ([string]::IsNullOrWhiteSpace($Agent)) { $Agent = $invite.Agent }
-    if ($Room -ne $invite.Room) { Write-Fail 'The -Room argument does not match the invite payload.' }
+    if ($Room -cne $invite.Room) { Write-Fail 'The -Room argument does not match the invite payload.' }
     if ($Agent -ne $invite.Agent) { Write-Fail 'The -Agent argument does not match the invite payload.' }
     $Runtime = $invite.Runtime
     $AuthMode = $invite.AuthMode
@@ -522,7 +522,7 @@ if ($FromClipboard.IsPresent) {
     $payloadText = ''
 }
 
-if ($Room -cnotmatch '^[A-Za-z0-9-]{1,128}$') {
+if ($Room -cnotmatch '^[A-Za-z0-9-]{1,128}\z') {
     Write-Fail 'Room must match ^[A-Za-z0-9-]{1,128}$ (letters, digits, hyphen).'
 }
 if ($Agent -cnotmatch '^[A-Za-z0-9-]{1,64}$') {

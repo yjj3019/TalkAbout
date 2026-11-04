@@ -40,20 +40,39 @@ def test_beginner_register_invite_acceptance_guide_reload(tmp_path,language,widt
                 page.locator('#connection-room').select_option(rid);page.locator('#journey-next').click()
                 page.locator('#invite-agent-id').select_option(label='Synthetic Beginner @synthetic-beginner');page.locator('#invite-agent button[type=submit]').click()
                 pw.expect(page.locator('#members')).to_contain_text('Invited' if language=='en' else '초대 완료 · 수락 대기')
+                # Invite-and-connect opens the guide deliberately (asynchronously, after the
+                # membership write) and issues one invite-scoped credential; close it before
+                # driving the rest of the room.
+                page.locator('#onboarding-dialog').wait_for(state='visible')
+                page.locator('#onboarding-close').click()
+                page.locator('#onboarding-dialog').wait_for(state='hidden')
                 page.locator('#nav-agents').click();page.locator('#agents-list button').first.click()
                 page.locator('#connection-room').select_option(rid)
                 pw.expect(page.locator('#journey-status')).to_contain_text('Invitation pending' if language=='en' else '초대대기')
                 page.locator('#journey-next').click();page.locator('#onboarding-dialog').wait_for(state='visible')
+                advanced=page.locator('#invite-advanced')
+                if not advanced.evaluate('(node)=>node.open'):advanced.locator('summary').click()
                 commands=page.locator('#onboarding-commands').inner_text()
-                assert 'cli join' in commands and '--room '+rid in commands and '--runtime claude' in commands
-                page.reload();page.locator('#connection-wizard').wait_for(state='visible')
+                # The one-step guide folds join/check into a single connect command and issues
+                # the room-scoped credential already; no separate `cli join` step exists.
+                assert 'cli connect' in commands and '--room '+rid in commands and '--runtime claude' in commands
+                assert '--acknowledge-private' in commands
+                page.reload();page.locator('#dashboard').wait_for(state='visible')
                 # Language is deliberately not part of authenticated evidence or persisted consent.
                 if language=='en':page.locator('#language').click()
+                # Invite-and-connect already issued the room-scoped credential, so a reload
+                # lands on the room instead of reopening the wizard; the pending-acceptance
+                # state and the selected runtime must still be restored.
+                page.locator('#nav-agents').click();page.locator('#agents-list button').first.click()
+                page.locator('#connection-room').select_option(rid)
                 pw.expect(page.locator('#journey-status')).to_contain_text('Invitation pending' if language=='en' else '초대대기')
                 assert page.locator('#connection-runtime').input_value()=='claude'
                 page.screenshot(path=str(tmp_path/('readiness-'+language+'.png')),full_page=True)
                 assert page.evaluate('document.documentElement.scrollWidth<=innerWidth')
                 assert sum(url.endswith('/api/v1/agents') for url in writes)==1
+                # This journey invites through the manual panel, so it never enters the
+                # one-click connect path: no room-scoped credential and no runtime checks or
+                # room controls are issued; the operator copies the guide manually.
                 assert not any('/credentials' in url or '/runtime-checks' in url or '/controls' in url for url in writes)
                 assert not errors
                 context.close();browser.close()

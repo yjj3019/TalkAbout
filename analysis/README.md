@@ -18,6 +18,14 @@
 | `repo-review-2026-10-31/` | 7개 저장소 묶음(2차) — serena, codex, openbot, rakazo, open-duet, OpenMausBot, munder-difflin. 승인·관찰·격리 데이터 계약과 A5/A6 선행 gate 후보 |
 | `product-direction-review-2026-10-31.md` | 첨부 "가상 오피스+IDE+에이전트 오케스트레이션" 조사 정밀 검증 — 30+ 저장소 라이선스·활동 실측, TalkAbout 기존 자산 대비 격차, 도입 순서 |
 | `self-review-2026-11-01.md` | 자체 점검 — 보안·UI 접근성·테스트/CI·운영. 로그인 스로틀 우회, 1클릭 토큰 클립보드 잔존, 자격증명 응답 무음 폐기, Linux/이미지 CI 공백, SSOT 드리프트, 재시작·백업 부재 |
+| `BRIEF-R3.md` | 3라운드(성능) 브리프 — handy·t3code·claude-mem, 정적 분석 규칙 |
+| `r3-00-SYNTHESIS.md` | 3라운드 종합 — 세 저장소 성능 프로필, 횡단 패턴 6개, TalkAbout P0/P1/P2 착수 순서(실측 근거) |
+| `r3-handy.md` · `r3-t3code.md` · `r3-claude-mem.md` | 3라운드 상세 3편(각 440~554줄). 이벤트 폭·블로킹·훅 예산·전달 규율 |
+| `r3-talkabout-baseline.md` | TalkAbout 성능 기준선 — pytest/Node 실행값, 인프로세스 HTTP·도메인 마이크로벤치, 병목 14건. 벤치 스크립트는 `.tmp-perf/` |
+| `r4-harness.md` | P0-0 성능 스냅샷 하네스(`tools/perf_snapshot.py`) 사용법·측정 정의·한계·CI 연결 제안 |
+| `r4-web.md` | P1-4 웹 SSE 갱신 코얼레스(100ms 디바운스+400ms 상한, hidden 지연) before/after·검증·위험 |
+| `r4-verification.md` | R3 P0/P1 반영 내역·검증 결과·라이선스 준수·남은 한계. 이 샌드박스 제약과 우회 검증 방법 기록 |
+| `r5-p2-verification.md` | P2 경량 fence·자격증명 배치 조회, 보안·호환성 검증 및 남은 한계 |
 
 ## 인용 규칙
 

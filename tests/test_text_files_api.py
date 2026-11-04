@@ -86,11 +86,35 @@ def test_human_upload_message_worker_read_and_grounded_synthetic_reply(text_api,
     finally:journal.close()
     messages=core.read('fixture-human',rid)['messages']
     assert runtime.calls==1 and 'cobalt-blue' in messages[-1]['text'] and 'Synthetic file read' in messages[-1]['text']
+    assert ('GET', f'rooms/{rid}/fence') in client.calls
     download=request(http,'GET',f"rooms/{rid}/files/{file['file_id']}/download")
     assert download.status_code==200 and b'cobalt-blue' in download.content
     assert download.headers['x-content-type-options']=='nosniff'
     assert download.headers['content-disposition'].startswith('attachment;')
     assert not list((storage.root).glob('*.txt')) and len(list(storage.root.glob('*.blob')))==1
+
+
+def test_worker_uses_full_room_fence_when_server_lacks_endpoint(text_api, tmp_path):
+    import httpx
+    store, core, rid, _, http = text_api
+    publish(text_api, upload(text_api))
+
+    class OldServerClient(LocalClient):
+        def request(self, method, path, body=None, key=None, params=None):
+            if path == f'rooms/{rid}/fence':
+                self.calls.append((method, path))
+                response = httpx.Response(404, request=httpx.Request('GET', 'http://fixture/fence'))
+                raise httpx.HTTPStatusError('not found', request=response.request, response=response)
+            return super().request(method, path, body, key, params)
+
+    client = OldServerClient(store); client.http.close(); client.http = http
+    journal = Journal(tmp_path / 'old-server-worker.sqlite')
+    try:
+        assert Worker(client, journal, SyntheticRuntime()).step() == 'completed'
+    finally:
+        journal.close()
+    assert ('GET', f'rooms/{rid}/fence') in client.calls
+    assert ('GET', f'rooms/{rid}') in client.calls
 
 
 @pytest.mark.parametrize('change',['pause','revoke','expire','stop'])

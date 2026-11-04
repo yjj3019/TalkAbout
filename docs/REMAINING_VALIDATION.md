@@ -11,7 +11,59 @@ PostgreSQL cases in one invocation. On 2026-10-25 this produced 19 PostgreSQL pa
 
 LOCAL TEST DOCUMENTATION ONLY / 로컬 검증 문서. Reviewed 2026-10-19. No publication, merge, deployment, actual model invocation or operating credential issuance is implied. The original seventeen-case record below tested `9f68f602cc70b80224991c9c18c846b6ed8c434f`.
 
+## POSIX-only suite (WSL)
+
+2026-11-05: the 27 cases the Windows run skips are POSIX-gated (`backup.sh`/flock,
+POSIX containment, symlink/mode checks). Run them in their native environment with:
+
+```text
+pwsh -File tools/run_posix_tests_wsl.ps1
+```
+
+The wrapper resolves the repository through `wslpath`, requires WSL `python3` +
+`pytest` + the app dependencies (one-time operator install; it never installs
+anything itself), then runs exactly those 27 cases and propagates the exit code.
+Verified locally on 2026-11-05: **27 passed** inside WSL Ubuntu 24.04 (pytest 7.4.4),
+so every skip in the Windows run now has a matching native-environment pass. This is
+still synthetic verification of local code paths, not an operating deployment.
+
+## Browser E2E fixture
+
+2026-11-05: one command wraps the synthetic browser fixture, its config file and all
+real-Chrome Playwright suites:
+
+```text
+pwsh -File tools/run_browser_e2e.ps1
+pwsh -File tools/run_browser_e2e.ps1 -PytestArgs @('-q','tests/test_browser_invite_flow.py')
+```
+
+It starts `tests/invite_browser_fixture_app.py` (explicit synthetic MemoryStore, loopback
+only) on a free port, waits for `/__invite_fixture__` to echo the generated fixture ID,
+writes `--invite-browser-config` JSON inside `<repo>/.tmp-browser-e2e`, runs every
+`tests/test_browser_*.py` suite and removes the directory afterwards. Chrome defaults to
+`TALKABOUT_TEST_CHROMIUM` or the standard Windows install path; pass `-Chrome` to override.
+The readiness and text-file suites start their own fixtures and only use the config when
+their file is selected. Verified locally on 2026-11-05: 7 browser cases passed (invite flow,
+community, readiness ko/en, text files) and the fixture directory was removed. This proves
+headless Chrome against a synthetic MemoryStore only; it is not an operating-environment or
+provider acceptance test.
+
 ## PostgreSQL fixture
+
+2026-11-05: one command now wraps cluster creation, pytest and teardown:
+
+```text
+pwsh -File tools/run_pg_fixture_tests.ps1 -PytestArgs @('-q','tests/test_postgres.py')
+```
+
+It auto-detects the vendored `.tmp-perf/pg/pgsql/bin`, picks a free loopback port, runs
+`.venv` pytest with `--postgres-config`, then stops and removes the disposable cluster;
+`-KeepFixture` retains it for investigation and `-DataRoot` overrides the location. The
+pytest JSON config is written outside the repository. Keep the default
+`<repo>/.tmp-pg-fixture` data root when child processes may only write inside the
+workspace (some sandboxed harnesses); PostgreSQL children that cannot write the data
+directory fail at `initdb` with `Permission denied`. Verified locally on 2026-11-05:
+8 PostgreSQL cases passed and the fixture was removed afterwards.
 
 Existing PostgreSQL 18.6 test binaries can be reused without installation. A new disposable cluster, owned data directory and fresh loopback port are required; never reuse a running user service or an existing data directory. Verify `SHOW data_directory` equals the newly owned resolved path and `SHOW listen_addresses` is exactly `127.0.0.1` before executing tests. If startup exits or ownership differs, stop and report failure without trying another existing database.
 

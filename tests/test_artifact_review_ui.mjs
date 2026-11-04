@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {readFileSync} from 'node:fs';
 import {ViewState, labels} from '../talkabout/web/state.mjs';
+import {createCollaborationBoard} from '../talkabout/web/collaboration-board.mjs';
 
 const source=readFileSync(new URL('../talkabout/web/app.mjs',import.meta.url),'utf8').replace(/^import[^\n]+\n/,'');
 const room={id:'room',topic:'Review room',state:'active',mode:'co_creation',mode_status:'awaiting_adoption',generation:4,effective_permissions:['room:read','room:adopt','room:question'],members:{human:{kind:'human',status:'active',revision:7,display_name:'Reviewer'}},tasks:[],messages:[],artifacts:[]};
@@ -23,7 +24,7 @@ async function harness(){
  const node=id=>{if(!nodes.has(id))nodes.set(id,new Node());return nodes.get(id);};
  const tabs=['discussion','participants','artifacts','management'].map(name=>{const n=node('tab-control-'+name);n.dataset.tab=name;return n;});
  const actions=['start','pause','resume','close','hold_dispatch','release_dispatch'].map(name=>{const n=new Node('button');n.dataset.action=name;return n;});
- const context=vm.createContext({ViewState,labels,crypto:globalThis.crypto,AbortController,URLSearchParams,EventSource:class{addEventListener(){} close(){}},
+ const context=vm.createContext({ViewState,labels,createCollaborationBoard,crypto:globalThis.crypto,AbortController,URLSearchParams,EventSource:class{addEventListener(){} close(){}},
   document:{getElementById:node,createElement:tag=>new Node(tag),querySelectorAll:s=>s==='[data-tab]'?tabs:s==='[data-action]'?actions:[],documentElement:{}},
   window:{addEventListener(){},setInterval(){},clearInterval(){},setTimeout(){},clearTimeout(){}},location:{search:'',origin:'https://fixture.invalid'},history:{pushState(){},replaceState(){}},confirm:()=>true,
   fetch:async(url,options={})=>{const path=url.replace('/api/v1/','');calls.push({path,options});if(path==='setup/status')return {ok:true,json:async()=>({setup_required:true})};if(path==='setup/csrf')return {ok:true,json:async()=>({csrf_token:'synthetic'})};if(handlers.has(path))return handlers.get(path)(options);return {ok:false,status:403};}});

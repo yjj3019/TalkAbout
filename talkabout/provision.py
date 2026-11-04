@@ -4,7 +4,7 @@ import re
 import psycopg
 from psycopg import sql
 from psycopg.conninfo import conninfo_to_dict, make_conninfo
-from .store import PostgresStore
+from .store import PostgresStore, _validate_connection_environment
 
 TABLES = ('principals','credentials','rooms','events','cursors','human_passwords','human_sessions','installation_setup')
 
@@ -20,6 +20,7 @@ def provision_database(owner_dsn, runtime_dsn, installation_id):
             raise ValueError()
         # Private installation owner only. Never change cluster-wide logging settings.
         safe_owner=make_conninfo(owner_dsn, options='-clog_statement=none -clog_min_error_statement=panic -clog_parameter_max_length=0 -clog_parameter_max_length_on_error=0')
+        _validate_connection_environment(safe_owner)
         with psycopg.connect(safe_owner) as conn:
             conn.execute("SELECT pg_advisory_xact_lock(hashtextextended('talkabout:db-installation',0))")
             marker=conn.execute("SELECT to_regclass('public.installation_metadata')").fetchone()[0]
@@ -29,6 +30,7 @@ def provision_database(owner_dsn, runtime_dsn, installation_id):
                 if not row or row[0]!=installation_id or not role or any(role):
                     raise ValueError()
                 # Existing role: authenticate; never repair by changing its password.
+                _validate_connection_environment(runtime_dsn)
                 with psycopg.connect(runtime_dsn) as app:
                     if app.execute('SELECT current_user').fetchone()[0]!='talkabout_app': raise ValueError()
             else:

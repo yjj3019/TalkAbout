@@ -110,6 +110,12 @@ def validate_run_options(args, parser):
         parser.error('--work-profile currently requires --runtime codex with --codex-transport exec-json')
     if args.work_profile and (args.synthetic or os.name != 'nt'):
         parser.error('--work-profile requires a real runtime under verified containment')
+    if bool(args.request_turn) != (args.request_turn_room is not None):
+        parser.error('--request-turn and --request-turn-room ROOM must be supplied together; --room only accepts an invitation')
+    if args.request_turn_room is not None:
+        import re
+        if not re.fullmatch(r'[A-Za-z0-9-]{1,128}', args.request_turn_room):
+            parser.error('Invalid request-turn room identifier')
     if args.command == 'connect' and (args.room is not None or args.acknowledge_private):
         import re
         if not args.room or not args.acknowledge_private:
@@ -165,7 +171,8 @@ def main():
             command.add_argument("--resume-worker", action="store_true", help="Explicitly clear a previous local stop request; uncertain tasks remain blocked")
             command.add_argument("--retry-check", action="store_true", help="Explicitly allow a new provider test after an uncertain prior test; it may consume usage again")
             command.add_argument("--approve-external", action="store_true", help="Explicitly authorize provider calls in your own environment")
-            command.add_argument("--request-turn", action="store_true", help="Request a bounded free-discussion turn while idle")
+            command.add_argument("--request-turn", action="store_true", help="Attempt one free-discussion turn request per invocation; requires --request-turn-room (legacy flag alone is rejected)")
+            command.add_argument('--request-turn-room', metavar='ROOM', help='Explicit target for --request-turn; independent of connect --room invitation acceptance')
             command.add_argument("--max-model-calls", type=int, default=1, help="External CLI invocation ceiling, 1..10; provider-internal retries may differ")
             command.add_argument('--max-room-calls',type=int,default=None,help='Optional room-purpose ceiling, 0..10, within the unchanged total model-call ceiling')
             command.add_argument('--persist-provider-sessions',action='store_true',help='Opt-in local Codex checkpoints; automatic resume requires verified stable account identity')
@@ -256,7 +263,7 @@ def main():
             client.close()
         return
     combined = args.command == 'connect' and (args.room is not None or args.acknowledge_private)
-    if combined:
+    if args.command in {'run', 'connect'}:
         validate_run_options(args, parser)
     journal = Journal(config["journal_path"])
     connector_lease = None
@@ -408,6 +415,7 @@ def main():
                 client.request('PUT', 'agents/me/capabilities', {'http': True, 'persistent_worker': True, 'text': True,
                     'image': False, 'file': False, 'model_label': runtime_kind+' (worker reported)'}, str(uuid.uuid4()))
                 report('idle')
+                turn_request_pending = bool(args.request_turn)
                 if next_action == 'increase_max_model_calls':
                     # Nothing can be spoken under this ceiling and no saved result
                     # is waiting, so do not start a worker that can only report an
@@ -437,7 +445,12 @@ def main():
                         print("run_budget_exhausted")
                         break
                     try:
-                        if args.request_turn and not saved_result_only: worker.request_turns()
+                        if turn_request_pending and not saved_result_only:
+                            # Clear before the call, which may POST or fail ambiguously.
+                            # Only the worker's still-bound preparing intent retains it;
+                            # events never re-arm it.
+                            turn_request_pending = False
+                            turn_request_pending = worker.request_turns(args.request_turn_room) == 'preparing'
                         report('idle')
                         result = worker.step(saved_result_only=True) if saved_result_only else worker.step()
                         if result in {'waiting', 'retry_wait', 'completed'}: report('idle')
@@ -467,6 +480,8 @@ def main():
         except RunBudgetExceeded:
             print('run_budget_exhausted')
         finally:
+            if locals().get('turn_request_pending', False):
+                print('turn_request_not_completed: room still preparing or request not attempted; no automatic retry')
             source = locals().get('source_runtime')
             try:
                 if callable(getattr(source, 'shutdown', None)):

@@ -16,6 +16,8 @@ python3 deploy/podman/install.py --install --app-image "localhost/talkabout:$SOU
 
 처음 설치는 전용 private network·새 volume·DB를 만든 뒤 schema/runtime role을 준비하고 loopback app을 기동합니다. host 포트를 자동 선택하거나 기존 listener를 종료하지 않습니다. 앱과 DB는 non-root, read-only root, cap-drop, no-new-privileges, CPU/메모리/PID 제한을 유지합니다. public bind·방화벽·TLS·auto-start·호스트 권한은 변경하지 않습니다. 설치 완료 응답은 DB 구성과 app liveness 확인을 의미합니다. 최초 소유자 설정 전 `/ready`와 일반 API/scheduler는 잠겨 있습니다.
 
+컨테이너 내부 app listener는 0.0.0.0이고 host publish만 loopback입니다. 같은 private network의 다른 컨테이너를 신뢰할 수 있다고 가정하지 마세요. Host 헤더 검사는 네트워크 인증이 아니며 위조될 수 있습니다. DB hostname은 암호학적 서버 신원 확인이 아니고 기본 TLS 설정이 도청·중간자 공격 방지를 보장하지 않습니다. 신뢰할 수 있는 네트워크 격리와 적절한 인증서 검증 정책은 운영자 책임입니다. libpq 환경 검사도 신뢰된 프로세스 안의 동시 환경 변경이나 모든 외부 설정을 격리하지 않습니다. 임의 LAN 공개나 평문 HTTP 외부 노출은 지원하지 않습니다. 원격 접근이 필요하면 별도의 인증된 암호화 터널과 네트워크 격리·접근 정책을 운영자가 설계하고 검증해야 하며 앱의 사용자 인증과 room 권한 검사를 대체하지 않습니다.
+
 재실행은 같은 journal/config/image를 사용해 bundle과 DB 인증을 확인하고 그대로 재사용합니다. 일부 파생 secret이 빠지면 bundle의 동일 값으로 복구합니다. 활성 app이 이미 mount한 동일 secret 값은 바뀌지 않습니다. credential/schema/image 변경은 이 설치 도구의 자동 upgrade 범위가 아닙니다. 일치하는 설치 표식의 기존 DB에는 role/schema 재생성이나 회전을 수행하지 않습니다.
 
 | 상황 | 처리 |
@@ -88,9 +90,10 @@ A crash between persistent container creation and startup can leave a dormant on
 
 ### 백업
 
-- `backup.sh`는 `podman exec <db> pg_dump -Fc`로 덤프하고 sha256을 남기며, 기본 14개를 보존합니다. 암호는 컨테이너 안에서만 쓰고 호스트 인자·환경에 넣지 않습니다.
-- 설치: 스크립트를 `%h/bin/`에 두고 `systemd/`의 유닛을 `~/.config/systemd/user/`에 복사한 뒤 `systemctl --user daemon-reload && systemctl --user enable --now talkabout-backup.timer talkabout-health.timer`.
-- 복원 리허설은 별도 일회용 PostgreSQL에 `pg_restore`로 수행하고, 실제 운영 DB에 바로 덮어쓰지 않습니다. 리허설은 아직 NOTRUN입니다.
+- `backup.sh`는 `flock`으로 동시 실행을 거절하고 비공개 임시 디렉터리에 `pg_dump -Fc`를 쓴 뒤 `pg_restore -l`(목차만)과 sha256을 확인합니다. 두 검사는 전체 데이터 복원 가능성을 보증하지 않습니다. 덤프와 체크섬을 덮어쓰기 없이 게시한 다음에만 기본 14개 보존 정책을 적용합니다. 비정상 강제 종료 시 비공개 임시 디렉터리 또는 체크섬만 남을 수 있으므로, 실행 중인 백업이 없음을 확인한 후 수동 점검합니다. 이 저장소 변경은 호스트에 별도로 설치하기 전까지 기존 타이머에 적용되지 않습니다.
+- 설치: 스크립트를 각각 `%h/bin/talkabout-backup`, `%h/bin/talkabout-healthcheck`로 복사하고 `%h/backups/talkabout`을 준비합니다. `systemd/`의 유닛을 `~/.config/systemd/user/`에 복사한 뒤 `systemctl --user daemon-reload && systemctl --user enable --now talkabout-backup.timer talkabout-health.timer`. 포트가 다르면 `TALKABOUT_READY_URL`을 유닛 환경에 명시합니다.
+- 2026-11-01 체크섬이 일치한 기존 덤프를 **별도 `--network none` 일회용 PostgreSQL과 tmpfs**에 `pg_restore --single-transaction --exit-on-error --no-owner --no-acl`로 복원했습니다. 복원본의 principals 3·rooms 1·events 4, 고아 event 및 방 sequence 불일치 0을 확인하고 일회용 컨테이너를 제거했습니다. 운영 DB와 volume에는 복원하지 않았습니다.
+- 이 검사는 ACL·role/secret 복구, 앱 readiness, 실제 cutover, 오프사이트 사본 및 RPO/RTO를 증명하지 않습니다. 과거 덤프의 복원은 취소된 자격증명과 세션을 되살릴 수 있으므로, 실제 cutover 전 자격증명·세션 무효화와 계정 복구를 별도 승인·검증해야 합니다.
 
 ### 로그·정리
 

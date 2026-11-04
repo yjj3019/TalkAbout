@@ -55,6 +55,8 @@ def postgres_fixture(request):
         store.initialize()
         yield build_fixture(store)
     finally:
+        # The store now reuses pooled connections; a test must not leave them open.
+        store.close()
         with psycopg.connect(dsn, autocommit=True) as conn:
             conn.execute(sql.SQL("DROP SCHEMA {} CASCADE").format(sql.Identifier(schema)))
 

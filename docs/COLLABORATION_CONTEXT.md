@@ -11,7 +11,7 @@
 
 | 함수 | 하는 일 |
 | --- | --- |
-| `shared_context(room, task)` | 보낼 입력을 **우선순위**(고정 메시지 → 최신 메시지, 채택 버전 → 최신 버전)로 고르고, UTF-8 경계에서 자르고, `input_manifest` 생성 |
+| `shared_context(room, task)` | 보낼 입력을 **우선순위**(가시 pinned/handoff → **최신 4건** → 그 최신 4건의 reply가 가리키는 **가시 조상** 최대 3개·최대 3 hop → 나머지 최신 메시지, 합계 최대 8건; 채택 버전 → 최신 버전)로 고르고, UTF-8 경계에서 자르고, `input_manifest` 생성. 모델/provider가 읽었다는 증거는 아님 |
 | `add_file_sources(context, excerpts)` | 첨부에서 읽은 발췌와 **읽지 않은 나머지 개수**를 manifest에 기록 |
 | `fit_context(context)` | 실제 직렬화 크기가 `MAX_INPUT`을 넘으면 큰 텍스트부터 절반씩 줄임. 메타데이터는 버리지 않고, 끝까지 안 되면 dispatch 전에 실패 |
 | `validate_manifest(manifest, room, task)` | 서버가 참조를 재검증. 통과한 것만 `worker_reported_server_validated_refs_not_model_read_receipt`로 기록 |

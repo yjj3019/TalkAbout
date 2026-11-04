@@ -6,7 +6,7 @@ from .retention import DEFAULT_RETENTION
 
 from .domain import AGENT_PERMISSIONS, SELF_PERMISSIONS, digest, ident, normalize_name, require, token_hash
 
-AGENT_SCOPES = AGENT_PERMISSIONS | SELF_PERMISSIONS | {"rooms:create"}
+AGENT_SCOPES = AGENT_PERMISSIONS | SELF_PERMISSIONS | {"rooms:create", "room:invite_agents"}
 
 
 REAL_RUNTIMES = {"codex", "claude", "grok"}
@@ -221,6 +221,12 @@ class IdentityService:
                     require(type(ttl) is int and 1 <= ttl <= 3600, "invalid_expiry", 422)
                     room_id = body.get("room_id")
                     require(room_id is None or (isinstance(room_id, str) and "rooms:create" not in scopes), "invalid_room_scope", 422)
+                    # Delegated invitations are room-scoped: an explicitly
+                    # requested invite scope must carry an explicit room id.
+                    # This never grants a scope to existing credentials.
+                    if "room:invite_agents" in scopes:
+                        require(isinstance(room_id, str) and 1 <= len(room_id) <= 64,
+                                "invite_credential_requires_room", 422)
                     raw = secrets.token_urlsafe(32)
                     credential_id = ident()
                     metadata = {"id": target_id, "credential_id": credential_id, "scopes": sorted(scopes), "expires_at": time.time() + ttl, "revoked": False, "room_id": room_id}

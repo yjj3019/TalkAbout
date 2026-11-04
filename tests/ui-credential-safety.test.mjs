@@ -59,7 +59,7 @@ for(const lang of ['ko','en'])test('participation guide starts the worker before
  assert.ok(commands.indexOf('cli join')<commands.indexOf('cli connect'));
  assert.ok(commands.indexOf(labels[lang].workerBeforeStart)<commands.indexOf('cli connect'));
  assert.ok(commands.indexOf('cli connect')<commands.indexOf(labels[lang].startAfterWorker));
- assert.ok(commands.includes('--request-turn'));
+ assert.match(commands,/--request-turn --request-turn-room room(?:\s|$)/);
 });
 
 test('preparing workflow explains why Start is disabled',async()=>{

@@ -59,6 +59,20 @@ def test_projects_both_task_and_completion_without_mutating_snapshot(fixture):
     assert standalone == projected['task']
 
 
+@pytest.mark.parametrize('change', ['history_floor', 'deleted'])
+def test_completion_snapshot_redacts_hidden_reply_parent(fixture, change):
+    room, actor, response, _ = fixture_with_history(fixture)
+    room['messages']['m-new']['reply_to'] = 'm-old'
+    response['message']['reply_to'] = 'm-old'
+    assert project_task_response(room, actor, response)['message']['reply_to'] == 'm-old'
+    if change == 'history_floor':
+        room['members']['a']['read_start_seq'] = 101
+    else:
+        del room['messages']['m-old']
+    assert project_task_response(room, actor, response)['message']['reply_to'] is None
+    assert response['message']['reply_to'] == 'm-old'
+
+
 def test_replay_snapshot_reprojects_revoked_history_and_file_acl(fixture):
     room, actor, response, ref = fixture_with_history(fixture)
     original = copy.deepcopy(response)

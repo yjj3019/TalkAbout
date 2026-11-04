@@ -24,6 +24,10 @@ CREATE TABLE IF NOT EXISTS cursors (
   id text PRIMARY KEY, principal_id text NOT NULL, payload jsonb NOT NULL,
   expires_at double precision NOT NULL
 );
+-- One cursor row is created per SSE batch and per agent poll; without these the
+-- capacity check and the expiry sweep scan the whole table.
+CREATE INDEX IF NOT EXISTS cursors_principal_id ON cursors(principal_id);
+CREATE INDEX IF NOT EXISTS cursors_expires_at ON cursors(expires_at);
 CREATE TABLE IF NOT EXISTS human_passwords (
   principal_id text PRIMARY KEY REFERENCES principals(id), record jsonb NOT NULL
 );

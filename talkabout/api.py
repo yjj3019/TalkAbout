@@ -1,4 +1,5 @@
 import json
+import os
 import re
 import threading
 import time
@@ -7,6 +8,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse, Response
+from starlette.middleware.gzip import GZipMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from .core import Core
@@ -15,21 +17,54 @@ from .identity import IdentityService
 from .auth import COOKIE, HumanAuth
 
 
-def create_app(store, start_scheduler=True, allow_fixture_bearer=False, allowed_hosts=None, setup_container_name=None, text_storage=None):
+def create_app(store, start_scheduler=True, allow_fixture_bearer=False, allowed_hosts=None, setup_container_name=None, text_storage=None, enable_agent_invites=None):
+    if enable_agent_invites is None:
+        configured = os.environ.get('TALKABOUT_ENABLE_AGENT_INVITES', '0')
+        if configured not in {'0', '1'}:
+            raise ValueError('invalid_agent_invites_setting')
+        enable_agent_invites = configured == '1'
+    if type(enable_agent_invites) is not bool:
+        raise ValueError('invalid_agent_invites_setting')
     setup_container_name = setup_container_name if isinstance(setup_container_name, str) and re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,127}', setup_container_name) else None
     from .text_files import TextAttachments,MAX_BYTES
     text_files=TextAttachments(store,text_storage) if text_storage is not None else None
-    core = Core(store,text_files=text_files)
+    core = Core(store,text_files=text_files,enable_agent_invites=enable_agent_invites)
     identity = IdentityService(store)
     human_auth = HumanAuth(store)
     stop = threading.Event()
     state = {"scheduler": "stopped"}
 
+    # Every request (including static assets) used to open a connection just to ask
+    # whether setup was complete. Cache the answer for a short window; a completed
+    # setup invalidates it immediately.
+    setup_cache = {"checked": -1.0, "locked": True}
+    setup_cache_lock = threading.Lock()
+    setup_cache_ttl = 1.0
+
+    def setup_locked():
+        now = time.monotonic()
+        with setup_cache_lock:
+            if 0 <= now - setup_cache["checked"] < setup_cache_ttl:
+                return setup_cache["locked"]
+        try:
+            locked = store.setup_required()
+        except Exception:
+            # Schema outage must fail closed, without leaking database details.
+            locked = True
+        with setup_cache_lock:
+            setup_cache["checked"] = now
+            setup_cache["locked"] = locked
+        return locked
+
+    def invalidate_setup_cache():
+        with setup_cache_lock:
+            setup_cache["checked"] = -1.0
+
     def scheduler():
         state["scheduler"] = "running"
         while not stop.wait(0.5):
             try:
-                if not store.setup_required():
+                if not setup_locked():
                     store.tick_all()
             except Exception:
                 # Never log a database DSN, credentials, or external payload.
@@ -48,6 +83,9 @@ def create_app(store, start_scheduler=True, allow_fixture_bearer=False, allowed_
 
     app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None)
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts or (["testserver"] if allow_fixture_bearer else ["127.0.0.1", "localhost", "::1"]))
+    # 300 KB of un-compressed JS/CSS was sent on every load; gzip9 alone takes it to
+    # ~80 KB. Small responses (JSON errors) stay uncompressed.
+    app.add_middleware(GZipMiddleware, minimum_size=1024)
     app.state.core = core
 
     @app.exception_handler(Problem)
@@ -57,20 +95,22 @@ def create_app(store, start_scheduler=True, allow_fixture_bearer=False, allowed_
     @app.middleware("http")
     async def harden(request, call_next):
         from starlette.concurrency import run_in_threadpool
-        try:
-            locked = await run_in_threadpool(store.setup_required)
-        except Exception:
-            # Schema outage must fail closed, without leaking database details.
-            locked = True
+        locked = await run_in_threadpool(setup_locked)
         request.state.setup_locked = locked
-        allowed = {'/', '/health', '/web/app.mjs', '/web/state.mjs', '/web/style.css',
+        allowed = {'/', '/health', '/web/app.mjs', '/web/work-plan.mjs', '/web/collaboration-board.mjs', '/web/handoff-summary.mjs', '/web/state.mjs', '/web/style.css',
                    '/web/connect-agent.ps1',
                    '/api/v1/setup/status', '/api/v1/setup/csrf', '/api/v1/setup/complete'}
         if locked and request.url.path not in allowed:
             response = JSONResponse({'code': 'setup_required'}, status_code=503)
         else:
             response = await call_next(request)
-        response.headers["Cache-Control"] = "no-store"
+        path = request.url.path
+        if path == '/' or path.startswith('/web/'):
+            # ETag/Last-Modified already come from FileResponse, so a revalidation
+            # turns into a 304 instead of a full re-download of 300 KB.
+            response.headers["Cache-Control"] = "public, max-age=0, must-revalidate"
+        else:
+            response.headers["Cache-Control"] = "no-store"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self'; style-src 'self'; frame-ancestors 'none'; base-uri 'none'"
         return response
@@ -103,14 +143,37 @@ def create_app(store, start_scheduler=True, allow_fixture_bearer=False, allowed_
         available = state["scheduler"] == "running" and await run_in_threadpool(store.ready)
         return JSONResponse({"status": "ready" if available else "not_ready", "deployment": "prototype"}, status_code=200 if available else 503)
 
+    def static_file(request, target):
+        """Serve a static asset with a weak validator and conditional GET support.
+
+        The bundled Starlette FileResponse does not answer If-None-Match, so a
+        returning browser re-downloaded ~300 KB of JS/CSS every time. A weak ETag
+        plus gzip keeps the revisit to a 304.
+        """
+        from email.utils import formatdate, parsedate_to_datetime
+        stat = target.stat()
+        etag = 'W/"%x-%x"' % (int(stat.st_mtime), stat.st_size)
+        last_modified = formatdate(stat.st_mtime, usegmt=True)
+        fresh = False
+        if request.headers.get("if-none-match") == etag:
+            fresh = True
+        elif not request.headers.get("if-none-match") and request.headers.get("if-modified-since"):
+            try:
+                fresh = int(stat.st_mtime) <= parsedate_to_datetime(request.headers["if-modified-since"]).timestamp()
+            except (TypeError, ValueError, OverflowError):
+                fresh = False
+        if fresh:
+            return Response(status_code=304, headers={"ETag": etag, "Last-Modified": last_modified})
+        return FileResponse(target, headers={"ETag": etag, "Last-Modified": last_modified})
+
     @app.get("/")
-    def index():
-        return FileResponse(Path(__file__).parent / "web" / "index.html")
+    def index(request: Request):
+        return static_file(request, Path(__file__).parent / "web" / "index.html")
 
     @app.get("/web/{name}")
-    def asset(name: str):
-        require(name in {"app.mjs", "state.mjs", "style.css", "favicon.svg", "connect-agent.ps1"}, "not_found", 404)
-        return FileResponse(Path(__file__).parent / "web" / name)
+    def asset(request: Request, name: str):
+        require(name in {"app.mjs", "work-plan.mjs", "collaboration-board.mjs", "handoff-summary.mjs", "state.mjs", "style.css", "favicon.svg", "connect-agent.ps1"}, "not_found", 404)
+        return static_file(request, Path(__file__).parent / "web" / name)
 
     def room_stream(request, credential, room_id):
         require(store.auth(credential)["kind"] == "human", "human_required", 403)
@@ -198,6 +261,7 @@ def create_app(store, start_scheduler=True, allow_fixture_bearer=False, allowed_
             require(bool(cookie) and len(cookie) <= 128 and len(supplied) <= 128 and cookie.isascii() and supplied.isascii()
                     and hmac.compare_digest(cookie, supplied), 'csrf_invalid', 403)
             data = await run_in_threadpool(complete_setup, store, body)
+            invalidate_setup_cache()
             response = JSONResponse(data)
             response.delete_cookie('talkabout_setup_csrf', path='/api/v1/setup')
             return response
@@ -222,7 +286,8 @@ def create_app(store, start_scheduler=True, allow_fixture_bearer=False, allowed_
             method = request.method
             store.auth(credential)
             if path=='capabilities' and method=='GET':
-                return {'text_attachments':text_files.capabilities() if text_files else {'enabled':False}}
+                return {'text_attachments':text_files.capabilities() if text_files else {'enabled':False},
+                        'agent_invitations': {'enabled': enable_agent_invites}}
             if "uploads" in path.split("/"):
                 require(text_files is not None,'feature_disabled',409)
                 init=re.fullmatch(r'rooms/([a-zA-Z0-9-]+)/uploads',path)
@@ -300,16 +365,56 @@ def create_app(store, start_scheduler=True, allow_fixture_bearer=False, allowed_
             match = re.fullmatch(r"rooms/([a-zA-Z0-9-]+)(?:/(.*))?", path)
             require(match, "not_found", 404)
             room_id, operation = match.groups()
+            if operation == 'collaboration-proposals':
+                if method == 'GET': return core.collaboration_proposals(credential, room_id)
+                if method == 'POST': return core.create_collaboration_proposal(credential, room_id, key, body)
+                raise Problem('not_found', 404)
+            collaboration_decision = re.fullmatch(r'collaboration-proposals/([a-zA-Z0-9-]+)/decision', operation or '')
+            if collaboration_decision:
+                require(method == 'POST', 'not_found', 404)
+                return core.decide_collaboration_proposal(credential, room_id, key, collaboration_decision.group(1), body)
+            collaboration_apply = re.fullmatch(r'collaboration-proposals/([a-zA-Z0-9-]+)/apply', operation or '')
+            if collaboration_apply:
+                require(method == 'POST', 'not_found', 404)
+                return core.apply_collaboration_proposal(credential, room_id, key, collaboration_apply.group(1), body)
             if operation == 'work-plan':
                 if method == 'GET': return core.work_plan(credential, room_id)
                 if method == 'POST': return core.replace_work_plan(credential, room_id, key, body)
                 raise Problem('not_found', 404)
+            # Dispatch routes must be resolved before the generic room GET fallback and
+            # before the permitted/core.mutation gate.
+            if operation == 'work-plan/dispatch':
+                if method == 'GET': return core.plan_dispatch(credential, room_id)
+                if method == 'POST': return core.dispatch_work_plan(credential, room_id, key, body)
+                raise Problem('not_found', 404)
+            if operation == 'work-plan/dispatch/abort':
+                require(method == 'POST', 'not_found', 404)
+                return core.abort_plan_dispatch(credential, room_id, key, body)
+            if operation == 'work-plan/dispatch/handoff':
+                require(method == 'GET', 'not_found', 404)
+                return core.plan_handoff(credential, room_id)
+            if operation == 'memories/preview':
+                require(method == 'POST', 'not_found', 404)
+                require(not body, 'invalid_memory_preview', 422)
+                return core.memory_preview(credential, room_id)
             if operation in {'participation/join', 'participation/ack'} and method == 'POST':
                 return core.participation(credential, room_id, operation.split('/')[-1], body)
             if operation == 'notifications' and method == 'GET':
                 return core.notifications(credential, room_id, request.query_params.get('session_id'))
             if operation == "handover/accept" and method == "POST":
                 return core.accept_handover(credential, room_id, key, body)
+            if operation == "agent-invite-policy/me":
+                require(method == "GET", "not_found", 404)
+                return core.invitation_policy_me(credential, room_id)
+            if operation == "agent-invite-policies":
+                require(method == "GET", "not_found", 404)
+                return core.invitation_policies(credential, room_id)
+            if operation == "agent-invite-policy":
+                require(method == "POST", "not_found", 404)
+                return core.set_invitation_policy(credential, room_id, key, body)
+            if operation == "agent-invitations":
+                require(method == "POST", "not_found", 404)
+                return core.invite_agent(credential, room_id, key, body)
             if method == "GET":
                 if operation == "events":
                     try:
@@ -326,6 +431,9 @@ def create_app(store, start_scheduler=True, allow_fixture_bearer=False, allowed_
                     return core.interventions(credential, room_id)
                 if operation == "diagnostics":
                     return core.room_diagnostics(credential, room_id)
+                if operation == "fence":
+                    # Lightweight worker re-check: state/revisions plus one task lease.
+                    return core.room_fence(credential, room_id, request.query_params.get("task_id"))
                 room = core.read(credential, room_id)
                 if not operation:
                     return room
@@ -345,9 +453,12 @@ def create_app(store, start_scheduler=True, allow_fixture_bearer=False, allowed_
             if method == "POST" and re.fullmatch(r"memberships/[^/]+/accept", operation or ""):
                 require(operation.split("/")[1] in {"me", store.auth(credential)["id"]}, "not_found", 404)
                 return core.accept(credential, room_id, key, body)
+            if method == "POST" and re.fullmatch(r"memberships/[^/]+/purge", operation or ""):
+                return core.purge_membership(credential, room_id, operation.split("/")[1], key, body)
+
             permitted = operation and (
                 operation in {"messages", "memberships", "controls", "artifacts", "turn-requests"}
-                or re.fullmatch(r"tasks/[^/]+/(claim|start|heartbeat|complete|skip|resolve-uncertain)", operation)
+                or re.fullmatch(r"tasks/[^/]+/(claim|start|heartbeat|complete|skip|resolve-uncertain|input-unavailable)", operation)
                 or re.fullmatch(r"tasks/[^/]+/reservations", operation)
                 or re.fullmatch(r"tasks/[^/]+/reservations/[0-9a-f]{64}/outcome", operation)
                 or re.fullmatch(r"controls/[^/]+/approve", operation)

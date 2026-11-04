@@ -110,6 +110,37 @@ def test_run_posts_openai_compatible_request(server, monkeypatch):
     assert "room-1" in request["body"]["messages"][1]["content"]
 
 
+def test_run_reports_provider_response_receipt_with_bounded_usage(monkeypatch):
+    monkeypatch.setenv("PROVIDER_API_KEY", "synthetic-key")
+    server = _Server(body={"id": "resp-receipt", "choices": [{"message": {"content": "ok"}}],
+                           "usage": {"prompt_tokens": 12, "completion_tokens": 4,
+                                     "total_tokens": 16}})
+    try:
+        runtime = _runtime(server)
+        runtime.run({"purpose": "contribution", "room_id": "room-1", "prompt": "Say hello"},
+                    threading.Event())
+        receipt = runtime.execution_receipt()
+        assert receipt == {"runtime": "compatible", "session_id": "compatible:resp-receipt",
+                           "usage": {"input_tokens": 12, "output_tokens": 4}}
+    finally:
+        server.close()
+
+
+def test_receipt_usage_drops_malformed_counters(monkeypatch):
+    monkeypatch.setenv("PROVIDER_API_KEY", "synthetic-key")
+    server = _Server(body={"id": "resp-2", "choices": [{"message": {"content": "ok"}}],
+                           "usage": {"prompt_tokens": True, "completion_tokens": -3,
+                                     "total_tokens": 9}})
+    try:
+        runtime = _runtime(server)
+        runtime.run({"purpose": "contribution", "room_id": "room-1", "prompt": "Say hello"},
+                    threading.Event())
+        assert runtime.execution_receipt() == {"runtime": "compatible",
+                                               "session_id": "compatible:resp-2"}
+    finally:
+        server.close()
+
+
 def test_http_errors_map_to_fixed_codes(monkeypatch):
     monkeypatch.setenv("PROVIDER_API_KEY", "synthetic-key")
     for status, code in ((401, "runtime_auth_required"), (403, "runtime_auth_required"),

@@ -6,6 +6,10 @@ the parser and the dry-run plan was checked by hand (see docs/SESSION_LOG.md);
 the checks here keep the safety properties from silently regressing.
 """
 from pathlib import Path
+import json
+import os
+import shutil
+import subprocess
 
 import pytest
 
@@ -85,6 +89,64 @@ def test_clipboard_text_is_a_dry_run_diagnostic_only():
     assert '-ClipboardText is a dry-run diagnostic only' in TEXT
     assert 'if (-not [string]::IsNullOrWhiteSpace($ClipboardText) -and -not $DryRun.IsPresent)' in TEXT
     assert 'InstallHelper does not accept -ClipboardText' in TEXT
+
+
+@pytest.mark.parametrize('clipboard', [False, True])
+@pytest.mark.parametrize('want_turn', [False, True])
+def test_dry_run_binds_optional_turn_to_selected_room(clipboard, want_turn, tmp_path):
+    pwsh = shutil.which('pwsh') or shutil.which('powershell')
+    if not pwsh:
+        pytest.skip('PowerShell unavailable')
+    room = 'selected-room-42'
+    command = [pwsh, '-NoProfile', '-File', str(HELPER), '-Server', 'http://127.0.0.1:18081',
+               '-StateDir', str(tmp_path), '-DryRun']
+    if clipboard:
+        payload = {'v': 1, 'origin': 'http://127.0.0.1:18081', 'room': room, 'agent': 'agent',
+                   'runtime': 'codex', 'auth_mode': 'native', 'max_model_calls': 3,
+                   'request_turn': want_turn, 'token': 'synthetic-token'}
+        command += ['-FromClipboard', '-ClipboardText', json.dumps(payload, separators=(',', ':'))]
+    else:
+        command += ['-Room', room, '-Agent', 'agent']
+        if want_turn:
+            command += ['-RequestTurn']
+    result = subprocess.run(command, capture_output=True, text=True, env={**os.environ, 'LOCALAPPDATA': str(tmp_path)})
+    assert result.returncode == 0, result.stderr
+    line = next(line for line in result.stdout.splitlines() if 'Command       :' in line)
+    assert '--room ' + room in line
+    if want_turn:
+        assert line.count('--request-turn ') == 1
+        assert '--request-turn --request-turn-room ' + room in line
+    else:
+        assert '--request-turn' not in line
+    assert 'synthetic-token' not in result.stdout
+
+
+@pytest.mark.parametrize('room', ['bad;calc', 'bad room', 'bad\n', 'x' * 129])
+def test_dry_run_rejects_unsafe_room(room, tmp_path):
+    pwsh = shutil.which('pwsh') or shutil.which('powershell')
+    if not pwsh:
+        pytest.skip('PowerShell unavailable')
+    result = subprocess.run([pwsh, '-NoProfile', '-File', str(HELPER), '-Server', 'http://127.0.0.1:18081',
+                             '-Room', room, '-Agent', 'agent', '-RequestTurn', '-DryRun', '-StateDir', str(tmp_path)],
+                            capture_output=True, text=True, env={**os.environ, 'LOCALAPPDATA': str(tmp_path)})
+    assert result.returncode != 0
+    assert 'Room must match' in result.stderr
+    assert 'Command       :' not in result.stdout
+
+
+def test_clipboard_rejects_different_room_case(tmp_path):
+    pwsh = shutil.which('pwsh') or shutil.which('powershell')
+    if not pwsh:
+        pytest.skip('PowerShell unavailable')
+    payload = {'v': 1, 'origin': 'http://127.0.0.1:18081', 'room': 'Room', 'agent': 'agent',
+               'runtime': 'codex', 'auth_mode': 'native', 'max_model_calls': 3,
+               'request_turn': True, 'token': 'synthetic-token'}
+    result = subprocess.run([pwsh, '-NoProfile', '-File', str(HELPER), '-Server', payload['origin'],
+                             '-Room', 'room', '-FromClipboard', '-ClipboardText', json.dumps(payload),
+                             '-DryRun', '-StateDir', str(tmp_path)], capture_output=True, text=True,
+                            env={**os.environ, 'LOCALAPPDATA': str(tmp_path)})
+    assert result.returncode != 0
+    assert 'does not match the invite payload' in result.stderr
 
 
 def test_static_asset_is_served_by_the_web_allowlist():
