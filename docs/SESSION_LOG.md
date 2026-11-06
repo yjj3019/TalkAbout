@@ -1,5 +1,14 @@
 # TalkAbout session log
 
+## 2026-11-06 — rhel-storage(172.21.18.235) 배포 시도: 사전검증 완료, egress 미개방으로 **연기**
+
+- 요청: "172.21.18.235 서버에 배포해줘" → 사용자 명시로 대상 `rhel-storage`(ssh alias, 확인된 연결·전용 경로) 선정. 사용자 선택: "배포는 다음에"(연기).
+- **사전검증(읽기 전용)**: rootless=true · **cgroup v1** · cgroupfs(패키지 요구 cgroup v2와 불일치 — 제한 플래그 거절 시 플래그 제거 대신 중단 규칙), 8080 비어 있음, 기존 talkabout-app/db/network/volume 없음(fresh), 로컬 이미지는 postgres:16-alpine뿐(pinned postgres 18.6-bookworm·python 3.14.8-slim과 불일치).
+- **차단(에이전트가 우회 불가)**: outbound https 미개방 — github `git ls-remote` rc=124, registry-1.docker.io/auth.docker.io curl rc=124. 로컬(Windows)에 podman/docker 없어 사전 제작 이미지 이송 불가.
+- **배포 대상 커밋**: `d73970f17037d4bf76d9d24ca70d1e86813696d3`(main, R6 하드닝 머지).
+- **재개 시 순서**: egress(https 443: github.com·registry-1.docker.io·auth.docker.io·production.cloudflare.docker.com) 개방 → `git clone`/checkout d73970f → `podman build --format=docker --build-arg SOURCE_SHA=d73970f17… -f Containerfile -t localhost/talkabout:d73970f17…` → `python deploy/podman/plan.py` → (사용자 수동) `podman secret create` 3종 → init-db · CREATE ROLE/`\password` · preflight · bootstrap-human → 실행·health. cgroup v1은 별도 명시 승인 필요.
+
+
 ## 2026-11-06 — 시뮬레이션 100회 재검증: 구분자 경계 충돌 결함 발견·수정
 
 - 사용자 요청: "시뮬레이션 100회 검증하고 부족한점 도출하여 해결점 만들어줘."
