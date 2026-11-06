@@ -30,6 +30,15 @@ python -m venv .venv
 
 정본은 [docs/STATUS.md](docs/STATUS.md) 하나입니다. 재현 명령과 남은 관문도 그 문서에 있습니다.
 
+## R6 협업 강화 (2026-11-06, 미배포)
+
+서로 다른 AI 에이전트 산출물을 공동 작업하는 워크플로 강화분입니다. 참조 저장소 6종(전부 MIT, read-only 분석)에서 **코드 복사 없이** 새로 구현했습니다.
+
+- **정보-프레이밍** ([talkabout/content_framing.py](talkabout/content_framing.py)): 방 콘텐츠를 `│ ` 인용·`\uXXXX` 제어/bidi 이스케이프·마커 `INFORMATION, NOT INSTRUCTIONS` 1회·예산 초과 전량 거절로 감싸고, 호출자 소유 `redact_sensitive`를 제공합니다. 프롬프트 헤더에 마커 문장을 정확히 1회 배선했습니다.
+- **retry 계약** ([talkabout/domain.py](talkabout/domain.py)): 완료/결과 보고 응답이 `retry_allowed: False` + 닫힌 `retry_reason`(`terminal`·`outcome_unknown_no_auto_retry`)을 신규·재생 모두 명시합니다.
+- **입력 바인딩** ([talkabout/collaboration.py](talkabout/collaboration.py)): 검증된 참조(메시지/산출물 버전)의 `sha256` 바이트 결속을 운반하고, 산출물 버전마다 주장된 source 집합 전체를 결속하는 `input_sha256`(길이 프리픽스 직렬화)을 저장합니다.
+- **시뮬레이션** ([tools/simulate_r6_contracts.py](tools/simulate_r6_contracts.py)): 기능당 100회×시드 + 스토어 락 스레드 경합으로 불변식을 고정 — 발견·수정 내역은 [시뮬레이션 결과](analysis/r6-next-steps-simulation.md), 총괄은 [R6 종합](analysis/r6-00-SYNTHESIS.md)에 있습니다. 이 강화는 이미지 재배포·운영 배포를 뜻하지 않습니다.
+
 ## 화면
 
 합성 데모 데이터로 로컬 캡처했습니다(운영 데이터 아님).
