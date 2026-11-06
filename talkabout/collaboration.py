@@ -59,12 +59,24 @@ def input_fingerprint(sources):
     its id with an empty digest, so removing it (or leaving it unbound) changes
     the fingerprint. ``None`` means *no source was claimed at all*, so legacy
     unverified input and a claimed-but-unbound source can never compare equal.
+
+    Rows are length-prefixed (a prefix-free encoding), so an embedded ``\\n`` or
+    ``\\t`` inside a source_id or sha256 can never merge with the row separator
+    into a string that also represents a *different* claimed set.
     """
     rows = sorted((str(source.get('source_id')), str(source.get('sha256') or ''))
                  for source in sources if source.get('source_id'))
     if not rows:
         return None
-    return hashlib.sha256('\n'.join('%s\t%s' % pair for pair in rows).encode('utf-8')).hexdigest()
+    digest = hashlib.sha256()
+    for sid, sha in rows:
+        for part in (sid, sha):
+            raw = part.encode('utf-8')
+            digest.update(str(len(raw)).encode('ascii'))
+            digest.update(b':')
+            digest.update(raw)
+            digest.update(b',')
+    return digest.hexdigest()
 
 
 def source_id(source):

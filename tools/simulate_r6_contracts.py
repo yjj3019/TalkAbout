@@ -209,6 +209,18 @@ def simulate_b(rounds):
                 again = call(resolve_uncertain, room, task, actor, body_ack, now)
                 if again[0] != 'ok' or again[1].get('replay') is not True:
                     violations += inv(True, 'B', n, 'resolution-replay-diverges', str(again))
+        # server_start_v1 rounds: a granted-but-unstarted reservation must not be
+        # able to report an outcome, and the grant must not execute directly.
+        if n % 3 == 0:
+            task2 = make_task(room, tid + 's', now)
+            task2['execution_protocol'] = 'server_start_v1'
+            sid = '%064x' % R.getrandbits(256)
+            granted = call(grant_reservation, room, task2, actor, {**fence(task2), 'purpose': 'task', 'reservation_id': sid}, now)
+            if granted[0] != 'ok' or granted[1].get('execute') is not False or granted[1].get('reserved') is not True:
+                violations += inv(True, 'B', n, 'server-start-grant-contract', str(granted))
+            premature = call(reservation_outcome, room, task2, actor, sid, {'state': 'completed'}, now)
+            if premature[0] == 'ok':
+                violations += inv(True, 'B', n, 'server-start-outcome-before-start', str(premature))
     print(f'B retry contract: {rounds} rounds, executed reservations={outcomes_seen}, violations={violations}')
     return violations
 
@@ -270,6 +282,15 @@ def simulate_c(rounds):
                 violations += inv(True, 'C', n, 'partial-binding-collapses-to-legacy', '')
             if len(half) > 1 and fp_half == input_fingerprint(half[:-1]):
                 violations += inv(True, 'C', n, 'unbound-source-cannot-drop-out-silently', '')
+        # Separator-boundary safety (R6 finding 2026-11-06): an embedded newline or
+        # tab inside source_id/sha256 must never collide with a *different* set.
+        if n % 3 == 0:
+            merged = input_fingerprint([{'source_id': 'a', 'sha256': 'b\nc\td'}])
+            split = input_fingerprint([{'source_id': 'a', 'sha256': 'b'}, {'source_id': 'c', 'sha256': 'd'}])
+            if merged is None or merged == split:
+                violations += inv(True, 'C', n, 'separator-boundary-collision', '')
+            if input_fingerprint([{'source_id': 'x\ty', 'sha256': ''}]) == input_fingerprint([{'source_id': 'x', 'sha256': 'y'}]):
+                violations += inv(True, 'C', n, 'tab-boundary-collision', '')
     print(f'C input binding: {rounds} rounds, violations={violations}')
     return violations
 

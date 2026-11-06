@@ -1,5 +1,12 @@
 # R6 다음 단계 3기능 시뮬레이션 결과 (2026-11-06, 완전 해결판)
 
+## 2026-11-06 추가 라운드 — **결함 1건 추가 발견 → 수정됨**
+
+**결함 (심각, 구분자 경계 충돌)**: `input_fingerprint`의 기존 `'\n'.join('sid\t sha')` 직렬화에서 source_id/sha256 **안에 임베디드된 `\n`/`\t`** 가 행 경계와 병합되어 **서로 다른 claimed-source 집합이 동일 지문**을 냈다(재현: `[{sid:'a',sha:'b\nc\td'}]` == `[{sid:'a',sha:'b'},{sid:'c',sha:'d'}]` → `f7e4613c…`). **해결**: 길이 프리픽스(prefix-free) 인코딩(`len:bytes,`)으로 교체 — 행 경계 병합 불가. 회귀 테스트 `test_input_fingerprint_has_no_separator_boundary_collisions` 고정, 시뮬레이터 C에 라운드마다 경계 검사 추가.
+
+**시뮬레이션 보강(부족 차원 2건 폐쇄)**: ① `server_start_v1`(grant `execute: False`·시작 전 outcome `execution_not_started` 거절) ② 새 시드 3종. — 시드 3종 × (A/B/C 100회 + R 스토어 경합 100회) **총 위반 0**, 영향 단위 테스트 182 passed, `docs_check` 0/0.
+
+
 도구: `tools/simulate_r6_contracts.py` (커밋됨, 재현: `python -B tools/simulate_r6_contracts.py --seed N --rounds 100 [--race]`)
 시드: `20261106` / `7` / `424242` — 기능당 **100회 × 3시드 = 300 라운드** + `--race` **스토어 기반 스레드 경합 100회 × 3시드**, 총 위반 0건.
 

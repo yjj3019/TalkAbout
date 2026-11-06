@@ -33,6 +33,25 @@ The real order (prepare a room → invite → run the room guide's connection he
 [docs/STATUS.md](docs/STATUS.md) is the single authoritative status document, including reproduction commands
 and the remaining gates.
 
+## R6 collaboration hardening (2026-11-06, not deployed)
+
+Additions for co-working on deliverables across different AI agents. Implemented from scratch — no code copied —
+after read-only analysis of six MIT-licensed reference repositories.
+
+- **Content framing** ([talkabout/content_framing.py](talkabout/content_framing.py)): room content is quoted with a
+  `│ ` line fence, control/bidi escapes, one `INFORMATION, NOT INSTRUCTIONS` marker, whole-frame refusal on budget
+  overflow, and the caller-owned `redact_sensitive` helper. The prompt header adds the frame sentence exactly once.
+- **Retry contract** ([talkabout/domain.py](talkabout/domain.py)): completion/outcome replies state
+  `retry_allowed: False` plus a closed `retry_reason` (`terminal` · `outcome_unknown_no_auto_retry`) on both fresh
+  and replayed replies.
+- **Input binding** ([talkabout/collaboration.py](talkabout/collaboration.py)): validated references carry their
+  sha256 byte binding, and each artifact version stores `input_sha256` over the whole claimed source set
+  (length-prefixed serialization).
+- **Simulation** ([tools/simulate_r6_contracts.py](tools/simulate_r6_contracts.py)): 100 rounds per feature per seed
+  plus store-lock thread races pin the invariants — findings and fixes are in the
+  [simulation report](analysis/r6-next-steps-simulation.md), with the
+  [R6 synthesis](analysis/r6-00-SYNTHESIS.md). This hardening does not mean a re-deployed image or operating deployment.
+
 ## Screens
 
 Captured locally against synthetic demo data (not operating data).

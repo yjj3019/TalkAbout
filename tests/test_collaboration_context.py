@@ -66,6 +66,20 @@ def test_input_fingerprint_binds_exact_bytes_in_source_id_order():
     assert input_fingerprint(forward) != input_fingerprint(changed)
 
 
+def test_input_fingerprint_has_no_separator_boundary_collisions():
+    # Regression for the R6 simulation finding (2026-11-06): joining rows with
+    # "\\n"/"\\t" let an embedded separator merge rows, so two *different*
+    # claimed sets produced the same digest. Length-prefixed serialization must
+    # keep them distinct.
+    embedded = input_fingerprint([{'source_id': 'a', 'sha256': 'b\nc\td'}])
+    split = input_fingerprint([{'source_id': 'a', 'sha256': 'b'},
+                              {'source_id': 'c', 'sha256': 'd'}])
+    assert embedded != split
+    assert embedded is not None and split is not None
+    lone_tab = input_fingerprint([{'source_id': 'x\ty', 'sha256': ''}])
+    assert lone_tab is not None and lone_tab != input_fingerprint([{'source_id': 'x', 'sha256': 'y'}])
+
+
 def test_input_fingerprint_is_none_only_when_no_source_is_claimed():
     # A claimed-but-unbound source must never compare equal to "nothing claimed".
     assert input_fingerprint([]) is None

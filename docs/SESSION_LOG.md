@@ -1,5 +1,13 @@
 # TalkAbout session log
 
+## 2026-11-06 — 시뮬레이션 100회 재검증: 구분자 경계 충돌 결함 발견·수정
+
+- 사용자 요청: "시뮬레이션 100회 검증하고 부족한점 도출하여 해결점 만들어줘."
+- **결함(심각→수정)**: `input_fingerprint` 직렬화의 `\n`/`\t` 구분자가 source_id/sha256 내 임베디드 문자와 병합 → 서로 다른 claimed-source 집합이 **동일 지문**(`f7e4613c…` 재현). **길이 프리픽스 인코딩**으로 교체, `test_input_fingerprint_has_no_separator_boundary_collisions` 회귀 테스트 추가.
+- **시뮬레이션 보강**: B에 `server_start_v1` 차원(grant execute:False·시작 전 outcome 거절), C에 경계 인코딩 차원 추가 → 시드 3종 × 100회(=A/B/C+R 경합) **위반 0**, 영향 단위 테스트 182 passed, `docs_check` 0/0.
+- 문서: `analysis/r6-next-steps-simulation.md` 갱신. 남은 설계 경계(자동 시크릿 탐지·PG 픽스처) 유지.
+
+
 ## 2026-11-06 — 남은 NOTRUN 항목 해소: redact_sensitive 프리미티브 + 지문 avalanche 증거
 
 - 사용자 요청: "남은 문제점 마져 해결해줘."
