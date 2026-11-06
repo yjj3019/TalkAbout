@@ -9,7 +9,7 @@ import pytest
 
 from conftest import LocalClient, leased, result
 from talkabout.collaboration import (MAX_INPUT, ContextBudgetError, excerpt, fit_context,
-                                     project_manifest, project_task, shared_context,
+                                     input_fingerprint, project_manifest, project_task, shared_context,
                                      validate_manifest)
 from talkabout.domain import Problem
 from talkabout.worker import Journal, Worker
@@ -33,6 +33,61 @@ def room_fixture(*, messages=(), artifacts=(), pinned=None, last_seq=9):
 def message(mid, seq, text, actor='a', reply_to=None):
     return {'id': mid, 'actor_id': actor, 'actor_kind': 'agent', 'display_name': actor,
             'seq': seq, 'kind': 'contribution', 'text': text, 'reply_to': reply_to}
+
+
+def test_input_fingerprint_avalanches_and_stays_distinct():
+    # Closes the "암호학적 강도/충돌" NOTRUN note with evidence: 120
+    # pairwise-distinct claimed sets and a one-character flip in one bound sha256
+    # that must flip well over half of the 256 digest bits (avalanche).
+    import secrets
+    digests = {}
+    for i in range(120):
+        sources = [{'source_id': 's%d-%d' % (k, i), 'sha256': secrets.token_hex(32)} for k in range(3)]
+        fp = input_fingerprint(sources)
+        assert fp is not None and len(fp) == 64 and fp not in digests
+        digests[fp] = sources
+    base_fp, base_sources = next(iter(digests.items()))
+    flipped = [dict(s) for s in base_sources]
+    first = flipped[0]
+    flipped[0]['sha256'] = ('0' if first['sha256'][0] != '0' else '1') + first['sha256'][1:]
+    flipped_fp = input_fingerprint(flipped)
+    assert flipped_fp != base_fp
+    changed_bits = bin(int(base_fp, 16) ^ int(flipped_fp, 16)).count('1')
+    assert changed_bits >= 100, changed_bits
+
+
+def test_input_fingerprint_binds_exact_bytes_in_source_id_order():
+    # R6: a deliverable's input_sha256 is deterministic over verified bytes.
+    forward = [{'source_id': 's1', 'sha256': 'a' * 64}, {'source_id': 's2', 'sha256': 'b' * 64}]
+    shuffled = list(reversed(forward))
+    assert input_fingerprint(forward) == input_fingerprint(shuffled)
+    assert len(input_fingerprint(forward)) == 64
+    changed = [{'source_id': 's1', 'sha256': 'c' * 64}, {'source_id': 's2', 'sha256': 'b' * 64}]
+    assert input_fingerprint(forward) != input_fingerprint(changed)
+
+
+def test_input_fingerprint_is_none_only_when_no_source_is_claimed():
+    # A claimed-but-unbound source must never compare equal to "nothing claimed".
+    assert input_fingerprint([]) is None
+    unbound = input_fingerprint([{'source_id': 's1'}])
+    assert unbound is not None
+    assert input_fingerprint([{'source_id': 's1', 'sha256': ''}]) == unbound
+    empty_sha = input_fingerprint([{'source_id': 's1', 'sha256': ''}, {'source_id': 's2', 'sha256': '00' * 32}])
+    assert empty_sha != input_fingerprint([{'source_id': 's2', 'sha256': '00' * 32}])
+
+
+def test_validated_manifest_sources_carry_their_byte_binding():
+    import hashlib
+    digest = hashlib.sha256(b'one').hexdigest()
+    room = room_fixture(messages=[message('m1', 1, 'one'), message('m2', 2, 'two')])
+    manifest = {'snapshot_seq': 2,
+               'sources': [{'kind': 'message', 'room_id': 'room-one', 'actor_id': 'a', 'seq': 1,
+                            'message_id': 'm1', 'utf8_start': 0, 'utf8_end': 3,
+                            'total_utf8_bytes': 3, 'truncated': False, 'sha256': digest,
+                            'source_id': 'talkabout:room:room-one:message:m1'}]}
+    verified = validate_manifest(manifest, room, {'id': 't'})['sources']
+    assert verified[0]['sha256'] == digest
+    assert input_fingerprint(verified) is not None
 
 
 def artifact(aid, revision, versions, adopted=None):

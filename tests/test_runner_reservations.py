@@ -32,6 +32,33 @@ def reservations_of(core, rid, task):
     return core.store.rooms[rid]['tasks'][task['id']].get('_reservations', [])
 
 
+def test_an_outcome_reply_states_the_retry_contract_explicitly(fixture):
+    # R6 (session-peer 3-state contract): reporting an outcome is terminal for that
+    # reservation; an unknown-outcome call is never resubmitted. The reply names it,
+    # and a replay of the same outcome carries the same contract (never a fresh one).
+    _, core, rid = fixture
+    task = leased(core, rid)
+    reserve(core, rid, task)
+    reported = outcome(core, rid, task, state='completed')
+    assert reported['retry_allowed'] is False
+    assert reported['retry_reason'] == 'terminal'
+    replay = outcome(core, rid, task, state='completed', key='replay-same')
+    assert replay['replay'] is True and replay['retry_allowed'] is False
+    assert replay['retry_reason'] == 'terminal'
+    with pytest.raises(Problem, match='reservation_outcome_conflict'):
+        outcome(core, rid, task, state='uncertain', key='contradiction-2')
+
+
+def test_an_uncertain_outcome_names_no_auto_retry(fixture):
+    # A started call with no recorded outcome blocks new work and says so in the reply.
+    _, core, rid = fixture
+    task = leased(core, rid)
+    reserve(core, rid, task)
+    reported = outcome(core, rid, task, state='uncertain')
+    assert reported['retry_allowed'] is False
+    assert reported['retry_reason'] == 'outcome_unknown_no_auto_retry'
+
+
 def test_a_reservation_is_granted_once_and_a_replay_never_becomes_a_second_call(fixture):
     _, core, rid = fixture
     task = leased(core, rid)
