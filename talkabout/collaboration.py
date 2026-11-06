@@ -51,6 +51,22 @@ def _sha256(text):
     return hashlib.sha256(text.encode('utf-8')).hexdigest()
 
 
+def input_fingerprint(sources):
+    """Deterministic digest over the *claimed* source set and its byte bindings.
+
+    Every claimed source_id is folded into the digest (in source_id sort order)
+    together with its sha256; a claimed source without a byte binding contributes
+    its id with an empty digest, so removing it (or leaving it unbound) changes
+    the fingerprint. ``None`` means *no source was claimed at all*, so legacy
+    unverified input and a claimed-but-unbound source can never compare equal.
+    """
+    rows = sorted((str(source.get('source_id')), str(source.get('sha256') or ''))
+                 for source in sources if source.get('source_id'))
+    if not rows:
+        return None
+    return hashlib.sha256('\n'.join('%s\t%s' % pair for pair in rows).encode('utf-8')).hexdigest()
+
+
 def source_id(source):
     prefix = 'talkabout:room:' + source['room_id']
     if source['kind'] == 'message':
@@ -438,7 +454,8 @@ def validate_manifest(manifest, room, task):
             require(isinstance(source.get('sha256'), str)
                     and source['sha256'] == hashlib.sha256(raw[:end]).hexdigest(),
                     'invalid_input_source', 422)
-            keys = ('kind', 'room_id', 'actor_id', 'seq', 'utf8_start', 'utf8_end', 'total_utf8_bytes', 'truncated')
+            keys = ('kind', 'room_id', 'actor_id', 'seq', 'utf8_start', 'utf8_end',
+                    'total_utf8_bytes', 'truncated', 'sha256')
             normalized = {key: source[key] for key in keys}
             normalized.update({key: source[key] for key in
                                (('message_id',) if kind == 'message' else ('artifact_id', 'version_id', 'revision'))})

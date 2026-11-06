@@ -26,6 +26,11 @@
 | `r4-web.md` | P1-4 웹 SSE 갱신 코얼레스(100ms 디바운스+400ms 상한, hidden 지연) before/after·검증·위험 |
 | `r4-verification.md` | R3 P0/P1 반영 내역·검증 결과·라이선스 준수·남은 한계. 이 샌드박스 제약과 우회 검증 방법 기록 |
 | `r5-p2-verification.md` | P2 경량 fence·자격증명 배치 조회, 보안·호환성 검증 및 남은 한계 |
+| `BRIEF-R6.md` | 6라운드(협업 작업장) 브리프 — artiboard · session-peer · moai · openclaw · hermes-agent · openmuse · OpenGrokBot |
+| `r6-artiboard.md` · `r6-session-peer.md` · `r6-moai.md` | 6라운드 상세 3편. 보드 동시성(claim+if_version)·전달 증거(제출≠소비≠ACK)·저장소-내재 트래커(필드 3-way 머지·감독→일꾼) |
+| `r6-openclaw-hermes-dreaming.md` | OpenClaw 드리밍(Light→REM→Deep)·Hermes 메모리 외부 조사 **점별 검증** — ✅14건+정정 7건+모방 금지 목록 |
+| `r6-openmuse.md` · `r6-opengrokbot.md` | AG-UI 실행 인프라(제안→해시→클레임→영수증·멱등 키)·teammate(=컴퓨터)·BYOK·외부 데이터 펜스 |
+| `r6-00-SYNTHESIS.md` | 6라운드 종합 — 영역별 최적 출처, **반영 내역**(`talkabout/content_framing.py`+테스트 16건), 다음 단계, 모방 금지 목록 |
 
 ## 인용 규칙
 

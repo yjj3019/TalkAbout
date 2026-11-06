@@ -818,7 +818,12 @@ def reservation_outcome(room, task, actor, reservation_id, body, now):
         require(item["state"] != "reserved", "execution_not_started", 409)
     if item["state"] not in {"reserved", "started"} and not item.get("_server_uncertain"):
         require(item["state"] == state, "reservation_outcome_conflict", 409)
-        return {"reservation_id": reservation_id, "state": item["state"], "replay": True}
+        # A replayed outcome is just as terminal as the first one; the retry
+        # contract must be present on every outcome reply, not only on the first.
+        reason = (OUTCOME_RETRY_REASON_COMPLETED if item["state"] == "completed"
+                  else OUTCOME_RETRY_REASON_UNKNOWN)
+        return {"reservation_id": reservation_id, "state": item["state"], "replay": True,
+                "retry_allowed": False, "retry_reason": reason}
     item.pop("_server_uncertain", None)
     item["state"] = state
     item["reported_at"] = now
@@ -828,11 +833,22 @@ def reservation_outcome(room, task, actor, reservation_id, body, now):
         task["state"] = "uncertain"
         task["lease_expires_at"] = 0
         emit(room, "task.uncertain", task_id=task["id"], attempt=task["attempt"])
-    return {"reservation_id": reservation_id, "state": state}
+    # Delivery contract: an outcome is terminal for this reservation. The server never
+    # re-granted execution for it, so a worker cannot safely resubmit the same call.
+    reason = OUTCOME_RETRY_REASON_COMPLETED if state == "completed" else OUTCOME_RETRY_REASON_UNKNOWN
+    return {"reservation_id": reservation_id, "state": state,
+            "retry_allowed": False, "retry_reason": reason}
 
 
 RESOLUTION_REASONS = {"operator_review", "worker_lost", "duplicate_risk", "other"}
 RESOLUTION_FIELDS = {"attempt", "ack_unknown_effects", "reason_code", "note"}
+
+
+# Closed retry vocabulary for reservation outcomes (R6, session-peer 3-state
+# contract): reporting an outcome is terminal for that reservation id, and an
+# unknown-outcome call is never resubmitted. These tokens are the only values.
+OUTCOME_RETRY_REASON_COMPLETED = "terminal"
+OUTCOME_RETRY_REASON_UNKNOWN = "outcome_unknown_no_auto_retry"
 
 
 def resolve_uncertain(room, task, actor, body, now):

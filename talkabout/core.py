@@ -9,7 +9,7 @@ import unicodedata
 from .participation import Participation, bound_session
 
 from .identity import REAL_RUNTIMES, public_connection, public_runtime_check
-from .collaboration import project_manifest, project_task, validate_manifest
+from .collaboration import input_fingerprint, project_manifest, project_task, validate_manifest
 from .text_files import (claim_proof, filter_refs, public_task, token_hash, validate_refs)
 
 from .domain import (AGENT_PERMISSIONS, EVENT_CAPACITY, HUMAN_PERMISSIONS, KEY_CAPACITY,
@@ -20,7 +20,8 @@ from .domain import (AGENT_PERMISSIONS, EVENT_CAPACITY, HUMAN_PERMISSIONS, KEY_C
                      ident, message, new_room, reservation_outcome, resolve_uncertain, start_reservation,
                      record_task_event, replay, require, room_byte_size, save_response, schedule, participant_permissions,
                      abort_plan_dispatch as abort_plan_run, queue_ready_plan_nodes,
-                     _task_requires_input_protocol, _check_task_required_inputs)
+                     _task_requires_input_protocol, _check_task_required_inputs,
+                     OUTCOME_RETRY_REASON_COMPLETED)
 
 
 MEMBERSHIP_HWM_LIMIT = 128
@@ -1183,10 +1184,12 @@ class Core(Participation):
                             # A change-proposal room must receive a diff; anything else is refused
                             # before it becomes a version, and the platform never applies it.
                             kind = deliverable_artifact_kind(room, msg["text"])
+                            input_fp = input_fingerprint(inputs["sources"])
                             artifact["versions"].append({"id": ident(), "seq": room["last_seq"] + 1, "text": msg["text"], "kind": kind, "actor_id": actor["id"],
                                                          "sources": [source["source_id"] for source in inputs["sources"]],
                                                          "input_references": copy.deepcopy(inputs),
-                                                         "version_revision": artifact["revision"] + 1, "ai_generated": True})
+                                                         "version_revision": artifact["revision"] + 1, "ai_generated": True,
+                                                         **({"input_sha256": input_fp} if input_fp else {})})
                             artifact["revision"] += 1
                             emit(room, "artifact.changed", artifact_id=aid, actor_id=actor["id"])
                             proposal = copy.deepcopy(artifact)
@@ -1200,7 +1203,8 @@ class Core(Participation):
                         record_task_event(room, target, "completed", now)
                         member["greeted"] = True
                         emit(room, "task.completed", task_id=target)
-                        response = {"message": msg, "task": copy.deepcopy(task)}
+                        response = {"message": msg, "task": copy.deepcopy(task),
+                                    "retry_allowed": False, "retry_reason": OUTCOME_RETRY_REASON_COMPLETED}
                         if proposal:
                             response["artifact"] = proposal
                     else:
