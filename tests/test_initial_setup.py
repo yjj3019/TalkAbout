@@ -1,5 +1,6 @@
 import concurrent.futures
 import json
+import threading
 import time
 
 import pytest
@@ -95,14 +96,17 @@ def test_code_terminal_only(monkeypatch, capsys, stream):
 
 
 def test_scheduler_waits_for_owner():
-    store = MemoryStore(); ticks=[]
-    store.tick_all = lambda: ticks.append(True)
+    store = MemoryStore(); ticks=[]; ticked=threading.Event()
+    def tick_all():
+        ticks.append(True)
+        ticked.set()
+    store.tick_all = tick_all
     with TestClient(create_app(store, allowed_hosts=['testserver'])):
+        # Wait beyond the scheduler interval without polling or starting a provider.
         time.sleep(.65)
         assert not ticks
         complete_setup(store, body(issue_code(store)))
-        time.sleep(.65)
-        assert ticks
+        assert ticked.wait(2), 'scheduler did not resume after setup completed'
 
 
 def test_postgres_restart_failed_attempts_concurrency_and_transaction(postgres_fixture):

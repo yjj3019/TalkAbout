@@ -8,6 +8,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse, Response
+from mimetypes import guess_type
 from starlette.middleware.gzip import GZipMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
@@ -164,7 +165,8 @@ def create_app(store, start_scheduler=True, allow_fixture_bearer=False, allowed_
                 fresh = False
         if fresh:
             return Response(status_code=304, headers={"ETag": etag, "Last-Modified": last_modified})
-        return FileResponse(target, headers={"ETag": etag, "Last-Modified": last_modified})
+        media_type = 'text/javascript' if target.suffix == '.mjs' else guess_type(target.name)[0]
+        return FileResponse(target, media_type=media_type, headers={"ETag": etag, "Last-Modified": last_modified})
 
     @app.get("/")
     def index(request: Request):

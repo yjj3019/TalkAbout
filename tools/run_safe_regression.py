@@ -64,6 +64,8 @@ def main():
             raise SystemExit('fixture config not found: '+str(postgres_config))
     if arguments and arguments[0]=='child':
         return python_contracts(Path(arguments[1]), postgres_config)
+    if os.environ.get('TALKABOUT_CI_GUARDED_CHILD') == '1':
+        raise SystemExit('refusing nested CI runner in guarded fixture child')
     sys.path.insert(0,str(ROOT))
     from talkabout.processes import ManagedProcess
     output = Path(os.environ.get('TALKABOUT_CI_RESULTS') or ROOT/'.ci-results').resolve()
