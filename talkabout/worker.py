@@ -487,8 +487,16 @@ class Worker:
                     return "stale"
                 status = {"state": "started"}
             if status.get("reserved") is True:
-                self.journal.save(tid, "claimed", payload)
-                state = "claimed"
+                # The idempotent query proves /start was not authorized. Do not
+                # retry /start with a rebuilt (possibly changed) input manifest on
+                # this attempt. Retire it as a safe pre-call failure; lease expiry
+                # and the ordinary queued event may authorize one fresh attempt.
+                payload.update(safe_pre_call_retry=True, runtime_started=False)
+                self.journal.save(tid, "pre_call_retry", payload)
+                if self.journal.stop_requested():
+                    self.journal.stop_state("stopped")
+                    return "stopped"
+                return "retry_wait"
             else:
                 state = "call_started"
         if state == "call_started":

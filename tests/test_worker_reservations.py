@@ -6,6 +6,7 @@ never free and never retried.
 """
 import httpx
 import pytest
+import time
 
 from talkabout.worker import Journal, SyntheticRuntime, Worker, reservation_id
 from conftest import LocalClient, control
@@ -152,8 +153,8 @@ def test_lost_start_response_never_launches_on_restart(fixture, tmp_path):
     recovered.close()
 
 
-def test_crash_before_start_send_has_no_unreconcilable_outcome_debt(fixture, tmp_path):
-    store, _, _ = fixture
+def test_start_response_loss_before_effect_is_reconciled_as_safe_pre_call_retry(fixture, tmp_path):
+    store, _, rid = fixture
 
     class BeforeStart(LocalClient):
         def request(self, method, path, body=None, key=None, params=None):
@@ -170,9 +171,26 @@ def test_crash_before_start_send_has_no_unreconcilable_outcome_debt(fixture, tmp
     assert not journal.outcomes()
     journal.close()
     recovered = Journal(path)
-    assert Worker(LocalClient(store), recovered, runtime).step() == 'completed'
-    assert runtime.calls == 1 and not recovered.outcomes()
+    assert Worker(LocalClient(store), recovered, runtime).step() == 'retry_wait'
+    assert runtime.calls == 0 and recovered.status() == {'pre_call_retry': 1}
     recovered.close()
+
+    # The server's ordinary lease-expiry/requeue protocol creates a new attempt;
+    # it gets a fresh reservation and one runtime call. The old attempt never
+    # reuses its start idempotency key with a newly built input manifest.
+    with store.transaction(rid, 'fixture-human') as (_, room):
+        task = next(iter(room['tasks'].values()))
+        task['lease_expires_at'] = time.time() - 1
+    store.tick_all()
+    resumed = Journal(path)
+    fresh = LocalClient(store)
+    try:
+        worker = Worker(fresh, resumed, runtime)
+        assert worker.step() == 'completed'
+        assert runtime.calls == 1 and resumed.status() == {'done': 1}
+    finally:
+        fresh.http.close()
+        resumed.close()
 
 
 def test_outcome_capacity_never_evicts_unacknowledged_reports(tmp_path):

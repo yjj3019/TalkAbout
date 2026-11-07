@@ -18,14 +18,15 @@
 ## 보존한 안전 경계
 
 - pause/close 및 server-side generation/membership fence는 여전히 외부 effect rollback을 뜻하지 않는다. Stop은 새 전송을 막는 로컬 신호이지 원격 실행 종료 증거가 아니다.
-- `/start` 요청 후 불명 응답·runtime timeout/crash는 `uncertain`이며 자동 재시도 금지.
+- `/start` 요청 후 불명 응답·runtime timeout/crash는 `uncertain`이며 자동 재시도 금지. 응답 유실 뒤 같은 attempt의 reservation이 여전히 `reserved`로 확인되면 그 start 요청은 commit되지 않은 상태로 판정하고, 새 입력 manifest를 같은 idempotency key로 재전송하지 않는다. worker는 기존 attempt를 `pre_call_retry`로 retire한 뒤 정상 lease expiry/requeue를 기다린다. 재시도는 새 attempt/reservation identity로만 가능하다.
 - 성공한 runtime completion과 게시된 방 메시지/adopted artifact는 서로 다른 상태다.
 - 사전 start 예약은 아직 call authorization이 아니다. provider 비용·실행은 오직 서버의 명시 `execute:true` start 응답 뒤에 시작한다.
 
 ## 검증 상태
 
-- Targeted unit suites: **39 passed** (`tests/test_worker_reservations.py`, `tests/test_worker_api.py`, `tests/test_review_regressions.py`, `tests/test_journal_stop_flag.py`) using an ephemeral `uv run` environment from locked requirements; no persistent package install.
+- Targeted worker/reservation/stop suites after the latest pre-call reconciliation change: **38 passed** (`tests/test_worker_reservations.py`, `tests/test_worker_api.py`, `tests/test_review_regressions.py`, `tests/test_journal_stop_flag.py`) using ephemeral `uv run` from locked requirements.
 - `tests/test_review_regressions.py::test_stop_after_runtime_result_saved_preserves_exact_result_for_explicit_resume` also passed in the focused run.
+- Targeted `tests/test_required_predecessor_server.py` and `tests/test_required_input_failure.py`: 22 passed, 2 PostgreSQL cases skipped because no local `initdb`/isolated cluster was available.
 - `git diff --check`: passed. Documentation contract: `docs_check 0 new, 0 known` (rerun after final report edit).
 - Existing Starlette/httpx deprecation warning only.
 - Local `tools/run_safe_regression.py` full guarded run after CI fixes: **Python 2087 passed, 136 skipped, 7 deselected, 0 failed**; Node suite exit 0 (see the per-test `node.log` for exact count). PostgreSQL-backed tests were skipped because this local invocation had no isolated `--postgres-config` fixture; CI creates an ephemeral PostgreSQL cluster. CI also has a separate POSIX containment job.
