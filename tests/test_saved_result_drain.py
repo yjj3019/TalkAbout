@@ -43,7 +43,7 @@ def test_saved_only_obeys_stop_without_submitting_or_polling(fixture,tmp_path):
         worker=Worker(client,journal,NoRuntime())
         with journal.db:journal.set_setting('stop',True)
         client.calls.clear()
-        assert worker.step(saved_result_only=True)=='stopped'
+        assert worker.step(saved_result_only=True)=='result_pending'
         assert journal.status()=={'result_saved':1} and client.calls==[]
     finally:journal.close();client.http.close()
 
