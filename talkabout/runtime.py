@@ -143,21 +143,29 @@ def _bounded_call(runtime, context, cancel, timeout, *, with_evidence):
                     pass
                 else:
                     if ok:
+                        # The runtime may have completed just before cancel became
+                        # observable. Preserve this result for durable save; caller
+                        # still checks stop before publish.
                         return value
+                    if cancel.is_set() and getattr(value, 'code', None) == 'runtime_cancelled':
+                        stop()
                     raise value
             stop()
         try:
             ok, value = output.get(timeout=min(0.02, remaining))
-            if execution_done.is_set():
-                # Runtime returned before the worker observed the stop. Keep its
-                # result/evidence durable; Worker separately blocks publication.
-                if ok:
-                    return value
-                raise value
             if cancel.is_set() or time.monotonic() >= deadline:
-                if ok:
+                if execution_done.is_set() and ok:
+                    # Runtime returned before the worker observed the stop. Keep
+                    # successful output durable; Worker still blocks publication.
                     return value
-                raise value
+                if not ok and cancel.is_set() and getattr(value, 'code', None) == 'runtime_cancelled':
+                    stop()
+                if not ok:
+                    raise value
+                stop()
+            if ok:
+                return value
+            raise value
             if ok:
                 return value
             raise value

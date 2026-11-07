@@ -92,6 +92,30 @@ def test_bounded_call_returns_when_shutdown_never_returns(monkeypatch):
         runtime.release.set()
 
 
+def test_cooperative_runtime_cancel_is_stopped_not_uncertain():
+    cancel = threading.Event()
+    started = threading.Event()
+    class Cooperative:
+        def run(self, context, signal):
+            started.set()
+            assert signal.wait(2)
+            from talkabout.adapters import AdapterError
+            raise AdapterError('runtime_cancelled')
+        def shutdown(self):
+            return True
+    def request_stop():
+        assert started.wait(1)
+        cancel.set()
+    stopper = threading.Thread(target=request_stop)
+    stopper.start()
+    try:
+        with pytest.raises(RuntimeTimeout) as result:
+            bounded_call(Cooperative(), {}, cancel, 5)
+        assert result.value.runtime_stopped is True
+    finally:
+        stopper.join(timeout=1)
+
+
 def test_completed_result_wins_stop_race_and_is_returned_for_durable_save():
     completed = threading.Event()
     release_shutdown = threading.Event()
@@ -111,7 +135,10 @@ def test_completed_result_wins_stop_race_and_is_returned_for_durable_save():
     result = []
 
     def call():
-        result.append(bounded_call(runtime, {}, cancel, 1))
+        try:
+            result.append(bounded_call(runtime, {}, cancel, 1))
+        except BaseException as error:
+            result.append(error)
 
     worker = threading.Thread(target=call)
     worker.start()
