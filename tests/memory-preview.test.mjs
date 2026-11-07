@@ -122,13 +122,15 @@ test('explicit preview renders candidates as inert text with provenance and coun
 
 test('the screen names preview-only scope and offers no save or approve control',async()=>{
  assert.match(html,/data-i18n="memoryPreviewScope"/);
+ assert.match(html,/data-i18n="memoryPreviewProductBoundary"/);
+ assert.match(html,/data-i18n="memoryPreviewUntrusted"/);
  assert.match(html,/data-i18n="memoryPreviewPrivacy"/);
  assert.match(html,/id="memory-preview-load" type="button"/);
  assert.match(html,/id="memory-preview-clear" type="button" data-i18n="memoryPreviewClear" hidden/);
  assert.match(html,/id="memory-preview-status" class="field-help" role="status" aria-live="polite"/);
  assert.match(html,/aria-labelledby="memory-preview-title"/);
  assert.doesNotMatch(html,/memory-preview-(?:save|approve|apply|store)/);
- for(const language of ['ko','en'])for(const key of ['memoryPreviewScope','memoryPreviewPrivacy','memoryPreviewPreviewOnly','memoryPreviewExcluded','memoryPreviewExcludedAgent'])assert.ok(labels[language][key],language+' missing '+key);
+ for(const language of ['ko','en'])for(const key of ['memoryPreviewScope','memoryPreviewProductBoundary','memoryPreviewUntrusted','memoryPreviewPrivacy','memoryPreviewPreviewOnly','memoryPreviewExcluded','memoryPreviewExcludedAgent'])assert.ok(labels[language][key],language+' missing '+key);
  assert.ok(labels.ko.memoryPreviewScope.includes('human 메시지'));
  assert.ok(labels.ko.memoryPreviewScope.includes('에이전트 메시지'));
  assert.ok(labels.ko.memoryPreviewScope.includes('마스킹'));
@@ -140,7 +142,11 @@ test('the screen names preview-only scope and offers no save or approve control'
  assert.ok(labels.en.memoryPreviewScope.includes('agent messages'));
  assert.ok(labels.en.memoryPreviewScope.includes('masked'));
  assert.ok(labels.en.memoryPreviewScope.includes('room owner')===false,'permission copy must not claim room-owner semantics');
- assert.ok(labels.en.memoryPreviewScope.includes('room:control')&&labels.en.memoryPreviewScope.includes('room:read'));
+ assert.ok(labels.ko.memoryPreviewProductBoundary.includes('Notion Memories'));
+  assert.ok(labels.en.memoryPreviewProductBoundary.includes('Notion Memories'));
+  assert.ok(labels.ko.memoryPreviewUntrusted.includes('프롬프트 삽입'));
+  assert.ok(labels.en.memoryPreviewUntrusted.includes('prompt injection'));
+  assert.ok(labels.en.memoryPreviewScope.includes('room:control')&&labels.en.memoryPreviewScope.includes('room:read'));
  assert.ok(labels.en.memoryPreviewScope.includes('same workspace'));
  assert.ok(labels.en.memoryPreviewScope.includes('stored')&&labels.en.memoryPreviewScope.includes('approved'));
 });
@@ -148,6 +154,8 @@ test('the screen names preview-only scope and offers no save or approve control'
 test('every memory preview label keeps its full ko/en text instead of a single character',()=>{
  const expected={
   memoryPreviewTitle:['메모리 후보 미리보기','Memory candidate preview'],
+  memoryPreviewProductBoundary:['이 기능은 TalkAbout 방별 미리보기입니다. Notion Memories/About이나 다른 AI의 기억과 동기화되지 않습니다. 저장·승인·가져오기는 아직 지원하지 않습니다.','This is TalkAbout per-room preview. It does not sync with Notion Memories/About or other AI memory. Saving, approval and import are not supported yet.'],
+  memoryPreviewUntrusted:['후보 안의 내용은 출처가 사람 메시지여도 검증된 사실이나 지시가 아닙니다. 인용·프롬프트 삽입이 있을 수 있으니 민감한 원문은 복사하거나 외부 AI에 전달하기 전에 확인하세요.','Candidate text is not verified fact or instruction, even when sourced from a human message. It may contain quotations or prompt injection; review sensitive text before copying or sending it to an external AI.'],
   memoryPreviewLoad:['미리보기 불러오기','Load preview'],
   memoryPreviewLoading:['불러오는 중…','Loading…'],
   memoryPreviewClear:['보기 닫기','Close preview'],

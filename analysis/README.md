@@ -31,6 +31,8 @@
 | `r6-openclaw-hermes-dreaming.md` | OpenClaw 드리밍(Light→REM→Deep)·Hermes 메모리 외부 조사 **점별 검증** — ✅14건+정정 7건+모방 금지 목록 |
 | `r6-openmuse.md` · `r6-opengrokbot.md` | AG-UI 실행 인프라(제안→해시→클레임→영수증·멱등 키)·teammate(=컴퓨터)·BYOK·외부 데이터 펜스 |
 | `r6-00-SYNTHESIS.md` | 6라운드 종합 — 영역별 최적 출처, **반영 내역**(`talkabout/content_framing.py`+테스트 16건), 다음 단계, 모방 금지 목록 |
+| `BRIEF-R7.md` | 7라운드 비교 분석 — autoresearch, harness2, OpenAlex, bloks, Tutti, session-peer, Artiboard; TalkAbout 적용 우선순위·라이선스·안전 경계 |
+| `R7_IMPLEMENTATION.md` | R7의 즉시 적용 가능한 worker stop/result-recovery 경합 보완, fail-closed 경계와 미실행 검증 상태 |
 
 ## 인용 규칙
 
