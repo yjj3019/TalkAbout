@@ -1,3 +1,4 @@
+import copy
 import json
 import threading
 import time
@@ -140,6 +141,85 @@ def test_stop_during_runtime_never_publishes_and_reports_outcome(fixture,tmp_pat
         control.close()
         release.set()
     assert exited.wait(1) and core.read('fixture-human',rid)['messages']==[]
+
+
+def test_stop_after_runtime_result_saved_preserves_exact_result_for_explicit_resume(fixture,tmp_path):
+    store, core, rid = fixture
+    path = tmp_path / 'stop-after-result.sqlite'
+
+    class CountedSynthetic(SyntheticRuntime):
+        calls = 0
+
+        def run(self, context, cancel):
+            self.calls += 1
+            return super().run(context, cancel)
+
+    class NoRuntime:
+        def run(self, *args):
+            raise AssertionError('saved-result recovery must not call the runtime')
+
+    runtime = CountedSynthetic()
+    journal = Journal(path)
+    client = LocalClient(store)
+    worker = Worker(client, journal, runtime)
+    original_request = client.request
+    stop_injected = threading.Event()
+
+    def request(method, resource, body=None, key=None, params=None):
+        if (method == 'POST' and resource.endswith('/heartbeat') and not stop_injected.is_set()
+                and 'runtime_completed' in (body or {}).get('events', [])):
+            # Inject local stop after result and complete key are durable, before publish.
+            assert journal.status() == {'result_saved': 1}
+            with journal.db:
+                journal.set_setting('stop', True)
+                journal.set_setting('stop_state', 'stop_requested')
+            stop_injected.set()
+        return original_request(method, resource, body, key, params)
+
+    client.request = request
+    try:
+        assert worker.step() == 'result_pending'
+        assert stop_injected.is_set() and runtime.calls == 1
+        assert journal.status() == {'result_saved': 1}
+        saved = journal.next()[2]
+        saved_body = copy.deepcopy(saved['complete'])
+        saved_key = saved['complete_key']
+        assert core.read('fixture-human', rid)['messages'] == []
+
+        stopped_client = LocalClient(store)
+        try:
+            stopped_worker = Worker(stopped_client, journal, NoRuntime())
+            assert stopped_worker.step() == 'result_pending'
+        finally:
+            stopped_client.http.close()
+        assert journal.status() == {'result_saved': 1}
+        assert runtime.calls == 1
+
+        # Simulate an explicit owner resume and resend exactly the stored result/key.
+        with journal.db:
+            journal.set_setting('stop', False)
+            journal.set_setting('stop_state', 'running')
+        resumed_client = LocalClient(store)
+        original_resume_request = resumed_client.request
+        resume_calls = []
+
+        def capture_resume(method, resource, body=None, key=None, params=None):
+            if method == 'POST' and resource.endswith('/complete'):
+                resume_calls.append((copy.deepcopy(body), key))
+            return original_resume_request(method, resource, body, key, params)
+
+        resumed_client.request = capture_resume
+        try:
+            assert Worker(resumed_client, journal, NoRuntime()).step() == 'completed'
+        finally:
+            resumed_client.http.close()
+        assert runtime.calls == 1 and resume_calls == [(saved_body, saved_key)]
+        assert journal.status() == {'done': 1}
+        messages = core.read('fixture-human', rid)['messages']
+        assert len(messages) == 1 and messages[0]['text'] == saved_body['result']['text']
+    finally:
+        journal.close()
+        client.http.close()
 
 
 def test_requeue_reactivates_only_proven_pre_call_terminal_row(fixture,tmp_path):

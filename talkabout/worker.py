@@ -442,9 +442,12 @@ class Worker:
                 status = self.journal.status()
             except sqlite3.Error:
                 status = None
-            unknown = True if status is None else bool(status.get("uncertain", 0) or status.get("call_started", 0))
+            unknown = True if status is None else bool(
+                status.get("uncertain", 0) or status.get("call_started", 0)
+                or status.get("stopped_before_submit", 0))
+            pending_result = status is not None and bool(status.get("result_saved", 0))
             self.journal.stop_state("unreachable" if unknown else "stopped")
-            return "stop_unconfirmed" if unknown else "stopped"
+            return "stop_unconfirmed" if unknown else ("result_pending" if pending_result else "stopped")
         if not saved_result_only:
             try:
                 self.poll()
@@ -468,7 +471,7 @@ class Worker:
         prefix = f"rooms/{rid}/tasks/{tid}"
         if state == "start_pending":
             # Distinguish a crash before sending start from a lost approval response.
-            # Only the latter is execution debt; an unstarted reservation can resume.
+            # The reservation was persisted before /start, so query the same ID first.
             task = payload["task"]
             fence = {k: task[k] for k in ("attempt", "generation", "membership_revision")}
             try:
@@ -711,6 +714,7 @@ class Worker:
                     check_deadline(self.run_deadline)
                     if self.journal.stop_requested():
                         self.journal.save(tid, "cancelled", payload)
+                        self.journal.stop_state("stopped")
                         return "stopped"
                     granted = self.client.request("POST", prefix + "/start",
                                                   {**fence, "reservation_id": reservation,
@@ -821,9 +825,11 @@ class Worker:
                     # loses its fence. Keep the saved result; never contradict the report.
                     return "heartbeat_failed"
             if stop_seen.is_set() or self.journal.stop_requested():
-                self.journal.save(tid, "stopped_before_submit", payload)
+                # The model result and completion key are already durable. Preserve
+                # the result for explicit resume; this is not a fully stopped worker
+                # until the exact saved result is either submitted or reviewed.
                 self.journal.stop_state("stopped")
-                return "stopped"
+                return "result_pending"
             check_deadline(self.run_deadline)
             self.client.request("POST", prefix + "/complete", payload["complete"], payload["complete_key"])
             self.journal.save(tid, "done", payload)

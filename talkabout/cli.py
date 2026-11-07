@@ -471,7 +471,7 @@ def main():
                     if result in {'uncertain', 'stale', 'unavailable', 'heartbeat_failed', 'runtime_timeout'} and not safe_drain:
                         final_state = 'failed'
                         break
-                    if result in {"stopped", "stop_unconfirmed", "backpressure"}:
+                    if result in {"stopped", "stop_unconfirmed", "result_pending", "backpressure"}:
                         break
                     if result in {"waiting", "retry_wait"}:
                         until = min(deadline, time.monotonic() + 0.25)
