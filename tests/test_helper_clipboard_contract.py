@@ -10,8 +10,14 @@ import json
 import os
 import shutil
 import subprocess
+from contextlib import nullcontext
 
 import pytest
+
+try:
+    from ci_guard import synthetic_powershell_launch
+except ImportError:
+    synthetic_powershell_launch = nullcontext
 
 ROOT = Path(__file__).resolve().parents[1]
 HELPER = ROOT / 'talkabout' / 'web' / 'connect-agent.ps1'
@@ -109,7 +115,10 @@ def test_dry_run_binds_optional_turn_to_selected_room(clipboard, want_turn, tmp_
         command += ['-Room', room, '-Agent', 'agent']
         if want_turn:
             command += ['-RequestTurn']
-    result = subprocess.run(command, capture_output=True, text=True, env={**os.environ, 'LOCALAPPDATA': str(tmp_path)})
+    with synthetic_powershell_launch():
+        result = subprocess.run(command, capture_output=True, text=True,
+                                env={**os.environ, 'TALKABOUT_CI_GUARDED_CHILD': '1',
+                                     'LOCALAPPDATA': str(tmp_path)})
     assert result.returncode == 0, result.stderr
     line = next(line for line in result.stdout.splitlines() if 'Command       :' in line)
     assert '--room ' + room in line
@@ -126,9 +135,10 @@ def test_dry_run_rejects_unsafe_room(room, tmp_path):
     pwsh = shutil.which('pwsh') or shutil.which('powershell')
     if not pwsh:
         pytest.skip('PowerShell unavailable')
-    result = subprocess.run([pwsh, '-NoProfile', '-File', str(HELPER), '-Server', 'http://127.0.0.1:18081',
-                             '-Room', room, '-Agent', 'agent', '-RequestTurn', '-DryRun', '-StateDir', str(tmp_path)],
-                            capture_output=True, text=True, env={**os.environ, 'LOCALAPPDATA': str(tmp_path)})
+    with synthetic_powershell_launch():
+        result = subprocess.run([pwsh, '-NoProfile', '-File', str(HELPER), '-Server', 'http://127.0.0.1:18081',
+                                 '-Room', room, '-Agent', 'agent', '-RequestTurn', '-DryRun', '-StateDir', str(tmp_path)],
+                                capture_output=True, text=True, env={**os.environ, 'LOCALAPPDATA': str(tmp_path)})
     assert result.returncode != 0
     assert 'Room must match' in result.stderr
     assert 'Command       :' not in result.stdout
@@ -141,10 +151,11 @@ def test_clipboard_rejects_different_room_case(tmp_path):
     payload = {'v': 1, 'origin': 'http://127.0.0.1:18081', 'room': 'Room', 'agent': 'agent',
                'runtime': 'codex', 'auth_mode': 'native', 'max_model_calls': 3,
                'request_turn': True, 'token': 'synthetic-token'}
-    result = subprocess.run([pwsh, '-NoProfile', '-File', str(HELPER), '-Server', payload['origin'],
-                             '-Room', 'room', '-FromClipboard', '-ClipboardText', json.dumps(payload),
-                             '-DryRun', '-StateDir', str(tmp_path)], capture_output=True, text=True,
-                            env={**os.environ, 'LOCALAPPDATA': str(tmp_path)})
+    with synthetic_powershell_launch():
+        result = subprocess.run([pwsh, '-NoProfile', '-File', str(HELPER), '-Server', payload['origin'],
+                                 '-Room', 'room', '-FromClipboard', '-ClipboardText', json.dumps(payload),
+                                 '-DryRun', '-StateDir', str(tmp_path)], capture_output=True, text=True,
+                                env={**os.environ, 'LOCALAPPDATA': str(tmp_path)})
     assert result.returncode != 0
     assert 'does not match the invite payload' in result.stderr
 
