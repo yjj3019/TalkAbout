@@ -482,15 +482,31 @@ class Worker:
                 if error.response.status_code != 409:
                     raise
                 current = self.client.request("GET", prefix)
-                if current["state"] != "uncertain":
+                same = all(current.get(k) == task.get(k)
+                           for k in ("attempt", "generation", "membership_revision"))
+                if current.get("state") == "uncertain":
+                    status = {"state": "started"}
+                elif current.get("state") == "queued" and same and not task.get("_plan"):
+                    # A regular task can be requeued after a reserved-only lease
+                    # expires. Its reservation proves this attempt never received
+                    # start authorization; resume only from the server's exact
+                    # queued projection and let the next claim create fresh fences.
+                    self.journal.save(tid, "ready", {"event": payload["event"],
+                                                      "runtime_started": False})
+                    return "retry_queued"
+                elif current.get("state") == "leased" and same:
+                    # Reservation lookup can return 409 while this lease is expired
+                    # but not yet reconciled, or while a dispatch hold blocks lookup.
+                    # Keep durable intent; never infer authorization state.
+                    return "retry_wait"
+                else:
                     self.journal.save(tid, "failed", payload)
                     return "stale"
-                status = {"state": "started"}
             if status.get("reserved") is True:
-                # The idempotent query proves /start was not authorized. Do not
-                # retry /start with a rebuilt (possibly changed) input manifest on
-                # this attempt. Retire it as a safe pre-call failure; lease expiry
-                # and the ordinary queued event may authorize one fresh attempt.
+                # The idempotent query finds no committed start. Do not retry
+                # /start with a rebuilt (possibly changed) input manifest. Retire
+                # this attempt and wait for server reconciliation; regular tasks
+                # may requeue after lease expiry, while plan nodes fail closed.
                 payload.update(safe_pre_call_retry=True, runtime_started=False)
                 self.journal.save(tid, "pre_call_retry", payload)
                 if self.journal.stop_requested():
@@ -513,7 +529,10 @@ class Worker:
                 if same and task["state"] == "queued":
                     self.journal.save(tid, "ready", {"event": payload["event"], "runtime_started": False})
                     return "retry_queued"
-                if same and task["state"] == "leased" and task["lease_expires_at"] <= time.time():
+                if same and task["state"] == "leased":
+                    # A pre-call failure remains retryable until the server either
+                    # requeues this exact lease after expiry or fencing changes.
+                    # The worker loop may poll repeatedly before that scheduler tick.
                     return "retry_wait"
                 payload["safe_pre_call_retry"] = False
                 self.journal.save(tid, "failed", payload)
@@ -721,7 +740,9 @@ class Worker:
                     self.journal.save(tid, "start_pending", payload)
                     check_deadline(self.run_deadline)
                     if self.journal.stop_requested():
-                        self.journal.save(tid, "cancelled", payload)
+                        # Reservation is durable but /start has not been sent; retain
+                        # start_pending so explicit resume can reconcile its state.
+                        # Local stop is not a server-side cancel or reservation release.
                         self.journal.stop_state("stopped")
                         return "stopped"
                     granted = self.client.request("POST", prefix + "/start",

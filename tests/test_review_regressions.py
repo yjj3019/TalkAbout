@@ -134,9 +134,9 @@ def test_stop_during_runtime_never_publishes_and_reports_outcome(fixture,tmp_pat
             control.set_setting('stop',True)
             control.set_setting('stop_state','stop_requested')
         answer=future.result(timeout=3)
-        assert answer==('stopped' if cooperative else 'stop_unconfirmed')
+        assert answer==('result_pending' if cooperative else 'stop_unconfirmed')
         assert control.setting('stop_state')==('stopped' if cooperative else 'unreachable')
-        if cooperative: assert control.status() in ({'cancelled':1},{'stopped_before_submit':1})
+        if cooperative: assert control.status()=={'result_saved':1}
         else: assert control.status()=={'uncertain':1}
         control.close()
         release.set()

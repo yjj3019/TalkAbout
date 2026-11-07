@@ -65,6 +65,10 @@ class HttpChatRuntime:
         self._verified_executable = None
         self._connection_binding = None
         self._closed = False
+        self._request_in_flight = False
+        self._request_dispatched = False
+        self._response_received = False
+        self._request_lock = threading.Lock()
         self._lock = threading.Lock()
         self._client = client or httpx.Client(follow_redirects=False)
         self._owns_client = client is None
@@ -181,16 +185,37 @@ class HttpChatRuntime:
         if key:
             headers["Authorization"] = "Bearer " + key
         try:
-            response = self._client.post(self.base_url + "/chat/completions",
-                                         json=payload, headers=headers, timeout=budget)
-        except httpx.TimeoutException:
-            self.last_outcome = "timeout"
-            raise AdapterError("runtime_timeout") from None
+            with self._request_lock:
+                with self._lock:
+                    if self._closed:
+                        raise AdapterError("runtime_cancelled")
+                    self._request_in_flight = True
+                    self._response_received = False
+                    self._request_dispatched = False
+                try:
+                    # Only claim dispatch once the client is about to send the request.
+                    with self._lock:
+                        self._request_dispatched = True
+                    response = self._client.post(self.base_url + "/chat/completions",
+                                                 json=payload, headers=headers, timeout=budget)
+                    with self._lock:
+                        self._response_received = True
+                except httpx.TimeoutException:
+                    self.last_outcome = "outcome_unknown" if self._request_dispatched else "timeout"
+                    raise AdapterError("runtime_outcome_unknown" if self._request_dispatched
+                                       else "runtime_timeout") from None
+                except Exception:
+                    self.last_outcome = "outcome_unknown" if self._request_dispatched else "unavailable"
+                    raise AdapterError("runtime_outcome_unknown" if self._request_dispatched
+                                       else "runtime_unavailable") from None
+                finally:
+                    with self._lock:
+                        self._request_in_flight = False
+        except AdapterError:
+            raise
         except Exception:
             self.last_outcome = "unavailable"
             raise AdapterError("runtime_unavailable") from None
-        if cancel is not None and cancel.is_set():
-            raise AdapterError("runtime_cancelled")
         if response.status_code in (401, 403):
             raise AdapterError("runtime_auth_required")
         if response.status_code == 429:
@@ -215,6 +240,9 @@ class HttpChatRuntime:
             self.session_id = f"{self.provider_id}:{data.get('id') or uuid.uuid4().hex}"
             self.last_usage = self._bounded_usage(usage)
             self.last_outcome = "completed"
+        if cancel is not None and cancel.is_set():
+            self.last_outcome = "cancelled_after_response"
+            raise AdapterError("runtime_outcome_unknown")
         return text
 
     @staticmethod
@@ -243,12 +271,19 @@ class HttpChatRuntime:
 
     def shutdown(self):
         with self._lock:
-            if self._closed:
-                return True
+            request_in_flight = self._request_in_flight
+            request_dispatched = self._request_dispatched
+            response_received = self._response_received
             self._closed = True
+        if request_in_flight:
+            # Don't close the socket beneath a live request. Client close may abort
+            # local transport, but cannot prove provider stopped processing bytes.
+            return False
         if self._owns_client:
             try:
                 self._client.close()
             except Exception:
                 pass
-        return True
+        # A prior timed-out request may already have left its local HTTP stack.
+        # Shutdown does not retroactively turn its unknown outcome into success.
+        return not request_dispatched or response_received

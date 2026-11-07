@@ -88,6 +88,9 @@ def bounded_call_with_evidence(runtime, context, cancel, timeout):
 
 
 def _bounded_call(runtime, context, cancel, timeout, *, with_evidence):
+    if cancel.is_set():
+        # Cancellation already won before launch: no external call started.
+        raise RuntimeTimeout(runtime_stopped=True)
     if timeout <= 0:
         raise RuntimeTimeout()
     output = queue.Queue(maxsize=1)
@@ -130,11 +133,31 @@ def _bounded_call(runtime, context, cancel, timeout, *, with_evidence):
     while True:
         remaining = deadline - time.monotonic()
         if remaining <= 0 or cancel.is_set():
+            # The runtime may have returned just before the stop/deadline was
+            # observed. Preserve that completed result for the journal; caller
+            # will still honor stop before publishing it.
+            if execution_done.is_set():
+                try:
+                    ok, value = output.get_nowait()
+                except queue.Empty:
+                    pass
+                else:
+                    if ok:
+                        return value
+                    raise value
             stop()
         try:
             ok, value = output.get(timeout=min(0.02, remaining))
+            if execution_done.is_set():
+                # Runtime returned before the worker observed the stop. Keep its
+                # result/evidence durable; Worker separately blocks publication.
+                if ok:
+                    return value
+                raise value
             if cancel.is_set() or time.monotonic() >= deadline:
-                stop()
+                if ok:
+                    return value
+                raise value
             if ok:
                 return value
             raise value

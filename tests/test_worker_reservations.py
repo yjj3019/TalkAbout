@@ -127,6 +127,39 @@ def test_an_undeliverable_outcome_stays_queued_until_the_server_takes_it(fixture
     journal.close()
 
 
+def test_stop_after_reservation_keeps_reconcilable_start_pending(fixture, tmp_path):
+    store, _, rid = fixture
+    path = tmp_path / 'stop-after-reservation.sqlite'
+    journal = Journal(path)
+    runtime = Counted()
+    client = LocalClient(store)
+    original = client.request
+
+    def stop_after_reservation(method, resource, body=None, key=None, params=None):
+        response = original(method, resource, body, key, params)
+        if method == 'POST' and resource.endswith('/reservations'):
+            with journal.db:
+                journal.set_setting('stop', True)
+                journal.set_setting('stop_state', 'stop_requested')
+        return response
+
+    client.request = stop_after_reservation
+    try:
+        assert Worker(client, journal, runtime).step() == 'stopped'
+        assert journal.status() == {'start_pending': 1} and runtime.calls == 0
+        task = next(iter(store.rooms[rid]['tasks'].values()))
+        assert task['_reservations'][0]['state'] == 'reserved'
+        assert not any(path.endswith('/start') for method, path in client.calls)
+        with journal.db:
+            journal.set_setting('stop', False)
+            journal.set_setting('stop_state', 'running')
+        assert Worker(LocalClient(store), journal, runtime).step() == 'retry_wait'
+        assert runtime.calls == 0 and journal.status() == {'pre_call_retry': 1}
+    finally:
+        client.http.close()
+        journal.close()
+
+
 def test_lost_start_response_never_launches_on_restart(fixture, tmp_path):
     store, _, rid = fixture
 
@@ -171,26 +204,29 @@ def test_start_response_loss_before_effect_is_reconciled_as_safe_pre_call_retry(
     assert not journal.outcomes()
     journal.close()
     recovered = Journal(path)
-    assert Worker(LocalClient(store), recovered, runtime).step() == 'retry_wait'
-    assert runtime.calls == 0 and recovered.status() == {'pre_call_retry': 1}
-    recovered.close()
-
-    # The server's ordinary lease-expiry/requeue protocol creates a new attempt;
-    # it gets a fresh reservation and one runtime call. The old attempt never
-    # reuses its start idempotency key with a newly built input manifest.
-    with store.transaction(rid, 'fixture-human') as (_, room):
-        task = next(iter(room['tasks'].values()))
-        task['lease_expires_at'] = time.time() - 1
-    store.tick_all()
-    resumed = Journal(path)
-    fresh = LocalClient(store)
+    recovered_client = LocalClient(store)
     try:
-        worker = Worker(fresh, resumed, runtime)
-        assert worker.step() == 'completed'
-        assert runtime.calls == 1 and resumed.status() == {'done': 1}
+        retrying = Worker(recovered_client, recovered, runtime)
+        assert retrying.step() == 'retry_wait'
+        assert runtime.calls == 0 and recovered.status() == {'pre_call_retry': 1}
+        # Repeated worker-loop iteration before lease expiry must preserve the
+        # safe retry marker, not retire the row as stale.
+        assert retrying.step() == 'retry_wait'
+        assert recovered.status() == {'pre_call_retry': 1} and runtime.calls == 0
+
+        # Expiry may precede scheduler reconciliation. Same fenced lease stays
+        # retry_wait, not terminal failed, until scheduler emits its queued event.
+        with store.transaction(rid, 'fixture-human') as (_, room):
+            next(iter(room['tasks'].values()))['lease_expires_at'] = time.time() - 1
+        assert retrying.step() == 'retry_wait'
+        assert recovered.status() == {'pre_call_retry': 1} and runtime.calls == 0
+        store.tick_all()
+        assert retrying.step() == 'completed'
+        assert recovered.status() == {'done': 1} and runtime.calls == 1
     finally:
-        fresh.http.close()
-        resumed.close()
+        recovered_client.http.close()
+        recovered.close()
+
 
 
 def test_outcome_capacity_never_evicts_unacknowledged_reports(tmp_path):

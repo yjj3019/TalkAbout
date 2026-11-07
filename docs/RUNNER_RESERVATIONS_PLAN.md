@@ -42,9 +42,8 @@ Idempotency-Key 자체는 필수이며, `execute:true` 응답을 캐시로 다�
 - 예약만 된 상태는 실행 허가가 아니다. 예약 응답 유실 후에는 안전하게 재조회하고 start를 요청할 수 있다.
 - start는 예약을 `started`로 바꾸고 `_started_attempts`에 서버 측에서 한 번만 기록한다.
   이는 **보수적 승인 예산**이며 실제 청구 증거가 아니다. worker heartbeat는 실행 단계 telemetry다.
-- durable `start_pending` 재개 시 서버 예약 상태를 확인한다. 아직 reserved면 start 전 crash이므로 안전하게 시작 절차를 재개한다.
-  이미 started면 승인 응답 유실로 판단해 호출하지 않고 `uncertain`으로 보고한다.
-  호출이 실제로 없었더라도 불확실성 때문에 `uncertain`으로 기록할 수 있다.
+- durable `start_pending` 재개 시 서버에 동일 reservation id를 idempotent 조회한다. `reserved` 응답은 조회 시점까지 start 승인 기록이 없다는 뜻이다. worker는 바뀌었을 수 있는 `input_manifest`로 같은 start key를 다시 보내지 않고, 기존 attempt를 `pre_call_retry`로 retire해 lease expiry/reconciliation을 기다린다. 일반 task만 server requeue event로 새 attempt를 받을 수 있고, plan node는 expiry 시 실패·의존 차단으로 끝난다. 지연된 start와 조회가 경합할 수 있으므로 이는 provider가 실행되지 않았다는 보증이 아니다.
+  이미 `started`면 승인 응답 유실 또는 실행 결과 유실로 보고 runtime을 호출하지 않고 `uncertain`으로 기록한다. 호출이 실제로 없었더라도 unknown 상태를 보수적으로 남길 수 있다.
 - 시작 승인된 task의 lease/deadline 만료는 자동 requeue가 아니라 `uncertain`이다.
   새 journal이 생겨도 같은 실행을 새 attempt로 반복하지 않도록 한다.
 - `uncertain`은 자동 재실행하지 않는다. 기존 human room close로 방을 종료할 수 있다.

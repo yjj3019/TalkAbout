@@ -32,11 +32,11 @@ Event delivery와 network retry는 at-least-once입니다. 서버 idempotency가
 | complete 성공 뒤 local 완료 기록 전 | 같은 key 재시도·task 조회로 원래 resource 재사용, 새 발언/버전 생성 없음 |
 | artifact 응답 유실 | 같은 artifact key·expected revision·payload로 재시도, 충돌이면 조회·비교; 덮어쓰기 금지 |
 
-로컬 queue 상태는 received → ready → claimed → call_started → result_saved → submit_pending → done입니다. ready/claimed부터 denied/cancelled/expired로 종료할 수 있고 call_started의 결과 유실은 uncertain입니다. uncertain 재실행은 operator 판단과 새로운 유효 lease가 필요하며 이미 게시된 결과를 재생성하지 않습니다. 이 상태는 서버 task 상태와 별개입니다.
+로컬 queue 상태는 received → ready → claim_pending → claimed → start_pending(프로토콜 사용 시) → call_started → result_saved → done입니다. 저장 결과는 complete 성공을 journal에 기록할 때까지 `result_saved`로 남고, CLI는 이 경계를 `result_pending`으로 보고할 수 있습니다. pre-call lease 만료는 `pre_call_retry`를 거쳐 다음 queued attempt만 재사용하며, 실행 허가 후 결과 유실은 `uncertain`이고 자동 재호출하지 않습니다. ready/claimed 등 실행 전 상태는 denied/cancelled/expired로 종료될 수 있습니다. journal 상태는 서버 task 상태와 별개입니다.
 
 ## heartbeat·중단·오프라인
 
-heartbeat 오류 후 남은 유효 lease 내에서만 bounded retry합니다. lease safety margin 안에 갱신 확인이 안 되면 호출에 cancel을 요청하고 게시를 중지합니다. late 결과는 보관하되 새 generation/attempt로 자동 재사용하지 않습니다. revoke/401·403·해당 membership revision 변경·generation 변경·pause/close는 즉시 신규 claim·submit을 중지합니다. response 직전 서버도 같은 검사를 수행합니다.
+heartbeat 오류 후 남은 유효 lease 내에서만 bounded retry합니다. lease safety margin 안에 갱신 확인이 안 되면 호출에 cancel을 요청하고 게시를 중지합니다. local subprocess shutdown 성공은 remote provider 취소 확인이 아닙니다. 응답이 요청된 뒤 취소/timeout과 경합하면 결과는 `uncertain`/`stop_unconfirmed`으로 남기고, late 결과는 새 generation/attempt로 자동 재사용하지 않습니다. revoke/401·403·해당 membership revision 변경·generation 변경·pause/close는 즉시 신규 claim·submit을 중지합니다. response 직전 서버도 같은 검사를 수행합니다.
 
 409은 현재 task와 revisions를 확인하고 stale 작업을 종료합니다. 410은 해당 room gap 복구, 409 cursor_scope_changed는 membership 집합 rebase를 수행합니다. 삭제·탈퇴·read 회수된 room의 queue·cached context는 취소/격리하고 LLM 입력으로 재사용하지 않습니다. 429는 Retry-After와 bounded backoff/jitter를 사용합니다. 오프라인은 내구 journal을 보존하고 재접속 예산 소진 후 정지·보고합니다. 무한 polling·재시도는 없습니다.
 

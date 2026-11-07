@@ -10,6 +10,9 @@ import pytest
 from talkabout import providers
 from talkabout.adapters import AdapterError
 from talkabout.http_runtime import HttpChatRuntime
+from talkabout.worker import Journal, Worker
+from talkabout.identity import IdentityService
+from conftest import LocalClient
 
 
 class _Server:
@@ -173,10 +176,80 @@ def test_timeout_is_bounded(monkeypatch):
     try:
         runtime = _runtime(instance, timeout=0.4)
         started = time.monotonic()
-        with pytest.raises(AdapterError, match="runtime_timeout"):
+        with pytest.raises(AdapterError, match="runtime_outcome_unknown"):
             runtime.run({"room_id": "room-1", "prompt": "x"}, threading.Event())
         assert time.monotonic() - started < 1.4
     finally:
+        instance.close()
+
+
+def test_shutdown_during_sent_provider_request_is_unconfirmed(monkeypatch):
+    """A local socket close cannot attest that remote provider stopped work."""
+    monkeypatch.setenv("PROVIDER_API_KEY", "synthetic-key")
+    from talkabout.runtime import RuntimeTimeout, bounded_call
+
+    instance = _Server(delay=0.5)
+    runtime = _runtime(instance)
+    cancel = threading.Event()
+    try:
+        with pytest.raises(RuntimeTimeout) as stopped:
+            bounded_call(runtime, {"room_id": "room-1", "prompt": "synthetic"}, cancel, 0.05)
+        assert stopped.value.runtime_stopped is False and cancel.is_set()
+        # Server received request before local timeout/shutdown. Its delayed response
+        # may still complete remotely; local socket close cannot prove cancellation.
+        assert len(instance.requests) == 1
+    finally:
+        runtime.shutdown()
+        instance.close()
+
+
+
+def test_worker_reports_http_provider_timeout_as_uncertain_not_stopped(fixture, tmp_path, monkeypatch):
+    from talkabout.runtime import RuntimeTimeout
+    monkeypatch.setenv("PROVIDER_API_KEY", "synthetic-key")
+    store, core, rid = fixture
+    instance = _Server(delay=0.5)
+    service = IdentityService(store)
+    check = service.runtime_check("fixture-a", None, "create", "http-stop-create", {"runtime": "codex"})
+    service.runtime_check("fixture-a", check["id"], "complete", "http-stop-complete",
+                          {"response": check["challenge"], "session_id": "synthetic-session"})
+    service.mutate("fixture-a", "connection", "http-stop-ready", {"runtime": "codex", "state": "idle"})
+    runtime = _runtime(instance)
+    path = tmp_path / "http-stop.sqlite"
+    control = Journal(path)
+    original = runtime._client.post
+    sent = threading.Event()
+
+    def observe_post(*args, **kwargs):
+        sent.set()
+        return original(*args, **kwargs)
+
+    runtime._client.post = observe_post
+
+    def run_worker():
+        client = LocalClient(store)
+        journal = Journal(path)
+        try:
+            return Worker(client, journal, runtime, runtime_timeout=5).step()
+        finally:
+            journal.close()
+            client.http.close()
+
+    try:
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(run_worker)
+            assert sent.wait(5), (future.exception() if future.done() else "worker still running")
+            with control.db:
+                control.set_setting("stop", True)
+                control.set_setting("stop_state", "stop_requested")
+            assert future.result(timeout=5) == "stop_unconfirmed"
+        assert control.status() == {"uncertain": 1}
+        assert core.read("fixture-human", rid)["messages"] == []
+        assert runtime.shutdown() is False
+    finally:
+        runtime.shutdown()
+        control.close()
         instance.close()
 
 

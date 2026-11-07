@@ -111,6 +111,49 @@ def test_co_creation_role_proposal_review_and_human_adoption(fixture):
     assert core.read("fixture-human", room["id"])["state"] == "closed"
 
 
+def test_co_creation_complete_response_loss_replays_one_artifact_version_until_human_adopts(fixture):
+    store, core, _ = fixture
+    room = core.create("fixture-a", {"topic": "Synthetic creation replay", "mode": "co_creation"},
+                       "creation-response-loss")
+    core.accept_handover("fixture-human", room["id"], "accept", accept_body(room))
+    creator_task = None
+    for _ in range(3):
+        task = next(t for t in core.read("fixture-a", room["id"])["tasks"] if t["state"] == "queued")
+        claimed = core.mutation("fixture-a", room["id"], "tasks/" + task["id"] + "/claim",
+                                "claim-" + task["id"], {"generation": task["generation"],
+                                                         "membership_revision": task["membership_revision"]})
+        if task["role"] == "creator":
+            creator_task = claimed
+            break
+        core.mutation("fixture-a", room["id"], "tasks/" + task["id"] + "/complete",
+                      "complete-" + task["id"], result(claimed, "Synthetic researcher/reviewer"))
+    assert creator_task and creator_task["role"] == "creator"
+    body = result(creator_task, "Synthetic creator artifact")
+    key = "creator-complete-" + creator_task["id"]
+    path = "tasks/" + creator_task["id"] + "/complete"
+    first = core.mutation("fixture-a", room["id"], path, key, body)
+    # Simulate committed response lost, then exact idempotent retry.
+    replay = core.mutation("fixture-a", room["id"], path, key, body)
+    assert replay == first
+    # Co-creation reaches the adoption gate only after reviewer phase completes.
+    reviewer, _ = complete_next(core, room["id"])
+    assert reviewer["role"] == "reviewer"
+    current = core.read("fixture-human", room["id"])
+    artifact = next(a for a in current["artifacts"] if a["id"] == first["artifact"]["id"])
+    assert len(artifact["versions"]) == 1
+    assert current["mode_status"] == "awaiting_adoption"
+    assert current["state"] == "active"
+    assert artifact["adopted"] is None
+    assert len([m for m in current["messages"] if m["text"] == "Synthetic creator artifact"]) == 1
+    adoption = {"generation": current["generation"], "membership_revision": 1,
+                "expected_revision": artifact["revision"], "version_id": artifact["versions"][0]["id"]}
+    with pytest.raises(Problem, match="forbidden"):
+        core.mutation("fixture-a", room["id"], f"artifacts/{artifact['id']}/adoptions", "agent-adopt", adoption)
+    core.mutation("fixture-human", room["id"], f"artifacts/{artifact['id']}/adoptions", "human-adopt", adoption)
+    final = core.read("fixture-human", room["id"])
+    assert final["mode_status"] == "adopted" and final["state"] == "closed"
+
+
 def test_capacity_errors_are_explicit_and_rollback(fixture):
     store, core, rid = fixture
     before = copy.deepcopy(store.rooms[rid])

@@ -92,6 +92,39 @@ def test_bounded_call_returns_when_shutdown_never_returns(monkeypatch):
         runtime.release.set()
 
 
+def test_completed_result_wins_stop_race_and_is_returned_for_durable_save():
+    completed = threading.Event()
+    release_shutdown = threading.Event()
+
+    class ReturnedRuntime:
+        def run(self, context, cancel):
+            completed.set()
+            return 'finished before stop was observed'
+
+        def shutdown(self):
+            # Hold the timeout/stop path long enough to prove run completed first.
+            release_shutdown.wait(1)
+            return True
+
+    runtime = ReturnedRuntime()
+    cancel = threading.Event()
+    result = []
+
+    def call():
+        result.append(bounded_call(runtime, {}, cancel, 1))
+
+    worker = threading.Thread(target=call)
+    worker.start()
+    assert completed.wait(1)
+    cancel.set()
+    # Runtime is already done. bounded_call must recover queued result rather than
+    # raising RuntimeTimeout and discarding successful provider output.
+    worker.join(timeout=1)
+    release_shutdown.set()
+    assert not worker.is_alive()
+    assert result == ['finished before stop was observed']
+
+
 def test_unconfirmed_stop_is_not_reported_as_stopped(monkeypatch):
     monkeypatch.setattr(runtime_module, 'SHUTDOWN_ESCORT_SECONDS', 0.1)
     class FalseShutdown:
