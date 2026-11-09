@@ -2,7 +2,8 @@
 
 Each run requires a fresh evidence directory. `TALKABOUT_CI_RESULTS` points that
 directory elsewhere, so a stale or foreign-owned `.ci-results` cannot block a local
-run; CI keeps the default path.
+run; CI keeps the default path. pytest's temp dir lives outside the checkout (system temp, or
+`TALKABOUT_CI_TEMP`).
 """
 import collections
 import json
@@ -10,6 +11,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 # Windows consoles default to a legacy code page; a child log containing a
@@ -44,8 +46,12 @@ def python_contracts(output, postgres_config=None):
             if report.when=='call' or report.failed or report.skipped:
                 with (output/'cases.jsonl').open('a',encoding='utf-8') as stream:
                     stream.write(json.dumps({'nodeid':report.nodeid,'phase':report.when,'outcome':report.outcome})+'\n')
-    arguments=['-q','-ra','tests','-p','no:cacheprovider',
-               '--basetemp='+str(output/'temp')]
+    # Test temp dirs must sit OUTSIDE the checkout: work-profile validation (correctly) refuses
+    # a workspace inside the platform tree, so a temp dir under .ci-results fails those tests.
+    temp = Path(os.environ.get('TALKABOUT_CI_TEMP') or Path(tempfile.gettempdir())/('talkabout-ci-'+str(os.getpid()))).resolve()
+    if ROOT in temp.parents or temp == ROOT:
+        raise SystemExit('refusing a test temp directory inside the repository: '+str(temp))
+    arguments=['-q','-ra','tests','-p','no:cacheprovider','--basetemp='+str(temp)]
     if postgres_config is not None: arguments += ['--postgres-config', str(postgres_config)]
     return pytest.main(arguments,plugins=[Reports()])
 
