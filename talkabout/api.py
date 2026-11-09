@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import re
 import threading
@@ -63,14 +64,31 @@ def create_app(store, start_scheduler=True, allow_fixture_bearer=False, allowed_
 
     def scheduler():
         state["scheduler"] = "running"
-        while not stop.wait(0.5):
+        failures = 0
+        delay = 0.5
+        while not stop.wait(delay):
             try:
                 if not setup_locked():
                     store.tick_all()
-            except Exception:
-                # Never log a database DSN, credentials, or external payload.
+            except Exception as exc:
+                # A transient tick error (DB restart, lock timeout) used to end the
+                # scheduler for good and leave /ready at 503 until a manual restart.
+                # Keep retrying with bounded backoff; /ready stays 503 while failing.
+                # Log only the exception class: messages can carry a DSN or payload.
+                failures += 1
                 state["scheduler"] = "failed"
-                return
+                delay = min(30.0, 0.5 * 2 ** min(failures, 6))
+                if failures == 1 or failures % 60 == 0:
+                    logging.getLogger("talkabout.scheduler").warning(
+                        "scheduler tick failed (%s); consecutive_failures=%d; retry_in=%.1fs",
+                        type(exc).__name__, failures, delay)
+            else:
+                if failures:
+                    logging.getLogger("talkabout.scheduler").warning(
+                        "scheduler recovered after %d consecutive failures", failures)
+                failures = 0
+                delay = 0.5
+                state["scheduler"] = "running"
 
     @asynccontextmanager
     async def lifespan(app):
@@ -142,7 +160,12 @@ def create_app(store, start_scheduler=True, allow_fixture_bearer=False, allowed_
     async def ready():
         from starlette.concurrency import run_in_threadpool
         available = state["scheduler"] == "running" and await run_in_threadpool(store.ready)
-        return JSONResponse({"status": "ready" if available else "not_ready", "deployment": "prototype"}, status_code=200 if available else 503)
+        body = {"status": "ready" if available else "not_ready", "deployment": "prototype"}
+        if not available:
+            # Lets an operator tell a dead/failing scheduler from a DB outage without
+            # a shell; the ready body stays exactly as before.
+            body["scheduler"] = state["scheduler"]
+        return JSONResponse(body, status_code=200 if available else 503)
 
     def static_file(request, target):
         """Serve a static asset with a weak validator and conditional GET support.

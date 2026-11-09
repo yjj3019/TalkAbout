@@ -57,3 +57,62 @@ def test_postgres_real_loopback_health_readiness_and_shutdown(postgres_fixture):
         thread.join(timeout=5)
         sock.close()
     assert not thread.is_alive()
+
+
+class _ReadyMemoryStore(MemoryStore):
+    """Memory store that reports a healthy database so /ready depends on the scheduler."""
+
+    def ready(self):
+        return True
+
+    def setup_required(self):
+        return False
+
+
+def _wait_for(predicate, seconds=8):
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        if predicate():
+            return True
+        time.sleep(0.05)
+    return False
+
+
+def test_scheduler_recovers_after_transient_tick_failure(monkeypatch, caplog):
+    store = _ReadyMemoryStore()
+    calls = {"n": 0}
+    real = store.tick_all
+
+    def flaky():
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("host=127.0.0.1 password=synthetic-secret")
+        return real()
+
+    monkeypatch.setattr(store, "tick_all", flaky)
+    with caplog.at_level("WARNING", logger="talkabout.scheduler"):
+        with TestClient(create_app(store, allowed_hosts=["testserver"])) as client:
+            assert _wait_for(lambda: calls["n"] >= 1), "scheduler never ticked"
+            assert _wait_for(lambda: client.get("/ready").status_code == 200), "scheduler did not recover"
+            assert client.get("/ready").json() == {"status": "ready", "deployment": "prototype"}
+            assert client.get("/health").json()["scheduler"] == "running"
+    text = caplog.text
+    assert "RuntimeError" in text and "recovered" in text
+    assert "synthetic-secret" not in text and "127.0.0.1" not in text
+
+
+def test_scheduler_failing_keeps_not_ready_and_reports_state(monkeypatch):
+    store = _ReadyMemoryStore()
+    calls = {"n": 0}
+
+    def always_fail():
+        calls["n"] += 1
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(store, "tick_all", always_fail)
+    with TestClient(create_app(store, allowed_hosts=["testserver"])) as client:
+        assert _wait_for(lambda: calls["n"] >= 1), "scheduler never ticked"
+        response = client.get("/ready")
+        assert response.status_code == 503
+        assert response.json() == {"status": "not_ready", "deployment": "prototype", "scheduler": "failed"}
+        assert client.get("/health").json()["scheduler"] == "failed"
