@@ -1,6 +1,6 @@
 # TalkAbout 상태 정본 / Current status
 
-이 문서가 **현재 상태의 단일 정본**입니다. 확인일: **2026-11-01**. 기준 커밋: `bc45c15`(자체 점검 문서 병합 시점).
+이 문서가 **현재 상태의 단일 정본**입니다. 확인일: **2026-11-09**(상태 요약 §1·§1.1 기준). 아래 §2 이후 측정치와 배포 기록은 각 절에 적힌 날짜의 스냅샷이며, 이 날짜로 재측정한 값이 아닙니다.
 다른 상태 문서는 각자 확인일의 스냅샷이며, 서로 다른 시점의 수치를 합산하거나 현재값으로 읽지 않습니다.
 
 방별 메모리 기능의 작업 중 계약과 단계별 제한은 [ROOM_MEMORY.md](ROOM_MEMORY.md)를 참고하세요. 이 문서는 아래 기존 배포·CI 결과를 갱신하거나 운영 배포를 의미하지 않습니다.
@@ -9,7 +9,7 @@
 
 ## 1. 한 줄 상태
 
-**기준: 2026-11-08 main `66efd20`. 로컬 합성 검증 통과 · Codex/Claude/Grok 각각 과거 실제 S1 기록(당시 환경에 한정) · S2 다중 런타임 토론/중지·재개 미검증 · mcp-box 프로토타입 배포 기록은 있으나 현재 target/runtime 검증 아님 · 운영 배포 미검증.**
+**기준: 2026-11-09 main `35997ac`. 로컬 합성 검증 통과 · Codex/Claude/Grok 각각 과거 실제 S1 기록(당시 환경에 한정) · S2 다중 런타임 토론/중지·재개 미검증 · mcp-box 프로토타입 배포 기록은 있으나 현재 target/runtime 검증 아님 · 운영 배포 미검증.**
 
 | 항목 | 상태 | 근거 |
 | --- | --- | --- |
@@ -21,6 +21,13 @@
 | 프로토타입 인스턴스 배포 | **mcp-box에 이미지 교체 배포** — `localhost/talkabout:6bc8aad…`, healthy, `/ready` 200, 재시작 정책·일일 백업·5분 헬스 기록 타이머를 적용. TLS·외부 알림·복원 cutover 검증은 미완료 | [SESSION_LOG](SESSION_LOG.md) 2026-11-01 |
 | 실제 2-runtime 토론·pause 복구 (S2) | **미검증 / NOTRUN** — 명시적 발언요청을 쓴 합성 proposal→counter-review→summary·pause/resume acceptance test는 통과; Codex+Claude 실제 공동 실행은 미검증 | [RELEASE_GAP_MATRIX.md](RELEASE_GAP_MATRIX.md) · `tests/test_release_scenarios.py` |
 | 운영 배포·운영 계정·MFA | **미완료** | [DEPLOYMENT_RUNBOOK.md](DEPLOYMENT_RUNBOOK.md) |
+
+### 1.1 2026-11-09 갱신 (SESSION_LOG 기록 기준, 이번에 재실행하지 않음)
+
+- **최근 회귀(11-09 세션 기록)**: Python 2105 passed / 123 skipped / 1 failed(기존 CI 제외 대상 `test_mcp_stdio_process_interoperability`, 오프라인 가드) · Node UI 계약 35 passed. PostgreSQL·Podman·backup은 제외된 부분 실행이며 §2.2의 표준 러너 결과를 대체하지 않는다.
+- **11-09 반영**: workspace 경로 구성요소별 `lstat()` 경계, launch 실패 시 정리 확인(`cleanup_confirmed`/`launch_cleanup_unconfirmed`). 한계(TOCTOU·모든 reparse tag·실제 OS 동작 미검증)는 [WORK_PROFILE.md](WORK_PROFILE.md) 참고.
+- **미반영 후속**: bounded pipe 출력, POSIX `/proc` 열거 실패 fail-closed(POSIX 활성화 전 조건), turn 사이 workspace 재검증.
+- **배포**: rhel-storage 배포는 2026-11-06 egress 미개방으로 연기. mcp-box 프로토타입의 현재 상태는 11-01 이후 재확인하지 않았다. 서비스 시작 대상·공개 범위·운영 DB/계정은 결정 대기.
 
 ## 2. 재현 명령 (2026-10-25 실제 실행 결과)
 
