@@ -8,7 +8,9 @@ from pathlib import Path
 import pytest
 
 SCRIPT = Path(__file__).resolve().parents[1] / "deploy" / "podman" / "healthcheck.sh"
-pytestmark = pytest.mark.skipif(not (shutil.which("sh") and shutil.which("curl")), reason="needs sh and curl")
+# Runs in the Linux posix-containment job: the Windows safe-regression guard blocks sh/curl.
+pytestmark = pytest.mark.skipif(os.name != "posix" or not (shutil.which("sh") and shutil.which("curl")),
+                                reason="needs POSIX sh and curl")
 
 
 class _Server:
