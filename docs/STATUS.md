@@ -9,7 +9,7 @@
 
 ## 1. 한 줄 상태
 
-**로컬 검증 통과 · Codex/Claude/Grok 각각 실제 S1 확인 · 프로토타입 인스턴스 배포(mcp-box) · S2/운영 배포 미검증.**
+**기준: 2026-11-08 main `66efd20`. 로컬 합성 검증 통과 · Codex/Claude/Grok 각각 과거 실제 S1 기록(당시 환경에 한정) · S2 다중 런타임 토론/중지·재개 미검증 · mcp-box 프로토타입 배포 기록은 있으나 현재 target/runtime 검증 아님 · 운영 배포 미검증.**
 
 | 항목 | 상태 | 근거 |
 | --- | --- | --- |
@@ -17,9 +17,9 @@
 | 합성(synthetic) 회귀 | **통과** (2026-11-01: Python 1188 passed / 35 skipped / 0 failed · Node 243 passed) | §2.2·[SESSION_LOG](SESSION_LOG.md) |
 | 실제 PostgreSQL 통합 19건 | **통과** (2026-10-25, 임시 18.6 클러스터; 이후 CI의 임시 픽스처로 계속 실행) | §2 |
 | CI(GitHub Actions) 동일 명령 | **통과** — PR #55·#56·#57·#58의 `safe-regression`·`posix-containment` | §2.2 |
-| 실제 공급자 S1 (Codex·Claude·Grok) | **각각 통과** — 소유 루프백 픽스처에서 연결 시험과 기여 기록. Grok 반복 턴·기본 20초 lease는 미검증 | [Codex](validation/actual-trial-2026-10-25.json) · [Claude](validation/actual-trial-2026-10-25-claude.json) · [Grok](validation/actual-trial-2026-10-25-grok.json) |
+| 과거 실제 공급자 S1 기록 (Codex·Claude·Grok) | **2026-10-25 당시 별도 소유 loopback fixture에서 각 시험 통과** — 이는 현재 바이너리/계정의 재검증이나 동시 다중 런타임 토론 증거가 아님. Grok 연결은 현재 문서상 실행 안전 gate로 차단됨. | [Codex](validation/actual-trial-2026-10-25.json) · [Claude](validation/actual-trial-2026-10-25-claude.json) · [Grok](validation/actual-trial-2026-10-25-grok.json) |
 | 프로토타입 인스턴스 배포 | **mcp-box에 이미지 교체 배포** — `localhost/talkabout:6bc8aad…`, healthy, `/ready` 200, 재시작 정책·일일 백업·5분 헬스 기록 타이머를 적용. TLS·외부 알림·복원 cutover 검증은 미완료 | [SESSION_LOG](SESSION_LOG.md) 2026-11-01 |
-| 실제 2-runtime 토론·pause 복구 (S2) | **미통과** | [RELEASE_GAP_MATRIX.md](RELEASE_GAP_MATRIX.md) |
+| 실제 2-runtime 토론·pause 복구 (S2) | **미검증 / NOTRUN** — 명시적 발언요청을 쓴 합성 proposal→counter-review→summary·pause/resume acceptance test는 통과; Codex+Claude 실제 공동 실행은 미검증 | [RELEASE_GAP_MATRIX.md](RELEASE_GAP_MATRIX.md) · `tests/test_release_scenarios.py` |
 | 운영 배포·운영 계정·MFA | **미완료** | [DEPLOYMENT_RUNBOOK.md](DEPLOYMENT_RUNBOOK.md) |
 
 ## 2. 재현 명령 (2026-10-25 실제 실행 결과)

@@ -252,6 +252,10 @@ def public_room(room, actor, principals=None):
         "membership_revision": viewer_member["revision"],
         "mode_status": room.get("mode_status", "running"), "mode_progress": copy.deepcopy(room.get("mode_progress", {})),
         "dispatch_held": room.get("dispatch_held", False),
+        # A bounded public run summary contains no owner-authored plan text.
+        # Do not expose it to agents; only human room readers can coordinate it.
+        "_plan_dispatch": public_plan_run(room["_plan_dispatch"])
+            if actor["kind"] == "human" and isinstance(room.get("_plan_dispatch"), dict) else None,
         "pending_controls": sum(c['state'] == 'pending' and c.get('requested_seq', 0) >= viewer_member['read_start_seq']
                                 for c in room['controls'].values()) if actor['kind'] == 'human' else None,
         "handover": copy.deepcopy(room.get("handover")),

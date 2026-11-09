@@ -7,7 +7,7 @@ import {ViewState, labels} from '../talkabout/web/state.mjs';
 import {createCollaborationBoard} from '../talkabout/web/collaboration-board.mjs';
 
 const source=readFileSync(new URL('../talkabout/web/app.mjs',import.meta.url),'utf8').replace(/^import[^\n]+\n/,'');
-const room={id:'room',topic:'Review room',state:'active',mode:'co_creation',mode_status:'awaiting_adoption',generation:4,effective_permissions:['room:read','room:adopt','room:question'],members:{human:{kind:'human',status:'active',revision:7,display_name:'Reviewer'}},tasks:[],messages:[],artifacts:[]};
+const room={id:'room',topic:'Review room',state:'active',mode:'co_creation',mode_status:'awaiting_adoption',generation:4,_plan_dispatch:null,effective_permissions:['room:read','room:adopt','room:question'],members:{human:{kind:'human',status:'active',revision:7,display_name:'Reviewer'}},tasks:[],messages:[],artifacts:[]};
 const tick=()=>new Promise(setImmediate);
 async function harness(){
  class Node{

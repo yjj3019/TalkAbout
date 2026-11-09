@@ -9,6 +9,21 @@ from talkabout.domain import AGENT_PERMISSIONS, Problem, emit
 from conftest import control, leased, result
 
 
+def test_public_plan_run_summary_is_human_only_and_excludes_plan_text(fixture):
+    from talkabout.domain import AGENT_PERMISSIONS
+    from test_work_plan_dispatch import node, prepare, dispatch
+
+    store, core, rid = fixture
+    prepare(store, core, rid, [node('one', 'a', instruction='owner secret instruction')], 'fixture-a')
+    dispatch(core, rid)
+    human = core.read('fixture-human', rid)
+    agent = core.read('fixture-a', rid)
+    assert human['_plan_dispatch']['state'] == 'running'
+    assert 'nodes' in human['_plan_dispatch']
+    assert 'owner secret instruction' not in str(human['_plan_dispatch'])
+    assert agent['_plan_dispatch'] is None
+
+
 def test_scheduler_duplicate_and_complete_replay(fixture):
     store, core, rid = fixture
     for _ in range(5):

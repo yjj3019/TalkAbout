@@ -7,7 +7,7 @@ import {ViewState,labels} from '../talkabout/web/state.mjs';
 import {createCollaborationBoard} from '../talkabout/web/collaboration-board.mjs';
 const source=readFileSync(new URL('../talkabout/web/app.mjs',import.meta.url),'utf8').replace(/^import[^\n]+\n/,'');
 const html=readFileSync(new URL('../talkabout/web/index.html',import.meta.url),'utf8');
-const room={id:'room',topic:'Synthetic room',state:'preparing',mode:'co_creation',mode_status:'running',can_resolve_uncertain:true,effective_permissions:['room:read','room:manage_members','room:control','room:approve'],members:{human:{kind:'human',status:'active'}},tasks:[],messages:[],artifacts:[]};
+const room={id:'room',topic:'Synthetic room',state:'preparing',mode:'co_creation',mode_status:'running',can_resolve_uncertain:true,_plan_dispatch:null,effective_permissions:['room:read','room:manage_members','room:control','room:approve'],members:{human:{kind:'human',status:'active'}},tasks:[],messages:[],artifacts:[]};
 async function harness(scopes=['room:read','room:manage_members']){
  class Node{
   constructor(tag='div'){this.tagName=tag;this.hidden=false;this.children=[];this.dataset={};this.attributes={};this.value='';this.ownText='';this.className='';}
@@ -195,6 +195,15 @@ test('stream access change closes the live source instead of reconnecting from a
  assert.equal(h.streams[0].closed,true);assert.equal(h.run('liveSource'),null);assert.equal(h.node('detail').hidden,true);
 });
 
+test('public human plan-run terminal state drives workflow review guidance in both languages',async()=>{
+ const h=await harness();for(const lang of ['ko','en']){h.run(`view.language='${lang}';`);
+  assert.equal(h.run("workflowState({state:'active',_plan_dispatch:{state:'partial'}}).title"),'partialFlow');
+  assert.equal(h.run("workflowState({state:'active',_plan_dispatch:{state:'aborted'}}).title"),'abortedFlow');
+  assert.equal(h.run("workflowState({state:'closed',mode_status:'round_limit'}).title"),'closed');
+  assert.ok(labels[lang].partialFlowHelp);
+  assert.ok(labels[lang].abortedFlowHelp);
+ }
+});
 test('paused and adoption workflows point to the correct action in both languages',async()=>{
  const h=await harness();for(const lang of ['ko','en']){h.run(`view.language='${lang}';`);
   const paused=h.run("workflowState({state:'paused',mode_status:'awaiting_adoption'})");assert.equal(paused.title,'paused');assert.equal(paused.tab,'management');

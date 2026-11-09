@@ -39,7 +39,7 @@
 - Stop after server reservation but before `/start` now retains `start_pending`; local stop does not cancel server reservation. Recovery remains explicit and reports the server's current reservation state.
 - Added response-loss replay contract for co-creation artifact: one version/message, no adoption before owner action. Corrected stale state list and start recovery text in `docs/REFERENCE_WORKER.md` and `docs/RUNNER_RESERVATIONS_PLAN.md`.
 - Focused R7 suites after follow-up additions: **137 passed, 1 skipped** across worker/start, HTTP runtime/escort, saved-result, co-creation, plan reservation budget and native-process heartbeat tests. The skip is explicit.
-- Full local guarded runner after these changes: **Python 2090 passed, 136 skipped, 7 deselected, 0 failed; Node 430 passed, 0 failed**. PostgreSQL fixture/Windows privilege skips are environmental; no provider calls were made. Docs check and `git diff --check` are rerun before finalization.
+- Full local guarded runner after the reviewed collaboration/documentation additions: **Python 2095 passed, 136 skipped, 7 deselected, 0 failed; Node 431 passed, 0 failed**. PostgreSQL fixture/Windows privilege skips are environmental; no provider calls were made. Docs check and `git diff --check` were rerun.
 
 ## 2026-11-07 Safe regression CI follow-up
 

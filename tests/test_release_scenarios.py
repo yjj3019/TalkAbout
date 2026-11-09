@@ -14,6 +14,14 @@ class Counted(SyntheticRuntime):
 
 def test_s2_two_labelled_workers_pause_recover_and_converse(fixture,tmp_path):
     store,core,rid=fixture
+    from talkabout.domain import AGENT_PERMISSIONS
+    store.rooms.clear()
+    room=core.create('fixture-human',{'topic':'Synthetic proposal-review-summary','mode':'bounded_rounds'},'s2-sequential-dialogue')
+    rid=room['id']
+    invite=core.mutation('fixture-human',rid,'memberships','s2-invite-a',{'principal_id':'a','permissions':sorted(AGENT_PERMISSIONS),'status':'pending'})
+    core.accept('fixture-a',rid,'s2-accept-a',{'expected_revision':invite['revision'],'acknowledge_private':True})
+    invite=core.mutation('fixture-human',rid,'memberships','s2-invite-b',{'principal_id':'b','permissions':sorted(AGENT_PERMISSIONS),'status':'pending'})
+    core.accept('fixture-b',rid,'s2-accept-b',{'expected_revision':invite['revision'],'acknowledge_private':True})
     runtimes={pid:Counted(label) for pid,label in [('a','Codex fixture'),('b','Claude fixture')]}
     journals={pid:Journal(tmp_path/(pid+'.sqlite')) for pid in runtimes}
     workers={pid:Worker(LocalClient(store,'fixture-'+pid),journals[pid],runtimes[pid]) for pid in runtimes}
@@ -37,6 +45,98 @@ def test_s2_two_labelled_workers_pause_recover_and_converse(fixture,tmp_path):
         assert all(m['execution_evidence']=='synthetic_test_only' for m in messages)
     finally:
         for journal in journals.values():journal.close()
+
+
+def test_s2_synthetic_proposal_review_revision_summary_with_pause_and_resume(fixture, tmp_path):
+    """Explicit turn requests carry prior discussion; evidence remains synthetic."""
+    store, core, _ = fixture
+    from talkabout.domain import AGENT_PERMISSIONS
+    store.rooms.clear()
+    room = core.create('fixture-human', {'topic': 'Synthetic proposal-review-summary',
+                                         'mode': 'free_discussion'}, 's2-sequential-dialogue')
+    rid = room['id']
+    for agent_id in ('a', 'b'):
+        invitation = core.mutation('fixture-human', rid, 'memberships', f's2-invite-{agent_id}',
+                                   {'principal_id': agent_id,
+                                    'permissions': sorted(AGENT_PERMISSIONS), 'status': 'pending'})
+        core.accept(f'fixture-{agent_id}', rid, f's2-accept-{agent_id}',
+                    {'expected_revision': invitation['revision'], 'acknowledge_private': True})
+
+    class DialogueRuntime:
+        def __init__(self, agent):
+            self.agent = agent
+            self.calls = 0
+            self.seen = []
+
+        def run(self, context, cancel):
+            assert not cancel.is_set()
+            self.calls += 1
+            inputs = [item['text'] for item in context.get('inputs', [])]
+            proposals = [text for text in inputs if text.startswith('PROPOSAL:')]
+            reviews = [text for text in inputs if text.startswith('COUNTER:')]
+            if self.agent == 'a' and self.calls == 1:
+                answer = 'PROPOSAL: bounded line parser, reject malformed input'
+            elif self.agent == 'b':
+                assert proposals, 'review worker must receive earlier proposal in exact input context'
+                answer = f"COUNTER: {self.agent} requests malformed-line tests for '{proposals[-1]}'"
+            else:
+                assert proposals and reviews, 'revision worker must receive proposal and review'
+                answer = f"SUMMARY: revised parser keeps '{proposals[-1]}' and addresses '{reviews[-1]}'"
+            self.seen.append({'inputs': inputs, 'answer': answer})
+            return answer
+
+    runtimes = {pid: DialogueRuntime(pid) for pid in ('a', 'b')}
+    journals = {pid: Journal(tmp_path / f's2-{pid}.sqlite') for pid in runtimes}
+    clients = {pid: LocalClient(store, f'fixture-{pid}') for pid in runtimes}
+    workers = {pid: Worker(clients[pid], journals[pid], runtimes[pid]) for pid in runtimes}
+    for client in clients.values():
+        client.request('PUT', 'agents/me/connection',
+                       {'runtime': 'synthetic', 'state': 'idle'}, 's2-ready')
+
+    def request_turn(agent_id, key):
+        room_view = clients[agent_id].request('GET', f'rooms/{rid}')
+        return clients[agent_id].request('POST', f'rooms/{rid}/turn-requests',
+            {'generation': room_view['generation'],
+             'membership_revision': room_view['membership_revision']}, key)
+
+    try:
+        request_turn('a', 'proposal-turn')
+        assert workers['a'].step() == 'completed'
+        assert runtimes['a'].calls == 1
+
+        request_turn('b', 'review-turn')
+        assert workers['b'].step() == 'completed'
+        assert runtimes['b'].calls == 1
+        assert any(text.startswith('PROPOSAL:') for text in runtimes['b'].seen[0]['inputs'])
+
+        # Queue next explicit turn, pause before the worker claims it, and verify
+        # no additional runtime call occurs. Resume then issue new explicit request.
+        request_turn('a', 'paused-summary-turn')
+        control(core, rid, 'pause')
+        before = sum(runtime.calls for runtime in runtimes.values())
+        paused_result = workers['a'].step()
+        assert paused_result in {'waiting', 'unavailable', 'stale'}
+        assert sum(runtime.calls for runtime in runtimes.values()) == before
+        control(core, rid, 'resume')
+
+        request_turn('a', 'summary-turn')
+        assert workers['a'].step() == 'completed'
+        summary = runtimes['a'].seen[-1]
+        assert any(text.startswith('PROPOSAL:') for text in summary['inputs'])
+        assert any(text.startswith('COUNTER:') for text in summary['inputs'])
+        assert summary['answer'].startswith('SUMMARY: revised parser')
+
+        messages = core.read('fixture-human', rid)['messages']
+        assert len(messages) == 3
+        assert [message['text'].split(':', 1)[0] for message in messages] == [
+            'PROPOSAL', 'COUNTER', 'SUMMARY']
+        assert all(message['execution_evidence'] == 'synthetic_test_only' for message in messages)
+        assert len({message['id'] for message in messages}) == 3
+    finally:
+        for journal in journals.values():
+            journal.close()
+        for client in clients.values():
+            client.http.close()
 
 
 def test_post_call_state_is_never_safe_to_drain(fixture,tmp_path):
