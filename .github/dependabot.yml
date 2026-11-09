@@ -1,0 +1,22 @@
+version: 2
+
+# Dependabot only opens pull requests; it never merges. Every update is reviewed and goes
+# through the same Safe regression workflow as any other change. Updates are grouped to
+# keep the review count small, and the number of open PRs is capped.
+updates:
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    groups:
+      actions:
+        patterns: ['*']

@@ -1,0 +1,7 @@
+title = "TalkAbout secret scanning"
+
+[extend]
+useDefault = true
+
+# Add allowlist entries here only after reading a finding and confirming it is a synthetic
+# fixture value. Never allowlist a path wholesale.
