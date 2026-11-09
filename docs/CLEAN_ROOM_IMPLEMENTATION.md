@@ -48,7 +48,7 @@
 ## 5. TalkAbout 적용 현황
 
 - **2026-10-31 반영분**: P0-1(관측 실패≠허용), P0-2(exec schema fixture), P0-3(승인 데이터 계약), P0-4(격리·placement 계약표)은 이 정책에 따라 **설계 참조 + 자체 작성**으로 반영했다. 외부 코드·문장·asset은 포함하지 않았다.
-- **첫 독립 구현 사례**: W1 workspace 경로 경계의 **최종 구성요소 junction/reparse 거부**. 이는 serena·munder-difflin이 쓰는 "경로 봉쇄" **개념**을 자체 로직으로 구현한 것이며 해당 코드를 복사하지 않았다. 중간 구성요소는 여전히 `resolve()`로 해석되며 이는 sandbox가 아니다.
+- **첫 독립 구현 사례**: W1 workspace 경로 경계의 **최종 구성요소 junction/reparse 거부**(2026-10-31 당시). 이는 serena·munder-difflin이 쓰는 "경로 봉쇄" **개념**을 자체 로직으로 구현한 것이며 해당 코드를 복사하지 않았다. **후속(2026-11-09)**: `Path`가 정규화한 절대 경로의 중간 구성요소도 `resolve()` 전에 symlink/junction 검사하도록 확장했다. 경로 검사는 TOCTOU를 막지 않으며 sandbox가 아니다.
 - **두 번째 독립 구현 사례(2026-10-31)**: `GET /rooms/{id}/diagnostics`의 read-only 대기 사유 투영([observation.py](../talkabout/observation.py)). openbot의 "보류 사유 표시", rakazo의 "자원 대기와 사람 대기 구분", open-duet의 "read-only 진단"에서 **문제 정의만** 참고했고, enum 이름·규칙·응답 구조·테스트는 이 저장소에서 새로 설계했다. 아래 기록 표에 실제 값을 채웠다.
 
 | 항목 | 값 |

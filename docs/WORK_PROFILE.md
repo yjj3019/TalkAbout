@@ -88,21 +88,20 @@ A0 도구 이벤트는 **사후 관찰**이며 권한·성공 판정이 아니�
 ## 경로 경계 검증의 범위와 한계 (W1, 2026-10-31)
 
 `--work-workspace`는 provider workspace-write 정책의 대상 디렉터리를 고르는 **trust transfer**이며 sandbox가 아니다.
-현재 코드가 실제로 하는 검증과, 아직 하지 않는 검증을 구분한다.
+현재 코드가 실제로 하는 검증과, 아직 하지 않는 검증을 구분한다. 경로 검사는 `Path`가 만든 normalized path에 적용된다.
 
 | 항목 | 현재 상태 |
 | --- | --- |
-| 최종 경로가 symlink | `runtime_work_workspace_invalid`로 거절 |
-| `..`·중간 구성요소 symlink | `resolve(strict=True)`로 **해석**한 뒤 판정한다(거부가 아님) |
+| 입력 경로의 최종 또는 중간 구성요소가 symlink/junction | `Path`가 정규화한 절대 경로의 각 구성요소를 검사하고 `runtime_work_workspace_invalid`로 거절. 실제 Windows reparse/junction 동작은 아직 OS에서 테스트하지 않음 |
+| 상대 경로 | lexical component 검사에서 fail-closed로 거절 (`runtime_work_workspace_invalid`) |
 | 홈·파일시스템 루트 | `runtime_work_workspace_too_broad` |
 | TalkAbout 소스 트리 겹침 | `runtime_work_workspace_overlaps_platform` |
 | 쓰기 불가 | `runtime_work_workspace_not_writable` |
-| junction/reparse point(최종 구성요소) | `Path.is_junction` 자체 검사로 `runtime_work_workspace_invalid` 거절(2026-10-31). 중간 구성요소는 해석되며 전용 검사는 **미구현** |
+| junction/reparse(최종·중간 구성요소) | `lstat()` 결과의 reparse attribute와 `Path.is_junction` 신호를 검사해 `runtime_work_workspace_invalid`로 거절. 실제 Windows junction 생성·OS 동작은 테스트하지 않음; 실제 OS 동작 및 TOCTOU 보장은 없음 |
 | 종료 후·turn 사이 재검증 | **미구현** — 현재는 예약 전 preflight와 runtime 생성 시 2회 확인 |
 | sandbox·egress 제한 | **미구현**. [TOOL_BROKER_PLAN.md](TOOL_BROKER_PLAN.md) 관문 유지 |
 
-최종 구성요소 junction 거부는 2026-10-31 자체 로직으로 반영했다. 중간 구성요소 전용 검사와 3회 재검증은 [2차 분석 후보](../analysis/repo-review-2026-10-31/08-TALKABOUT-GAPS.md)의 P1-1 잔여 항목이며,
-재구현 절차는 [독립 구현 정책](CLEAN_ROOM_IMPLEMENTATION.md)을 따른다.
+정규화된 절대 경로의 각 구성요소를 순차 검사해 중간 symlink/junction이 `resolve(strict=True)` 전에 탐지되도록 보강했다. 검사는 점검과 사용 사이의 경쟁을 막지 않으며 hostile-admin 보안 경계가 아니다. Windows의 다른 reparse tag 유형, 검사 후 경로 교체, turn 사이 재검증은 별도 강화가 필요하다. 이 경로 검사는 여전히 [독립 구현 정책](CLEAN_ROOM_IMPLEMENTATION.md)에 따라 TalkAbout 자체 코드다.
 
 ## 제출된 작업 항목 집계 (A1)
 

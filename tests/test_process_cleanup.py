@@ -123,6 +123,91 @@ def test_containment_failure_prevents_execution(monkeypatch, tmp_path):
     assert not marker.exists()
 
 
+@pytest.mark.skipif(os.name != 'nt', reason='Job handle lifecycle is Windows-only')
+def test_failed_launch_closes_job_handle_and_stays_usable(monkeypatch):
+    """Assignment failure closes the job and never poisons the supervisor: the
+    emergency cleanup in ManagedProcess.__init__ released the containment, so a
+    later stop() remains a valid no-op instead of claiming or denying a stop."""
+    import talkabout.processes as processes
+    closed = []
+    original_close = processes.kernel.CloseHandle
+    monkeypatch.setattr(processes.kernel, 'CloseHandle',
+                        lambda handle: (closed.append(handle), original_close(handle))[1])
+    monkeypatch.setattr(processes.kernel, 'AssignProcessToJobObject', lambda *args: False)
+    supervisor = processes.ProcessSupervisor()
+    with pytest.raises(processes.ProcessCleanupError, match='job_assignment_failed'):
+        supervisor.start([sys._base_executable, '-c', 'import time; time.sleep(30)'], threading.Event())
+    assert closed, 'job handle must be closed on the launch failure path'
+    # The failed launch recorded no child and the supervisor stays usable.
+    assert supervisor.child is None and not supervisor.failed_launch
+    assert supervisor.stop() is True
+
+
+@pytest.mark.skipif(os.name != 'nt', reason='Job handle lifecycle is Windows-only')
+def test_unconfirmed_launch_cleanup_marks_supervisor_closed(monkeypatch):
+    """A launch failure whose emergency kill also fails refuses a later stop=True."""
+    import talkabout.processes as processes
+    closed = []
+    original_close = processes.kernel.CloseHandle
+    monkeypatch.setattr(processes.kernel, 'CloseHandle',
+                        lambda handle: (closed.append(handle), original_close(handle))[1])
+
+    class DoomedProcess:
+        def poll(self):
+            return None
+
+        def kill(self):
+            raise OSError('emergency kill failed')
+
+        def wait(self, timeout=None):
+            raise OSError('emergency wait failed')
+
+    monkeypatch.setattr(processes.kernel, 'AssignProcessToJobObject', lambda *args: False)
+    monkeypatch.setattr(processes.subprocess, 'Popen', lambda command, **options: DoomedProcess())
+    supervisor = processes.ProcessSupervisor()
+    with pytest.raises(processes.ProcessCleanupError, match='launch_cleanup_unconfirmed'):
+        supervisor.start([sys._base_executable, '-c', 'pass'], threading.Event())
+    assert closed, 'job handle must still be closed on the double-failure path'
+    assert supervisor.failed_launch and supervisor.closed
+    assert supervisor.child is None
+    with pytest.raises(processes.ProcessCleanupError, match='launch_cleanup_unconfirmed'):
+        supervisor.stop()
+
+
+@pytest.mark.skipif(os.name != 'nt', reason='Emergency kill confirmation is a Windows launch path')
+def test_emergency_kill_failure_raises_launch_cleanup_unconfirmed(monkeypatch):
+    """A failed emergency kill surfaces as unconfirmed, not as a silent success."""
+    import talkabout.processes as processes
+    original_close = processes.kernel.CloseHandle
+    closed = []
+    monkeypatch.setattr(processes.kernel, 'CloseHandle',
+                        lambda handle: (closed.append(handle), original_close(handle))[1])
+
+    class DoomedProcess:
+        def poll(self):
+            return None
+
+        def kill(self):
+            raise OSError('emergency kill failed')
+
+        def wait(self, timeout=None):
+            raise OSError('emergency wait failed')
+
+    def failing_assignment(*args):
+        return False
+
+    monkeypatch.setattr(processes.kernel, 'AssignProcessToJobObject', failing_assignment)
+
+    def fake_popen(command, **options):
+        return DoomedProcess()
+
+    monkeypatch.setattr(processes.subprocess, 'Popen', fake_popen)
+    with pytest.raises(processes.ProcessCleanupError, match='launch_cleanup_unconfirmed'):
+        ManagedProcess([sys._base_executable, '-c', 'pass'])
+    # The kill-on-close job was still closed on this double-failure path.
+    assert closed
+
+
 def test_posix_execution_path_fails_closed_before_launch(monkeypatch):
     """The product path stays closed on POSIX until containment is enabled.
 

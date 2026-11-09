@@ -77,6 +77,32 @@ def test_revalidated_canonical_mismatch_fails_closed(monkeypatch, tmp_path):
         cli.work_workspace_preflight('codex', 'exec-json', original)
 
 
+def test_real_work_profile_refuses_intermediate_link_before_resolving(tmp_path, monkeypatch):
+    from pathlib import Path
+    from talkabout import agent_runtime
+    base = tmp_path.resolve(strict=True)
+    alias = base / 'alias'
+    alias.mkdir()
+    candidate = alias / 'workspace'
+    resolved_calls = []
+    original = agent_runtime.has_linked_component
+
+    def refuse_candidate(path):
+        if Path(path) == candidate:
+            return True
+        return original(path)
+
+    def no_strict_resolve(self, **_options):
+        resolved_calls.append(self)
+        return self
+
+    monkeypatch.setattr(agent_runtime, 'has_linked_component', refuse_candidate)
+    monkeypatch.setattr(Path, 'resolve', no_strict_resolve)
+    with pytest.raises(AdapterError, match='runtime_work_workspace_invalid'):
+        cli.work_workspace_preflight('codex', 'exec-json', str(candidate))
+    assert resolved_calls == []
+
+
 def test_cli_wires_frozen_workspace_preflight(fixture, tmp_path, monkeypatch):
     import sys
     from tests.test_continuity_cli import configured

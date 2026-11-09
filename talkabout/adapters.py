@@ -44,13 +44,20 @@ def execute_bounded(command, prompt, cancel, timeout=30, blocked_names=(), block
         except (OSError, ProcessCleanupError):
             raise AdapterError('runtime_unavailable') from None
         try:
+            exceeded = False
             while process.poll() is None:
                 if cancel.is_set() or time.monotonic() >= deadline:
                     raise AdapterError('runtime_cancelled' if cancel.is_set() else 'runtime_timeout')
-                if os.fstat(output.fileno()).st_size + os.fstat(errors.fileno()).st_size > 2097152:
+                if not exceeded and os.fstat(output.fileno()).st_size + os.fstat(errors.fileno()).st_size > 2097152:
+                    # This poll is an observation, not the only bound. After the
+                    # limit is seen the poller stops re-checking and raises
+                    # immediately; containment then stops the job in the finally
+                    # below. A burst between polls can still exceed the limit on
+                    # disk, which remains a documented boundary, not a fix.
+                    exceeded = True
                     raise AdapterError('runtime_output_limit')
                 time.sleep(.03)
-            if os.fstat(output.fileno()).st_size + os.fstat(errors.fileno()).st_size > 2097152:
+            if not exceeded and os.fstat(output.fileno()).st_size + os.fstat(errors.fileno()).st_size > 2097152:
                 raise AdapterError('runtime_output_limit')
             if process.returncode:
                 raise AdapterError('runtime_failed')

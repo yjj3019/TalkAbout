@@ -235,6 +235,13 @@ def stop_posix_group(process, pgid, started):
 
 class ManagedProcess:
     """A process must enter its containment before it can execute user/runtime code."""
+
+    # Launch-progress record used by ProcessSupervisor to distinguish "Popen
+    # produced no process" (nothing to leak) from "a process existed and the
+    # launch failed mid-construction". Managed under the supervisor's launch
+    # lock, so concurrent supervisors never interleave this value.
+    reached_popen = False
+
     def __init__(self, command, cancel=None, deadline=None, **options):
         self.lock = threading.RLock(); self.job = None; self.closed = False
         self.pgid = None; self.started = None
@@ -253,8 +260,10 @@ class ManagedProcess:
                 # A shell would spawn outside the group we just created and own.
                 raise ProcessCleanupError('posix_containment_options_unsupported')
             options['start_new_session'] = True
+        cleanup_failed = None
         try:
             self.process = subprocess.Popen(command, **options)
+            ManagedProcess.reached_popen = True
             if os.name == 'nt':
                 if not kernel.AssignProcessToJobObject(self.job, int(self.process._handle)):
                     raise ProcessCleanupError('job_assignment_failed')
@@ -273,11 +282,28 @@ class ManagedProcess:
                     actual_group = self.pgid
                 if self.pgid == os.getpgrp() or actual_group != self.pgid:
                     raise ProcessCleanupError('posix_group_unverified')
-        except Exception:
-            process = getattr(self, 'process', None)
-            if process and process.poll() is None:
-                process.kill(); process.wait(timeout=3)
-            if self.job: kernel.CloseHandle(self.job); self.job = None
+        except Exception as error:
+            try:
+                process = getattr(self, 'process', None)
+                if process and process.poll() is None:
+                    process.kill(); process.wait(timeout=3)
+            except Exception as kill_error:
+                # A failed emergency kill must not mask the original error and
+                # must not let the caller believe containment was released.
+                cleanup_failed = kill_error
+            finally:
+                # The kill-on-close job handle must be closed on every launch
+                # failure path; a leaked handle keeps the containment object
+                # alive even after the child process is gone.
+                if self.job:
+                    try: kernel.CloseHandle(self.job)
+                    finally: self.job = None
+            if cleanup_failed is not None:
+                raise ProcessCleanupError('launch_cleanup_unconfirmed') from error
+            # The emergency cleanup succeeded (process killed or already gone,
+            # job handle closed): the containment is released, so the caller
+            # must not later be told a stop is unconfirmed.
+            error.cleanup_confirmed = True
             raise
 
     def stop(self):
@@ -298,14 +324,45 @@ class ProcessSupervisor:
     """Serialize launch against shutdown; a cancelled call can never launch late."""
     def __init__(self):
         self.lock = threading.RLock(); self.closed = False; self.child = None
+        self.failed_launch = False
 
     def start(self, command, cancel, deadline=None, **options):
         with self.lock:
             if self.closed or cancel.is_set(): raise ProcessCleanupError('process_cancelled')
-            self.child = ManagedProcess(command, cancel=cancel, deadline=deadline, **options)
-            return self.child.process
+            # The launch-progress flag is read and reset inside this lock, so
+            # concurrent supervisors cannot interleave each other's values.
+            try:
+                child = ManagedProcess(command, cancel=cancel, deadline=deadline, **options)
+                self.child = child
+                return child.process
+            except Exception as error:
+                if not ManagedProcess.reached_popen:
+                    # A Popen that never produced a process (bad executable,
+                    # pre-launch cancel, failed synthetic Popen) created no
+                    # containment to leak: the supervisor stays usable and a
+                    # later stop stays a no-op.
+                    raise
+                if getattr(error, 'cleanup_confirmed', False):
+                    # The emergency cleanup inside ManagedProcess.__init__ fully
+                    # released the containment (process killed or already gone,
+                    # job handle closed): there is nothing left uncontained.
+                    raise
+                # A launch that failed after a process existed and whose cleanup
+                # could not be confirmed must never let a later stop() report
+                # success as if the contained child had been cleaned up. The
+                # failed child is not recorded, and this supervisor keeps a
+                # record so its stop() refuses that claim.
+                self.failed_launch = True
+                self.closed = True
+                raise
+            finally:
+                ManagedProcess.reached_popen = False
 
     def stop(self):
         with self.lock:
             self.closed = True
-            return self.child.stop() if self.child else True
+            if self.child is None:
+                if self.failed_launch:
+                    raise ProcessCleanupError('launch_cleanup_unconfirmed')
+                return True
+            return self.child.stop()

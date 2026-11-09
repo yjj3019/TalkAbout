@@ -32,6 +32,7 @@ from .content_framing import information_marker
 from .processes import ProcessSupervisor, ProcessCleanupError
 from .runtime import WorkEvidence
 from .trial_observation import OBSERVATION_STAGES, TrialRecordError, safe_io_failure
+from .workspace_paths import has_linked_component
 
 MAX_WIRE = 2 * 1024 * 1024
 MAX_LINE = 256 * 1024
@@ -151,18 +152,6 @@ class _FixedWorkspace:
         return None
 
 
-def _is_junction(path):
-    """Final-component Windows junction/reparse check.
-
-    Junctions are not reported by Path.is_symlink() on Windows, so the documented
-    "final component is not a link" rule needs its own check. This is a path-shape
-    check only: it is not a sandbox, impersonation protection, or a race-free
-    guarantee for intermediate components.
-    """
-    checker = getattr(path, 'is_junction', None)
-    return bool(checker()) if checker is not None else False
-
-
 def _validated_work_workspace(kind, codex_transport, path):
     """Resolve the one directory a work-profile turn may read and edit.
 
@@ -174,8 +163,12 @@ def _validated_work_workspace(kind, codex_transport, path):
         raise AdapterError('runtime_work_profile_unsupported')
     if not isinstance(path, str) or not path.strip():
         raise AdapterError('runtime_work_workspace_required')
-    candidate = Path(path).expanduser()
-    if candidate.is_symlink() or _is_junction(candidate):
+    try:
+        candidate = Path(path).expanduser()
+        has_link = has_linked_component(candidate)
+    except (OSError, ValueError):
+        raise AdapterError('runtime_work_workspace_invalid') from None
+    if has_link:
         raise AdapterError('runtime_work_workspace_invalid')
     try:
         resolved = candidate.resolve(strict=True)

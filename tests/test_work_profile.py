@@ -92,15 +92,40 @@ def test_symlinked_workspace_is_refused(tmp_path):
         runtime(work_profile=True, work_workspace=str(link))
 
 
+@pytest.mark.skipif(os.name == 'nt', reason='symlink creation needs a privilege on Windows')
+def test_intermediate_symlink_workspace_is_refused(tmp_path):
+    base = tmp_path.resolve(strict=True)
+    target = base / 'real' / 'workspace'
+    target.mkdir(parents=True)
+    link = base / 'alias'
+    link.symlink_to(target.parent, target_is_directory=True)
+    with pytest.raises(AdapterError, match='^runtime_work_workspace_invalid$'):
+        runtime(work_profile=True, work_workspace=str(link / target.name))
+
+
+def test_intermediate_junction_workspace_is_refused(tmp_path, monkeypatch):
+    base = tmp_path.resolve(strict=True)
+    real = base / 'real'
+    target = real / 'workspace'
+    target.mkdir(parents=True)
+    alias = base / 'alias'
+    alias.mkdir()
+    candidate = alias / 'workspace'
+    monkeypatch.setattr(Path, 'is_junction', lambda self: self == alias, raising=False)
+    with pytest.raises(AdapterError, match='^runtime_work_workspace_invalid$'):
+        runtime(work_profile=True, work_workspace=str(candidate))
+
+
 def test_junction_workspace_is_refused(tmp_path, monkeypatch):
     """Final-component junction rejection is checked without creating a real junction.
 
     Creating a Windows junction needs an OS call this suite does not make (NOTRUN);
     the branch is exercised by reporting the candidate as a junction.
     """
-    target = tmp_path / 'real'
+    base = tmp_path.resolve(strict=True)
+    target = base / 'real'
     target.mkdir()
-    candidate = tmp_path / 'junction'
+    candidate = base / 'junction'
     candidate.mkdir()
     monkeypatch.setattr(Path, 'is_junction', lambda self: self == candidate, raising=False)
     with pytest.raises(AdapterError, match='^runtime_work_workspace_invalid$'):
