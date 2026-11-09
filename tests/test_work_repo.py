@@ -94,7 +94,9 @@ def test_observation_is_against_the_starting_commit_and_sees_agent_commits(tmp_p
 
 def test_ignored_files_are_declared_not_observed(tmp_path):
     init_clean_repo(tmp_path)
-    (tmp_path / '.gitignore').write_text('secret.env\n')
+    # Bytes, not write_text: on Windows write_text writes CRLF, and the guard (which ignores the
+    # user's autocrlf setting) would then see the file as modified.
+    (tmp_path / '.gitignore').write_bytes(b'secret.env\n')
     git(tmp_path, 'add', '.gitignore')
     git(tmp_path, 'commit', '-q', '-m', 'ignore')
     guard = WorkRepoGuard(tmp_path)
