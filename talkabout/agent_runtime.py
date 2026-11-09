@@ -32,6 +32,7 @@ from .content_framing import information_marker
 from .processes import ProcessSupervisor, ProcessCleanupError
 from .runtime import WorkEvidence
 from .trial_observation import OBSERVATION_STAGES, TrialRecordError, safe_io_failure
+from .work_repo import WorkRepoGuard
 from .workspace_paths import has_linked_component
 
 MAX_WIRE = 2 * 1024 * 1024
@@ -631,6 +632,10 @@ class StructuredRuntime:
         self.last_work_evidence = None
         self.work_workspace = (_validated_work_workspace(kind, codex_transport, work_workspace)
                                if self.work_profile else None)
+        # The owner's git history is the only way back from a work-profile turn: require a
+        # clean repository root now, remember its commit, and observe changes after each turn.
+        self._work_repo = WorkRepoGuard(self.work_workspace) if self.work_profile else None
+        self.last_workspace_observation = None
         self._claude_new_id = str(uuid.uuid4())
         self._request_id = 0
         self._turn_id = None
@@ -1519,7 +1524,11 @@ class StructuredRuntime:
             supervisor = ProcessSupervisor()
             self._supervisor = supervisor
         transport = None
+        cleanup_confirmed = False
         try:
+            if self._work_repo is not None:
+                # Refuses (without running git) when git's own config or hooks changed since the last check.
+                self._work_repo.before_turn()
             env = self._environment()
             if self.kind == 'claude' or (self.kind == 'codex' and self.codex_transport == 'exec-json' and self.auth_mode == 'native'):
                 self._observe('auth_check_started')
@@ -1563,11 +1572,18 @@ class StructuredRuntime:
                 if stopped is not True:
                     raise ProcessCleanupError('cleanup_unconfirmed')
                 self._observe('cleanup_completed')
+                cleanup_confirmed = True
             except (ProcessCleanupError, OSError, ValueError):
                 self._failed = True
                 self.last_outcome = 'unknown'
                 raise AdapterError('runtime_cleanup_unconfirmed') from None
             finally:
+                if self._work_repo is not None and self._prompt_sent:
+                    # Only once the provider process tree is confirmed gone, so git is not
+                    # racing a live agent. Unconfirmed cleanup is recorded as unknown.
+                    self.last_workspace_observation = (self._work_repo.observe() if cleanup_confirmed else
+                        {'schema': 'talkabout.work_repo_observation/1', 'state': 'unknown',
+                         'reason': 'cleanup_unconfirmed', 'base_commit': self._work_repo.base_commit})
                 diagnostics = transport.diagnostics() if transport and hasattr(transport, 'diagnostics') else {}
                 # Stray settled frames and usage-limit frames are the evidence a failed
                 # trial previously could not capture: shape and closed tokens only, never

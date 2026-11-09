@@ -14,6 +14,10 @@ import pytest
 from talkabout.adapters import AdapterError
 from talkabout.agent_runtime import StructuredRuntime, prompt_text, work_prompt_text
 
+# These tests are about paths, commands and prompts; the git guard has its own tests
+# in test_work_repo.py and would add several slow git calls per runtime here.
+pytestmark = pytest.mark.usefixtures('fast_repo_guard')
+
 
 @pytest.fixture
 def workspace():
@@ -32,6 +36,8 @@ def workspace():
             continue
         if package not in path.resolve().parents:
             try:
+                from conftest import init_clean_repo
+                init_clean_repo(path)
                 yield path
             finally:
                 shutil.rmtree(path, ignore_errors=True)
@@ -198,8 +204,9 @@ def test_work_prompt_precedes_the_room_prompt(workspace):
 
 
 def test_existing_work_workspace_is_never_deleted(workspace):
-    (workspace / 'keep.txt').write_text('keep')
     adapter = runtime(work_profile=True, work_workspace=str(workspace))
+    # Written after construction: a work directory must be clean when the runtime starts.
+    (workspace / 'keep.txt').write_text('keep')
     from talkabout.agent_runtime import _FixedWorkspace
     try:
         fixed = _FixedWorkspace(adapter.work_workspace)

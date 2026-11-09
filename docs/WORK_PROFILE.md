@@ -42,6 +42,9 @@ python -m talkabout.cli run --config agent.local.json `
 | TalkAbout 소스 트리이거나 그 조상/자손 | `runtime_work_workspace_overlaps_platform` |
 | 쓰기 불가 | `runtime_work_workspace_not_writable` |
 
+위 경로 검증에 더해, 디렉터리는 **깨끗한 git 저장소 루트**여야 한다(`runtime_work_repo_*`). 자세한 조건과 턴 후 관측은 아래
+[git 사전조건과 변경 관측](#git-사전조건과-변경-관측-2026-11-10-위협-점검-f3-a)을 본다.
+
 ## P0 작업 도구 이벤트 관찰 계약
 
 Codex exec-json work profile에서만 `command_execution`, `file_change` 및 계획 메타데이터
@@ -116,6 +119,51 @@ A0 도구 이벤트는 **사후 관찰**이며 권한·성공 판정이 아니�
 메시지 접근은 해당 멤버의 history 경계를 따르며 이벤트·task 요약에는 집계를 넣지 않는다.
 기존 결과 메시지 및 worker SQLite 보존 정책을 따르며 별도 삭제 기한을 보장하지 않는다.
 
+## git 사전조건과 변경 관측 (2026-11-10, 위협 점검 F3-a)
+
+작업 프로필은 에이전트가 **소유자의 실제 디렉터리**를 고치게 한다. 플랫폼은 아무것도 적용하지 않으므로, 되돌릴 방법은
+소유자의 git 이력뿐이다. 그래서 그 방법이 **시작 전에 존재하도록** 요구하고, 턴이 끝난 뒤 무엇이 달라졌는지 기록한다.
+
+**시작 전 사전조건**(예약 전 preflight와 runtime 생성 시 모두 검사, 읽기 전용):
+
+| 조건 | 거절 코드 |
+| --- | --- |
+| git 실행 파일이 없음 | `runtime_work_repo_git_unavailable` |
+| 디렉터리가 git 저장소가 아님 | `runtime_work_repo_not_repository` |
+| git 작업 트리의 **루트**가 아님(하위 디렉터리) | `runtime_work_repo_not_root` |
+| 커밋이 하나도 없음 | `runtime_work_repo_no_commit` |
+| 추적 파일 변경 또는 **미추적 파일**이 있음 | `runtime_work_repo_not_clean` |
+| git 호출 실패·시간 초과 | `runtime_work_repo_check_failed` |
+
+깨끗한 트리를 요구하는 이유는, 미추적·미커밋 변경이 남아 있으면 에이전트의 수정과 소유자의 작업을 구분할 수 없고 되돌릴 수도 없기 때문이다.
+이 검사는 시작 시 **한 번**이다. 턴 사이에 소유자가 직접 고치는 것은 막지 않는다.
+
+**턴 후 관측**(로컬 전용, 서버로 보내지 않음, `work_evidence` 스키마 불변):
+
+- 프로세스 트리 정리가 **확인된 뒤에만** git을 실행한다. 정리 미확인이면 `unknown`(`cleanup_unconfirmed`)으로 기록한다.
+- 기준은 시작 시점의 커밋이다. `git diff --name-status <시작 커밋>`과 미추적 목록, HEAD 변경 여부(`head_changed`)를 기록한다.
+  에이전트가 shell로 직접 commit·reset해도 시작 커밋 대비로 보이지만, 이는 관측일 뿐 방지가 아니다.
+- 파일 목록은 100개까지만 담고 개수는 정확히 센다(`truncated`). **ignore된 파일은 보이지 않는다**(`ignored_files: not_observed`).
+- CLI는 매 step 뒤에 `{"work_repo_observation": {...}}` 한 줄을 출력한다.
+
+**git 자체를 통한 탈출 차단**: 에이전트가 `.git/config`(`core.fsmonitor` 등)나 hooks를 고치면, 이후 플랫폼이 소유자 권한으로
+실행하는 `git status`가 그 코드를 실행할 수 있다. hook 변경은 `git diff`에도 나타나지 않는다. 그래서 시작 시 config·`info/attributes`·hooks의
+지문을 저장하고, **git을 실행하기 전에** 매 턴 비교한다. 달라졌으면 git을 실행하지 않고 다음 턴을 `runtime_work_repo_tampered`로 거절하며,
+그 판정은 파일을 되돌려도 유지된다(재시작 필요). git 호출은 최소 환경(플랫폼 토큰·공급자 키 없음, 전역/시스템 git 설정 무시, `core.fsmonitor=false`)에서 시간·출력 상한을 두고 실행한다.
+
+**플랫폼이 하지 않는 것**: 사용자 저장소에 브랜치·커밋·stash를 만들지 않는다. 에이전트가 디렉터리 밖을 읽거나 썼는지, 네트워크를 썼는지는 이 관측으로 알 수 없다.
+
+## 출력 시크릿 마스킹의 범위 (2026-11-10, 위협 점검 F3-c)
+
+워커는 에이전트 출력을 저널에 저장하거나 서버로 보내기 **전에** 이 프로세스가 아는 시크릿 값(플랫폼 토큰, DB URL, 공급자 API 키 중 16자 이상)을
+고정 placeholder로 바꾼다. 다음은 **보장하지 않는다**:
+
+- 에이전트가 읽은 파일 속의 임의 키·토큰·비밀번호처럼 **플랫폼이 모르는 값**은 가려지지 않는다.
+- 16자 미만 값, 변형(인코딩·분할·일부만 인용)된 값은 가려지지 않는다.
+- 이 버전 이전에 이미 저장된 결과는 byte 단위로 그대로 재전송된다(같은 idempotency key에 다른 본문을 보내지 않기 위함).
+
+따라서 작업 프로필의 출력은 **여전히 민감 정보를 담을 수 있다**. 민감한 파일이 있는 디렉터리를 작업 디렉터리로 지정하지 않는다.
+
 ## 이것은 sandbox가 아니다
 
 - 플랫폼은 **파일·네트워크·비밀정보 접근을 제한하는 sandbox를 주장하지 않는다**. provider 자체의 workspace 정책과
@@ -123,6 +171,11 @@ A0 도구 이벤트는 **사후 관찰**이며 권한·성공 판정이 아니�
 - 에이전트가 **무엇을 했는지**를 서버는 검증할 수 없다. 기여는 지금처럼 `worker_reported_runtime` 증거로만 남고,
   받아들일지는 **사람이** 판단한다.
 - 방의 `change_proposal` 산출물과 결합하면 결과는 **통합 diff**로 제출되고, 플랫폼은 그 diff를 적용하지 않는다.
+- **읽기 범위**: provider의 `workspace-write`가 제한하는 것은 쓰기다. 에이전트가 작업 디렉터리 밖 파일을 읽을 수 있는지는 provider·OS에 달려 있고
+  플랫폼이 검증하지 않는다 `[unverified: Windows의 Codex 샌드박스 읽기 제한]`. 프롬프트의 "디렉터리 안만 건드려라"는 지시이지 강제가 아니다.
+- **네트워크**: 플랫폼은 셸의 네트워크를 차단하지 않는다. `web_search="disabled"`는 검색 도구 설정이다. "네트워크를 추가하지 말라"는 프롬프트 문장도 강제가 아니다.
+- **승인 없음**: 작업 프로필 턴은 `approval_policy="never"`·`--ignore-rules`로 실행되어 공급자 쪽 명령 승인이 꺼져 있고, 플랫폼의 사전 승인도 없다.
+- 프로세스 containment(Windows Job)는 **수명**만 제한하고 능력은 제한하지 않는다.
 
 ## 프롬프트에 추가되는 지시
 

@@ -63,10 +63,14 @@ def test_valid_preflight_uses_frozen_path_without_provider_construction(monkeypa
     def validate(kind, transport, path):
         observed.append((kind, transport, path))
         return tmp_path / 'canonical'
+    from talkabout import work_repo
+    repo_checks = []
     monkeypatch.setattr(agent_runtime, '_validated_work_workspace', validate)
+    monkeypatch.setattr(work_repo, 'check_clean_repo', lambda path: repo_checks.append(str(path)))
     monkeypatch.setattr(cli, 'provider_runtime', lambda *_args, **_kwargs: pytest.fail('provider constructed'))
     cli.work_workspace_preflight('codex', 'exec-json', original)
     assert observed == [('codex', 'exec-json', original)]
+    assert repo_checks == [original], 'the git precondition must also run before any grant'
 
 
 def test_revalidated_canonical_mismatch_fails_closed(monkeypatch, tmp_path):

@@ -12,6 +12,8 @@ import pytest
 from talkabout import agent_runtime as ar
 from talkabout.adapters import AdapterError
 
+pytestmark = pytest.mark.usefixtures('fast_repo_guard')
+
 
 @pytest.fixture
 def workspace():
@@ -23,9 +25,11 @@ def workspace():
             continue
         if package not in path.resolve().parents:
             try:
+                from conftest import init_clean_repo
+                init_clean_repo(path)
                 yield str(path)
             finally:
-                shutil.rmtree(path)
+                shutil.rmtree(path, ignore_errors=True)
             return
         shutil.rmtree(path)
     pytest.skip('no writable directory outside the platform tree')
