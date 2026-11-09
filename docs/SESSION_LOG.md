@@ -1,5 +1,15 @@
 # TalkAbout session log
 
+## 2026-11-09 — 외부 저장소(ai-dev-director) 검토 개선 반영: workspace 경로·런치 정리 강화
+
+- 요청: 외부 저장소(`ai-dev-director`) 정밀 분석에서 도출된 개선을 TalkAbout에 독자 구현으로 반영.
+- **반영 1 — workspace 경로 경계** ([workspace_paths.py](../talkabout/workspace_paths.py), [agent_runtime.py](../talkabout/agent_runtime.py)): strict resolve 전에 정규화된 절대 경로를 구성요소별 `lstat()` 검사. 중간 symlink/junction/reparse·메타데이터 오류는 `runtime_work_workspace_invalid`로 fail-closed, 최종 구성요소 실종만 기존 `runtime_work_workspace_missing` 위임. Windows의 파일 하위 ENOENT는 부모 lstat로 재분류. [WORK_PROFILE.md](WORK_PROFILE.md)·[CLEAN_ROOM_IMPLEMENTATION.md](CLEAN_ROOM_IMPLEMENTATION.md)·[REPOSITORY_ADOPTION_PLAN.md](REPOSITORY_ADOPTION_PLAN.md)에 한계(TOCTOU·모든 reparse tag·실제 OS 동작 미검증) 명기.
+- **반영 2 — 런치 실패 시 정리 확인** ([processes.py](../talkabout/processes.py)): `ManagedProcess.__init__`가 모든 launch 실패 경로에서 job 핸들을 finally로 닫고, 정리 성공은 `cleanup_confirmed`로 예외에 명시, 비상 kill 실패는 `launch_cleanup_unconfirmed`. `ProcessSupervisor.start`는 launch 진행 플래그(`reached_popen`)를 launch 락 안에서 관리해 동시 supervisor 교차 오염 제거. 정리가 확인된 실패는 supervisor를 오염시키지 않고, 확인되지 않은 실패만 이후 `stop()`이 `launch_cleanup_unconfirmed`로 거부.
+- **반영 3 — 출력 한계 주석 정확화** ([adapters.py](../talkabout/adapters.py)): 폴링 한도 초과 관찰 시 즉시 중단, 폴링 사이 burst로 디스크가 한도를 초과할 수 있는 것은 해결된 것이 아니라 문서화된 경계임을 명시.
+- **테스트**: 신규 [test_workspace_paths.py](../tests/test_workspace_paths.py) 11건 + work-profile/preflight 확장. 전체 검증(오프라인 uv 캐시 환경, PostgreSQL·Podman·backup 제외): **Python 2105 passed / 123 skipped / 1 failed** — 유일한 실패는 기존 CI 제외 대상 `test_mcp_stdio_process_interoperability`(오프라인 가드). Node UI 계약 35 passed. 동시 supervisor 10개 병행 가드 확인 통과.
+- **커밋**: `fb77790` fix(runtime): harden workspace paths and launch cleanup / `e2e564e` docs(ui): 이전 세션의 release-gap·UI workflow 변경 별도 커밋. `origin/main` 푸시 완료. `analysis/external/`은 추적하지 않고 커밋에서 제외.
+- **미반영 후속**: bounded pipe 출력(디스크 성장 근본 해결), POSIX `/proc` 열거 실패 fail-closed(POSIX 활성화 전 조건), turn 사이 workspace 재검증.
+
 ## 2026-11-06 — rhel-storage(172.21.18.235) 배포 시도: 사전검증 완료, egress 미개방으로 **연기**
 
 - 요청: "172.21.18.235 서버에 배포해줘" → 사용자 명시로 대상 `rhel-storage`(ssh alias, 확인된 연결·전용 경로) 선정. 사용자 선택: "배포는 다음에"(연기).
