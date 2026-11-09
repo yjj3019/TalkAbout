@@ -10,7 +10,9 @@ from urllib.parse import parse_qs
 import pytest
 
 SCRIPT = Path(__file__).resolve().parents[1] / "deploy" / "podman" / "alert-notify.sh"
-pytestmark = pytest.mark.skipif(not (shutil.which("sh") and shutil.which("curl")), reason="needs sh and curl")
+# Runs in the Linux posix-containment job: the Windows safe-regression guard blocks sh/curl.
+pytestmark = pytest.mark.skipif(os.name != "posix" or not (shutil.which("sh") and shutil.which("curl")),
+                                reason="needs POSIX sh and curl")
 TOKEN = "123456:SECRET-token_value"
 
 

@@ -85,7 +85,7 @@
         },
         {
           "name": "Run POSIX containment contracts",
-          "run": "python -B -m pytest -q tests/test_posix_containment.py tests/test_backup_script.py tests/test_healthcheck_script.py -p no:cacheprovider"
+          "run": "python -B -m pytest -q tests/test_posix_containment.py tests/test_backup_script.py tests/test_healthcheck_script.py tests/test_alert_notify.py -p no:cacheprovider"
         }
       ]
     },
