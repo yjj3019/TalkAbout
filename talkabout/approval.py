@@ -17,6 +17,12 @@ import re
 
 APPROVAL_SOURCES = ('human', 'saved_rule', 'timeout')
 SOURCE_SET = frozenset(APPROVAL_SOURCES)
+# A decision made only because time ran out is never an affirmative answer. The record
+# has no allow/deny field, so any record counts as consent; `timeout` must therefore
+# be refused here rather than rely on every future caller to remember it.
+# `saved_rule` stays recordable and classified, but it is not human consent either:
+# the caller must still decide whether a saved rule may cover a given effect.
+NON_AFFIRMATIVE_SOURCES = frozenset({'timeout'})
 
 # Classified outcomes for one approval against one request. Only 'ready' is an
 # affirmative answer; every other value is a refusal or an unknown.
@@ -122,13 +128,14 @@ def normalize_source(source):
 def approval_state(approval, *, task_id, attempt, tool, arguments, occurrence=0, now):
     """Classify one approval record against one request.
 
-    Missing or malformed fields are never guessed. `saved_rule` and `timeout` keep
-    their own source value and are never reported as a human decision. A missing
-    delivery timestamp is `delivery_unknown`, not `ready`.
+    Missing or malformed fields are never guessed. `saved_rule` keeps its own source
+    value and is never reported as a human decision. `timeout` is never affirmative:
+    it classifies as `missing` whatever else the record says. A missing delivery
+    timestamp is `delivery_unknown`, not `ready`.
     """
     if not isinstance(approval, dict):
         return 'missing'
-    if approval.get('source') not in SOURCE_SET:
+    if approval.get('source') not in SOURCE_SET or approval.get('source') in NON_AFFIRMATIVE_SOURCES:
         return 'missing'
     digest = approval.get('target_digest')
     if not isinstance(digest, str) or digest != effect_key(task_id, attempt, tool, arguments, occurrence):
