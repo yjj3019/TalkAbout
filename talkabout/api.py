@@ -135,8 +135,11 @@ def create_app(store, start_scheduler=True, allow_fixture_bearer=False, allowed_
     def health(request: Request):
         if request.state.setup_locked:
             return {"status": "alive"}
+        skipped = getattr(store, "skipped_rooms", 0)
         return {"status": "development", "scheduler": state["scheduler"], "binary_uploads": False,
-                **({'text_attachments':True} if text_files else {})}
+                **({'text_attachments':True} if text_files else {}),
+                # Rooms the scheduler skipped this tick because they exceed a capacity bound.
+                **({'skipped_rooms': skipped} if skipped else {})}
 
     @app.get("/ready")
     async def ready():

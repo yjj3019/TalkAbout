@@ -14,6 +14,12 @@ from .bounds import room_bounds, snapshot_bounds
 from .pool import ConnectionPool
 from .setup import SetupStore
 
+# Scheduler bounds. The scheduler reads active rooms a page at a time; the ceiling keeps one
+# tick bounded and turns "too many active rooms" into an explicit error instead of silently
+# leaving the rooms past the cap unscheduled.
+SCHEDULER_ROOM_PAGE = 64
+MAX_SCHEDULED_ROOMS = 1024
+
 
 def _validate_connection_environment(dsn):
     """Recheck libpq inputs immediately before opening a new connection.
@@ -821,22 +827,43 @@ class PostgresStore(SetupStore):
         from .domain import schedule, schedule_call
         self._ticks += 1
         changed = False
+        # Read the active rooms a page at a time instead of failing when there are more than
+        # one page: a single capped read used to make the 65th active room stop scheduling for
+        # every room. The total is still bounded, and exceeding it is an explicit error rather
+        # than a silent truncation that would starve the rooms past the cap.
+        ids, after = [], ""
         with self.connect() as conn:
-            ids = [r["id"] for r in conn.execute("SELECT id FROM rooms WHERE payload->>'state'='active' ORDER BY id LIMIT 65").fetchall()]
-            require(len(ids) <= 64, "scheduler_capacity", 429)
+            while True:
+                page = [r["id"] for r in conn.execute(
+                    "SELECT id FROM rooms WHERE payload->>'state'='active' AND id > %s ORDER BY id LIMIT %s",
+                    (after, SCHEDULER_ROOM_PAGE)).fetchall()]
+                ids.extend(page)
+                require(len(ids) <= MAX_SCHEDULED_ROOMS, "scheduler_capacity", 429)
+                if len(page) < SCHEDULER_ROOM_PAGE:
+                    break
+                after = page[-1]
+        skipped = {}
         for rid in ids:
-            with self.connect() as conn:
-                row = conn.execute("SELECT * FROM rooms WHERE id=%s FOR UPDATE SKIP LOCKED", (rid,)).fetchone()
-                if not row:
-                    continue
-                principals = {p["id"]: p["payload"] for p in conn.execute("SELECT id,payload FROM principals WHERE owner=%s ORDER BY id LIMIT 129", (row["owner"],)).fetchall()}
-                require(len(principals) <= 128, "principal_list_capacity_paging_unsupported", 429)
-                room = self._room(conn, row)
-                # An unchanged room must not be rewritten or broadcast every tick:
-                # that alone woke every SSE reader in the workspace twice a second.
-                if schedule_call(room, principals):
-                    self._flush(conn, room, row["last_event_seq"])
-                    changed = True
+            try:
+                with self.connect() as conn:
+                    row = conn.execute("SELECT * FROM rooms WHERE id=%s FOR UPDATE SKIP LOCKED", (rid,)).fetchone()
+                    if not row:
+                        continue
+                    principals = {p["id"]: p["payload"] for p in conn.execute("SELECT id,payload FROM principals WHERE owner=%s ORDER BY id LIMIT 129", (row["owner"],)).fetchall()}
+                    require(len(principals) <= 128, "principal_list_capacity_paging_unsupported", 429)
+                    room = self._room(conn, row)
+                    # An unchanged room must not be rewritten or broadcast every tick:
+                    # that alone woke every SSE reader in the workspace twice a second.
+                    if schedule_call(room, principals):
+                        self._flush(conn, room, row["last_event_seq"])
+                        changed = True
+            except Problem as error:
+                # One room (or owner) over a capacity bound must not stop every other room.
+                # Only capacity refusals are isolated; any other error still fails the tick.
+                if error.status != 429:
+                    raise
+                skipped[rid] = error.code
+        self.skipped_rooms = len(skipped)
         if self._ticks % 120 == 0:
             # Cursor rows are created per SSE batch; expire them on a slow cadence
             # instead of scanning an ever-growing table.
