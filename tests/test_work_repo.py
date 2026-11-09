@@ -36,8 +36,14 @@ def test_clean_repository_root_returns_its_commit(tmp_path):
     assert len(commit) == 40 and int(commit, 16) >= 0
 
 
+# A plain directory is refused either way: with no enclosing repository it is "not a
+# repository", and when the test runner's temp directory happens to sit inside a checkout
+# git finds that parent, so it is "not the root". Both are refusals.
+NOT_A_REPOSITORY_ROOT = {'runtime_work_repo_not_repository', 'runtime_work_repo_not_root'}
+
+
 def test_plain_directory_is_refused(tmp_path):
-    assert code(check_clean_repo, tmp_path) == 'runtime_work_repo_not_repository'
+    assert code(check_clean_repo, tmp_path) in NOT_A_REPOSITORY_ROOT
 
 
 def test_subdirectory_of_a_repository_is_refused(tmp_path):
@@ -144,7 +150,8 @@ def test_runtime_refuses_a_work_directory_that_is_not_a_clean_repository(tmp_pat
     plain.mkdir()
     with pytest.raises(AdapterError) as error:
         StructuredRuntime('codex', executable=None, work_profile=True, work_workspace=str(plain))
-    assert error.value.code == 'runtime_work_repo_not_repository'
+    # Under the safe runner the temp dir sits inside the platform checkout, which is refused earlier.
+    assert error.value.code in NOT_A_REPOSITORY_ROOT | {'runtime_work_workspace_overlaps_platform'}
 
 
 def test_work_turn_records_git_observation_after_confirmed_cleanup(structured, workspace):
