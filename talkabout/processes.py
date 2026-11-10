@@ -5,6 +5,7 @@ supervisor; POSIX proves the child's process group is gone before reporting succ
 reports an unconfirmed stop instead of assuming one. POSIX containment currently covers
 lifetime only: killing the supervisor itself is not handled (see docs/POSIX_CONTAINMENT_PLAN.md).
 """
+import errno
 import os
 import signal
 import subprocess
@@ -116,24 +117,32 @@ def stop_windows_job(job, process):
         kernel.CloseHandle(job)
 
 
-def _proc_stat(pid):
+def _proc_stat(pid, strict=False):
     """Return state/ppid/pgrp/start-time for a pid from Linux /proc, or None.
 
     The start time is what makes a PID comparison meaningful: PID reuse between the
     launch and the stop would otherwise let the ladder signal an unrelated process.
+
+    With strict=True only "the pid is gone" (ENOENT/ESRCH) returns None; an unreadable
+    or unparseable entry (permission, hidepid, I/O, malformed) raises OSError, because
+    it cannot prove the process is absent.
     """
     if not os.path.isdir('/proc'):
         return None
     try:
         with open('/proc/%d/stat' % pid, 'rb') as handle:
             raw = handle.read(8192)
-    except OSError:
+    except OSError as error:
+        if strict and error.errno not in (errno.ENOENT, errno.ESRCH):
+            raise
         return None
     try:
         text = raw.decode('utf-8', 'replace')
         fields = text[text.rindex(')') + 2:].split()
         return {'state': fields[0], 'ppid': int(fields[1]), 'pgrp': int(fields[2]), 'start': int(fields[19])}
     except (ValueError, IndexError):
+        if strict:
+            raise OSError(errno.EIO, 'unparseable /proc stat') from None
         return None
 
 
@@ -157,7 +166,10 @@ def _proc_group_members(pgid):
         pid = int(name)
         if pid in {os.getpid(), pgid}:
             continue
-        stat = _proc_stat(pid)
+        try:
+            stat = _proc_stat(pid, strict=True)
+        except OSError:
+            return None  # An unreadable entry may be a group member: do not claim the group is empty.
         if stat is None or stat['pgrp'] != pgid or stat['state'] == 'Z':
             continue
         members.append(pid)
