@@ -1,5 +1,16 @@
 # TalkAbout session log
 
+## 2026-11-11 — mcp-box 운영 인스턴스 업그레이드 `6bc8aad` → `18442f5` (PR #68 병합분)
+
+- **대상 확정**: 배포 대상은 rhel-storage가 아니라 `mcp-box`의 기존 운영 인스턴스(rootless Podman, loopback `127.0.0.1:18081`). 이 서버에는 podman 5.7.0·cgroup v2·egress가 있어 11-06 rhel-storage에서 막혔던 조건은 해당 없음(기존 "podman 없음" 메모는 사실과 달랐음). 8080은 다른 서비스가 사용.
+- **절차**: 새 릴리스 디렉터리 `~/talkabout-release-18442f5a`에 정확한 커밋 체크아웃 → `podman build --format=docker --build-arg SOURCE_SHA=<40자>` → 네트워크 없는 격리 import 점검 → 컷오버 직전 `~/bin/talkabout-backup`(체크섬 OK) → 현재 앱을 `talkabout-auto-app-rollback-6bc8aad6`로 이름 변경해 보존 → 기존과 동일한 제한(read-only·cap-drop all·no-new-privileges·512m·pids 128·tmpfs·secret `talkabout-auto-db-url`·loopback publish·`--restart=unless-stopped`)으로 새 앱 기동. `/ready` 미확인 시 자동 롤백하는 스크립트로 실행.
+- **결과(관측)**: 새 앱 healthy, `/ready`=ready, 이미지 revision 라벨 `18442f5ae139…`, 로그 오류 0건, DB 행 수 전후 동일(principals 3·rooms 1·events 4), 다른 서비스(rc-prod 등) 무영향. 실행 중 중단은 컨테이너 교체 구간(수십 초).
+- **중간 중단 1회(변경 없음)**: 스크립트가 `io.talkabout.installation` 라벨을 요구했으나 운영 컨테이너에는 `project` 라벨만 있어 변경 전에 안전하게 중단 → 실제 라벨 구성에 맞게 수정 후 재실행.
+- **미적용(선택)**: `talkabout/schema.sql`의 신규 인덱스 2건(`cursors_principal_id`, `cursors_expires_at`)은 상시 앱(DML 전용 `talkabout_app`)이 만들 수 없고 `init-db`(소유자 권한)로만 적용됨. readiness 검사는 인덱스를 요구하지 않아 앱 동작에는 영향 없음(성능 개선만). 적용 여부는 별도 결정.
+- **롤백 방법**: `podman stop talkabout-auto-app && podman rename talkabout-auto-app talkabout-auto-app-new && podman rename talkabout-auto-app-rollback-6bc8aad6 talkabout-auto-app && podman start talkabout-auto-app` 후 `/ready` 확인. schema 변경이 추가형 인덱스뿐이라 이전 이미지와 호환(인덱스는 미적용 상태).
+- **정리 대기**: 롤백용 컨테이너 2개(`…-rollback-6bc8aad6`, `…-rollback-aafd347b`)와 구 이미지·릴리스 디렉터리는 런북 정책(최근 1~2개 보존)에 따라 자동 정리하지 않음.
+- **남은 점검**: 배포 후 장시간 관측(다음 05분 헬스 타이머·03:30 백업 타이머가 새 이미지에서 정상 동작하는지)은 아직 하지 않음. 설치된 `~/bin/talkabout-backup`·`healthcheck`는 저장소의 신규 `backup.sh`/`healthcheck.sh`와 다른 구버전이며 이번에 교체하지 않음.
+
 ## 2026-11-11 — turn 사이 workspace 재검증 반영 (11-09 미반영 후속 1/3)
 
 - **변경** ([agent_runtime.py](../talkabout/agent_runtime.py) `StructuredRuntime._run`): work-profile 모든 turn이 launch 직전 `_validated_work_workspace`를 다시 실행하고, 최초 확정 경로와 다르면 `runtime_work_workspace_invalid`로 fail-closed. 기존에는 worker `pre_grant_preflight`(`cli run` 경로)만 매 step 재검증했고 런타임 자체는 첫 검증 결과를 재사용했음.
