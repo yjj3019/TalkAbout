@@ -1,5 +1,26 @@
 # TalkAbout session log
 
+## 2026-11-11 — turn 사이 workspace 재검증 반영 (11-09 미반영 후속 1/3)
+
+- **변경** ([agent_runtime.py](../talkabout/agent_runtime.py) `StructuredRuntime._run`): work-profile 모든 turn이 launch 직전 `_validated_work_workspace`를 다시 실행하고, 최초 확정 경로와 다르면 `runtime_work_workspace_invalid`로 fail-closed. 기존에는 worker `pre_grant_preflight`(`cli run` 경로)만 매 step 재검증했고 런타임 자체는 첫 검증 결과를 재사용했음.
+- **테스트**: `test_workspace_is_revalidated_on_every_turn` 추가(검증 후 디렉터리 삭제 → `runtime_work_workspace_missing`). 전체 Python **2114 passed / 144 skipped / 0 failed**(오프라인 uv, `requirements.lock.txt`).
+- **한계**: 경로 형태 검사일 뿐, 검사~launch 사이 TOCTOU는 여전함. 이번 환경에서 이전 로그의 실패 1건(`test_mcp_stdio_process_interoperability`)은 skip 또는 통과로 관찰됨(원인 미확인).
+- **남은 후속**: POSIX `/proc` fail-closed. (bounded pipe 출력은 아래 항목으로 반영)
+
+## 2026-11-11 — bounded pipe 출력 반영 (11-09 미반영 후속 2/3)
+
+- 설계: [BOUNDED_PIPE_OUTPUT_PLAN.md](BOUNDED_PIPE_OUTPUT_PLAN.md)(승인 후 구현).
+- **변경**: `processes.BoundedCapture` 신규 — stdout/stderr를 pipe로 받는 reader thread가 청크마다 합계 한도를 강제, 초과분은 저장하지 않고 읽기를 멈춰 자식이 가득 찬 pipe에서 블록됨(파일 증가 없음). `adapters.execute_bounded`(2 MiB)와 `StructuredRuntime._check_codex_exec_auth`(256 KiB)가 임시 파일+`fstat` 폴링 대신 사용. 에러 코드·"합계 한도" 의미 유지. 손자가 pipe를 잡은 경우 0.25초 후 job을 중지해 EOF를 확보.
+- **테스트**: 신규 `tests/test_bounded_capture.py`(stdout/stderr 폭주 시 임시 파일 미생성·종료 시간·thread 잔존 없음 포함), `test_agent_runtime.py`의 가짜 supervisor를 pipe 방식에 맞게 수정.
+- **한계**: stdout 외 파일(workspace)에 쓰는 양은 범위 밖.
+- **성능(측정)**: `execute_bounded` 12회 중앙값, main→pipe: tiny 1096→1085 ms, 1.5 MiB 1회 쓰기 1148→1245 ms, 1.5 MiB를 1 KiB씩 1179→1237 ms. 프로세스 기동(~1 s)이 지배적이고 범위가 겹침(단일 머신·단일 세션 측정).
+
+## 2026-11-11 — 미해결 항목 정리: 테스트 불안정 원인 확정 · POSIX `/proc` 엄격 열거
+
+- **`test_process_cleanup.py` 불안정 — 변경 없는 main에서도 재현**(6병렬 pytest, 36회 중 3회 실패). 원인은 테스트의 빡빡한 시간 제한: `test_fast_stderr_and_combined_output_limit`가 자식 Python 기동에 3 s만 주어 부하 시 `runtime_timeout`이 먼저 발생, fixture 테스트의 `communicate(timeout=15)` 초과. 두 제한을 60 s로 상향(한도 초과 경로는 조기 종료라 정상 시간 불변). 동일 조건 재측정: 36회 중 1회 — 남은 1건은 `stop_windows_job`의 5 s 종료 확인 예산 초과(`process_exit_unconfirmed`)로 과부하(8코어에 6병렬) 시 fail-closed가 의도대로 동작한 것이며 안전 예산은 테스트를 위해 완화하지 않음.
+- **POSIX `/proc` 열거 fail-closed**: `_proc_stat(strict=True)`는 pid 소멸(ENOENT/ESRCH)만 `None`, 권한·I/O·파싱 오류는 예외로 올리고 `_proc_group_members`가 `None`(→`process_exit_unconfirmed`)을 반환. 이전에는 읽을 수 없는 항목을 "이미 없음"으로 건너뛰어 그룹이 비었다고 잘못 증명할 수 있었음. 플랫폼 독립 모의 테스트 `tests/test_proc_group_members.py`로 고정. 실제 Linux 동작은 CI의 POSIX 잡(`test_posix_containment.py`)에서만 검증 가능 — 이 환경에서는 9건 skip.
+- **남은 항목**: 배포(rhel-storage)는 egress 443 개방·cgroup v1 승인·대상 커밋 재확정이 필요한 사용자 조치.
+
 ## 2026-11-09 — 외부 저장소(ai-dev-director) 검토 개선 반영: workspace 경로·런치 정리 강화
 
 - 요청: 외부 저장소(`ai-dev-director`) 정밀 분석에서 도출된 개선을 TalkAbout에 독자 구현으로 반영.

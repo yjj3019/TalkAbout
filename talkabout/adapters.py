@@ -3,10 +3,11 @@ import json
 import os
 from pathlib import Path
 import shutil
+import subprocess
 import tempfile
 import threading
 import time
-from .processes import ProcessSupervisor, ProcessCleanupError
+from .processes import BoundedCapture, ProcessSupervisor, ProcessCleanupError
 from .runtime import check_deadline
 
 
@@ -34,39 +35,38 @@ def execute_bounded(command, prompt, cancel, timeout=30, blocked_names=(), block
     supervisor = supervisor or ProcessSupervisor()
     deadline = min(time.monotonic() + timeout, run_deadline if run_deadline is not None else float('inf'))
     with tempfile.TemporaryDirectory(prefix='talkabout-runtime-') as directory, \
-            tempfile.TemporaryFile() as source, tempfile.TemporaryFile() as output, tempfile.TemporaryFile() as errors:
+            tempfile.TemporaryFile() as source:
         source.write(prompt.encode('utf-8')); source.seek(0)
         try:
             check_deadline(run_deadline)
             if cancel.is_set(): raise AdapterError('runtime_cancelled')
-            process = supervisor.start(command, cancel, deadline=deadline, stdin=source, stdout=output, stderr=errors,
+            process = supervisor.start(command, cancel, deadline=deadline, stdin=source,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0,
                 cwd=directory, env=child_environment(blocked_names, blocked_values), shell=False)
         except (OSError, ProcessCleanupError):
             raise AdapterError('runtime_unavailable') from None
+        # The readers enforce the limit on every chunk, so output past it is never stored
+        # or written to disk; the child just blocks on a full pipe until the job is stopped.
+        capture = BoundedCapture(process, 2097152)
         try:
-            exceeded = False
             while process.poll() is None:
                 if cancel.is_set() or time.monotonic() >= deadline:
                     raise AdapterError('runtime_cancelled' if cancel.is_set() else 'runtime_timeout')
-                if not exceeded and os.fstat(output.fileno()).st_size + os.fstat(errors.fileno()).st_size > 2097152:
-                    # This poll is an observation, not the only bound. After the
-                    # limit is seen the poller stops re-checking and raises
-                    # immediately; containment then stops the job in the finally
-                    # below. A burst between polls can still exceed the limit on
-                    # disk, which remains a documented boundary, not a fix.
-                    exceeded = True
+                if capture.exceeded:
                     raise AdapterError('runtime_output_limit')
                 time.sleep(.03)
-            if not exceeded and os.fstat(output.fileno()).st_size + os.fstat(errors.fileno()).st_size > 2097152:
+            if not capture.settle(supervisor) or capture.failed:
+                raise AdapterError('runtime_failed')
+            if capture.exceeded:
                 raise AdapterError('runtime_output_limit')
             if process.returncode:
                 raise AdapterError('runtime_failed')
             check_deadline(run_deadline)
-            output.seek(0)
-            try: return output.read(2097153).decode('utf-8')
+            try: return bytes(capture.stdout).decode('utf-8')
             except UnicodeError: raise AdapterError('runtime_invalid_output') from None
         finally:
             supervisor.stop()
+            capture.settle(supervisor)
 
 
 class CLIRuntime:

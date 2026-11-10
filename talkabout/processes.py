@@ -5,6 +5,7 @@ supervisor; POSIX proves the child's process group is gone before reporting succ
 reports an unconfirmed stop instead of assuming one. POSIX containment currently covers
 lifetime only: killing the supervisor itself is not handled (see docs/POSIX_CONTAINMENT_PLAN.md).
 """
+import errno
 import os
 import signal
 import subprocess
@@ -116,24 +117,32 @@ def stop_windows_job(job, process):
         kernel.CloseHandle(job)
 
 
-def _proc_stat(pid):
+def _proc_stat(pid, strict=False):
     """Return state/ppid/pgrp/start-time for a pid from Linux /proc, or None.
 
     The start time is what makes a PID comparison meaningful: PID reuse between the
     launch and the stop would otherwise let the ladder signal an unrelated process.
+
+    With strict=True only "the pid is gone" (ENOENT/ESRCH) returns None; an unreadable
+    or unparseable entry (permission, hidepid, I/O, malformed) raises OSError, because
+    it cannot prove the process is absent.
     """
     if not os.path.isdir('/proc'):
         return None
     try:
         with open('/proc/%d/stat' % pid, 'rb') as handle:
             raw = handle.read(8192)
-    except OSError:
+    except OSError as error:
+        if strict and error.errno not in (errno.ENOENT, errno.ESRCH):
+            raise
         return None
     try:
         text = raw.decode('utf-8', 'replace')
         fields = text[text.rindex(')') + 2:].split()
         return {'state': fields[0], 'ppid': int(fields[1]), 'pgrp': int(fields[2]), 'start': int(fields[19])}
     except (ValueError, IndexError):
+        if strict:
+            raise OSError(errno.EIO, 'unparseable /proc stat') from None
         return None
 
 
@@ -157,7 +166,10 @@ def _proc_group_members(pgid):
         pid = int(name)
         if pid in {os.getpid(), pgid}:
             continue
-        stat = _proc_stat(pid)
+        try:
+            stat = _proc_stat(pid, strict=True)
+        except OSError:
+            return None  # An unreadable entry may be a group member: do not claim the group is empty.
         if stat is None or stat['pgrp'] != pgid or stat['state'] == 'Z':
             continue
         members.append(pid)
@@ -318,6 +330,58 @@ class ManagedProcess:
                 stop_posix_group(process, self.pgid, self.started)
             self.closed = True
             return True
+
+
+class BoundedCapture:
+    """Drain a child's stdout/stderr pipes while keeping at most `limit` bytes in total.
+
+    Start the child with stdout/stderr=PIPE and bufsize=0. Once the combined size passes
+    `limit` the readers stop, so a child that keeps writing blocks on a full pipe instead
+    of growing a file; the caller sees `exceeded` and stops the job. Nothing past `limit`
+    is stored. Bytes the child writes to other files are out of scope.
+    """
+    CHUNK = 4096
+
+    def __init__(self, process, limit):
+        self.process, self.limit = process, limit
+        self.stdout, self.stderr = bytearray(), bytearray()
+        self.exceeded = self.failed = False
+        self._total = 0
+        self._lock = threading.Lock()
+        self._threads = [threading.Thread(target=self._drain, args=(stream, buffer), daemon=True)
+                         for stream, buffer in ((process.stdout, self.stdout), (process.stderr, self.stderr))]
+        for thread in self._threads: thread.start()
+
+    def _drain(self, stream, buffer):
+        try:
+            while True:
+                chunk = stream.read(self.CHUNK)
+                if not chunk: return
+                with self._lock:
+                    self._total += len(chunk)
+                    if self._total > self.limit:
+                        self.exceeded = True
+                        return
+                    buffer += chunk
+        except (OSError, ValueError):
+            self.failed = True
+
+    def settle(self, supervisor):
+        """Wait for EOF on both pipes; True when all output was read.
+
+        A grandchild may keep a pipe open after the child exits, so after a short wait
+        the job is stopped (which closes the pipes) and the readers get one more second.
+        """
+        for attempt, wait in enumerate((.25, 1)):
+            for thread in self._threads: thread.join(wait)
+            if not any(thread.is_alive() for thread in self._threads): break
+            if attempt == 0: supervisor.stop()
+        done = not any(thread.is_alive() for thread in self._threads)
+        if done:
+            for stream in (self.process.stdout, self.process.stderr):
+                try: stream.close()
+                except OSError: pass
+        return done
 
 
 class ProcessSupervisor:
