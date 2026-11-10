@@ -50,7 +50,12 @@ def test_final_and_ancestor_junction_components_are_detected(tmp_path, monkeypat
     assert workspace_paths.has_linked_component(candidate)
 
 
-def test_plain_absolute_directory_has_no_linked_component(tmp_path):
+def test_plain_absolute_directory_has_no_linked_component(tmp_path, monkeypatch):
+    # CI may place tmp_path inside the checkout, which the platform-overlap rule rightly refuses;
+    # point the platform root elsewhere so this test only exercises the link-shape check.
+    from talkabout import agent_runtime
+    elsewhere = Path(os.path.abspath(os.sep)) / 'nonexistent-platform' / 'talkabout' / 'agent_runtime.py'
+    monkeypatch.setattr(agent_runtime, '__file__', str(elsewhere))
     candidate = tmp_path.resolve(strict=True) / 'workspace'
     candidate.mkdir()
 
