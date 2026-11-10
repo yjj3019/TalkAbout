@@ -1483,13 +1483,13 @@ class StructuredRuntime:
             raise AdapterError('runtime_secret_in_context')
         if len(prompt.encode('utf-8')) > MAX_INPUT or not 0 < self.timeout <= 120:
             raise AdapterError('invalid_runtime_budget')
+        self._ensure_preflight(cancel)
         if self.work_workspace is not None:
-            # Re-check every turn, before any process is spawned: the directory may have been
-            # swapped for a link or removed since the first turn. Path-shape check only; TOCTOU remains.
+            # Re-check every turn: the directory may have been swapped for a link or removed
+            # since the first turn. Path-shape check only; TOCTOU remains.
             if _validated_work_workspace(self.kind, self.codex_transport,
                                          str(self.work_workspace)) != Path(self.work_workspace):
                 raise AdapterError('runtime_work_workspace_invalid')
-        self._ensure_preflight(cancel)
         with self._state_lock:
             if self._shutdown or cancel.is_set():
                 raise AdapterError('runtime_cancelled')

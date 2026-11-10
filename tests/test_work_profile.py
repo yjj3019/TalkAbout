@@ -71,6 +71,7 @@ def test_home_directory_is_too_broad():
 def test_workspace_is_revalidated_on_every_turn(workspace):
     import threading
     rt = runtime(work_profile=True, work_workspace=str(workspace))
+    rt._ensure_preflight = lambda cancel: None  # no provider binary needed to test the path check
     shutil.rmtree(workspace)
     with pytest.raises(AdapterError, match='^runtime_work_workspace_missing$'):
         rt.run({'room_id': 'r', 'messages': []}, threading.Event())
