@@ -78,7 +78,7 @@ TalkAbout 불변식으로 다시 쓴 것이며 외부 코드는 복사하지 않
 | 필드 | 의미 | 규칙 |
 | --- | --- | --- |
 | `actor` | 승인한 인증된 human | 채팅 메시지·agent 보고·모델 판단은 승인 actor가 아니다 |
-| `source` | `human`/`saved_rule`/`timeout` | `saved_rule`·`timeout`은 `human`으로 집계하지 않는다. 자동 허용 기본 0건 |
+| `source` | `human`/`saved_rule`/`timeout` | `saved_rule`·`timeout`은 `human`으로 집계하지 않는다. 자동 허용 기본 0건. **`timeout`은 어떤 경우에도 긍정 승인이 아니다** — `approval_state`가 `missing`으로 분류한다(2026-11-10 계약 변경, 위협 점검 F2-a). `saved_rule`은 기록·분류만 되며 어떤 효과에 적용해도 되는지는 호출자가 별도로 게이트해야 한다 |
 | `decision_at` / `delivered_at` / `consumed_at` | 결정·전달·소비 시각 | 전달 미확인은 `unknown`으로 보존하며 "승인됨=실행됨"으로 표시하지 않는다 |
 | `target_digest` | 승인 대상(tool·action·args) canonical digest | 대상이 바뀌면 기존 승인은 무효. 같은 digest만 replay |
 | `fence` | task/attempt/room generation/membership revision/lease/policy revision | 실행 직전과 결과 제출 때 다시 검증한다 |

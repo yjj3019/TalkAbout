@@ -1,3 +1,7 @@
+import os
+import shutil
+import subprocess
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -5,6 +9,63 @@ from talkabout.api import create_app
 from talkabout.core import Core
 from talkabout.domain import AGENT_PERMISSIONS, HUMAN_PERMISSIONS, SELF_PERMISSIONS
 from talkabout.store import MemoryStore
+
+
+_REPO_TEMPLATE = {'path': None}
+
+
+class FakeWorkRepoGuard:
+    """Stand-in for tests that need a work-profile runtime but not git itself.
+
+    Starting git costs over a second per call on Windows and a real guard makes several
+    calls per runtime. ``tests/test_work_repo.py`` covers the real guard.
+    """
+    base_commit = '0' * 40
+    tampered = False
+
+    def __init__(self, workspace):
+        self.workspace = workspace
+
+    def before_turn(self):
+        return None
+
+    def observe(self):
+        return {'schema': 'talkabout.work_repo_observation/1', 'state': 'observed', 'base_commit': self.base_commit,
+                'head_changed': False, 'changed_count': 0, 'changed': [], 'untracked_count': 0, 'untracked': [],
+                'truncated': False, 'ignored_files': 'not_observed', 'evidence': 'fake_for_tests'}
+
+
+@pytest.fixture
+def fast_repo_guard(monkeypatch):
+    from talkabout import agent_runtime
+    monkeypatch.setattr(agent_runtime, 'WorkRepoGuard', FakeWorkRepoGuard)
+
+
+def init_clean_repo(path):
+    """Make ``path`` a git repository root with one empty commit and a clean tree.
+
+    A work-profile directory must be one (threat review F3-a). Global/system git
+    configuration is ignored so the result does not depend on the developer's machine.
+    """
+    git = shutil.which('git')
+    if not git:
+        pytest.skip('git is required for work-profile workspaces')
+    if _REPO_TEMPLATE.get('path') is None:
+        # Starting git twice per test is slow on Windows: build one template, then copy it.
+        import atexit
+        import tempfile
+        template = tempfile.mkdtemp(prefix='talkabout-repo-template-')
+        atexit.register(shutil.rmtree, template, True)
+        env = {key: value for key, value in os.environ.items()
+               if key.upper() in {'PATH', 'SYSTEMROOT', 'WINDIR', 'COMSPEC', 'PATHEXT', 'TEMP', 'TMP', 'HOME', 'USERPROFILE'}}
+        env.update(GIT_CONFIG_NOSYSTEM='1', GIT_CONFIG_GLOBAL=os.devnull, GIT_TERMINAL_PROMPT='0')
+        for args in (['init', '-q'],
+                     ['-c', 'user.name=t', '-c', 'user.email=t@example.invalid', '-c', 'commit.gpgsign=false',
+                      'commit', '-q', '--allow-empty', '-m', 'initial']):
+            subprocess.run([git, *args], cwd=template, env=env, check=True, capture_output=True, timeout=60)
+        _REPO_TEMPLATE['path'] = template
+    shutil.copytree(_REPO_TEMPLATE['path'], str(path), dirs_exist_ok=True)
+    return path
 
 
 @pytest.fixture

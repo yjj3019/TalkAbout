@@ -154,8 +154,21 @@ def test_approval_state_does_not_mutate_inputs():
     assert (approval, req) == before
 
 
-def test_saved_rule_and_timeout_are_visible_but_not_human():
-    for source in ('saved_rule', 'timeout'):
-        approval = record(source=source)
-        assert approval_state(approval, **request()) == 'ready'
-        assert approval['source'] != 'human' and approval['source'] in SOURCE_SET
+def test_saved_rule_is_visible_but_not_human():
+    approval = record(source='saved_rule')
+    assert approval_state(approval, **request()) == 'ready'
+    assert approval['source'] != 'human' and approval['source'] in SOURCE_SET
+
+
+def test_timeout_is_never_an_affirmative_approval():
+    """Contract change (threat review F2-a): this used to classify as ``ready``.
+
+    The record has no allow/deny field, so without this rule a timeout-sourced record
+    would authorize an external effect once the gate was wired.
+    """
+    for overrides in ({}, {'delivered_at': None}, {'expires_at': 10_000.0}, {'consumed_at': None}):
+        approval = record(source='timeout', **overrides)
+        assert approval_state(approval, **request()) == 'missing'
+        assert ready(approval, **request()) is False
+    # The source stays a recognised value, so it can still be recorded and displayed.
+    assert normalize_source('timeout') == 'timeout' and 'timeout' in SOURCE_SET

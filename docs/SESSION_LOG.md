@@ -1,5 +1,22 @@
 # TalkAbout session log
 
+## 2026-11-10 — 위협 점검(F1~F3) 권고 반영과 R7 대상 7개 저장소 재확인
+
+- 요청: 위협 점검 보고서의 "권고 우선순위"를 순차 반영, 이어서 7개 저장소(autoresearch·harness2·OpenAlex·bloks·tutti·session-peer·artiboard) 정밀 분석과 개선 반영. 브랜치 `fix/threat-review-hardening`, 미병합·미배포.
+- **1. 출력 시크릿 마스킹(F3-c)** ([worker.py](../talkabout/worker.py)): 플랫폼 토큰·DB URL·공급자 API 키(16자 이상) 값을 `journal.save_result` **전에** placeholder로 치환. 저장된 결과의 재생 경로는 불변. 범위 한계: 플랫폼이 모르는 값(에이전트가 읽은 파일 속 키)은 못 가린다. 통합 시험은 마스킹 호출을 제거하면 실패함을 확인.
+- **2. work profile git 사전조건·관측(F3-a)** ([work_repo.py](../talkabout/work_repo.py)): 디렉터리는 커밋이 있는 **깨끗한 git 루트**여야 하고(preflight와 runtime 생성 시), 턴 후(프로세스 정리 확인 뒤) 시작 커밋 대비 변경을 로컬에 기록·CLI 출력. `.git` config·attributes·hooks 지문을 git 실행 **전에** 비교해 변경 시 다음 턴 거절. 사용자 저장소에 브랜치·커밋·stash 생성 없음. 서버 `work_evidence` 스키마 불변. 읽기·네트워크·ignore 파일은 보지 못함(문서화).
+- **3. 승인 계약(F2-a)** ([approval.py](../talkabout/approval.py)): `timeout` 출처 기록은 더 이상 `ready`가 아니라 `missing`. **기존 테스트가 고정하던 동작을 바꾼 계약 변경**이며 테스트·`TOOL_BROKER_PLAN.md`를 함께 고침. 이 모듈은 여전히 어떤 경로에도 연결되지 않음.
+- **4. 런북(F1-a)** ([DEPLOYMENT_RUNBOOK.md](DEPLOYMENT_RUNBOOK.md)): loopback 밖 노출 전 TLS 종단 필수, `Secure` 쿠키는 요청 scheme 의존, 게시 주소 loopback 전제, 고정 trusted host, 공유 호스트 위험을 한·영 양쪽에 기록. 코드 변경 없음.
+- **7개 저장소**: 5개는 R7 고정 커밋과 동일(변경 없음), session-peer 10 커밋·artiboard 1 커밋만 신규. 상세는 [r7-delta-2026-11-10.md](../analysis/r7-delta-2026-11-10.md). 도출·반영: (a) artiboard의 용량 한도 결함에서 **스케줄러 용량 절벽** 발견 — 활성 방 65개 또는 한 소유자의 principal 128개 초과가 모든 방의 스케줄링을 멈췄음 → 페이지 처리(64개씩, 상한 1024)와 방 단위 429 격리, `/health`의 `skipped_rooms` ([store.py](../talkabout/store.py)); (b) session-peer의 공급망 위생에서 Gitleaks 예약 스캔·Dependabot 추가(`.github/`).
+- **미반영(결정 필요)**: R7 P1 "제한된 후보 비교 모드". 대상 작업·평가기 소유·호출/비용 상한·공급자 사용 승인·후보별 격리가 먼저 정해져야 한다. 소유자당 방 목록 `LIMIT 65`와 principal `LIMIT 129`의 명시적 429는 API·UI 페이지네이션 설계가 필요해 미변경.
+- **검증**: 변경 전 `origin/main` 기준선 Python 2111 passed / 138 skipped / 1 failed(`test_workspace_paths::test_plain_absolute_directory_has_no_linked_component`). **원인 규명**: 안전 러너의 pytest 임시 폴더가 `.ci-results/temp`(체크아웃 안)라 work-profile 검증이 `overlaps_platform`으로 거절한 것이고(CI에서도 동일 실패), 코드 결함이 아니다. 러너가 임시 폴더를 체크아웃 밖(시스템 임시 폴더 또는 `TALKABOUT_CI_TEMP`)에 두도록 수정(`1c86e07`). 수정 후 로컬 전체 pytest **2144 passed / 138 skipped / 0 failed**(타임아웃 없이 직접 실행, 630초). 표준 러너 경유는 로컬에서 600초 제한에 세 번 걸렸다(그때까지 실패 없음, 속도 저하 원인 미규명). GitHub Actions에서 PR #66의 `safe-regression`·`container-image`·`posix-containment` 모두 통과. PostgreSQL 통합과 `tick_all`의 실제 SQL은 CI 확인 대상. Gitleaks는 로컬 실행을 못 해 게이트가 아닌 예약 실행으로만 추가.
+- **CI에서 드러난 문제와 수정**: (a) PR #65의 `test_healthcheck_script`가 Windows CI 가드(`non_fixture_executable_blocked`)에 막힘 → `os.name != "posix"`이면 skip하고 Linux `posix-containment` 잡에 추가(`d6d528f`). (b) 제 `test_ignored_files_are_declared_not_observed`가 Windows CI에서 실패 — `write_text`가 CRLF를 쓰고 가드는 사용자 git 설정(`autocrlf`)을 무시해 변경으로 보임 → LF 바이트로 작성(`107e389`). 가드의 이 특성은 [WORK_PROFILE.md](WORK_PROFILE.md)에 Windows 한계로 기록(거짓 거절, fail-closed).
+- **알림 채널(PR #67, #65 위 스택)**: 사용자가 Telegram·Slack 지정. [alert-notify.sh](../deploy/podman/alert-notify.sh)는 `alert.env`의 `TELEGRAM_BOT_TOKEN`+`TELEGRAM_CHAT_ID`, `SLACK_WEBHOOK_URL`이 있는 채널만 전송하고 시크릿은 curl stdin으로 전달. 로컬 HTTP 서버 기준 11 passed. **실제 Telegram/Slack 서버로는 보내지 않았다**(토큰·chat id·웹훅 URL 필요).
+- **mcp-box(192.168.1.23) 읽기 전용 점검(2026-11-10 06:34 KST)**: `talkabout-auto-app`(이미지 `6bc8aad`) 7시간째 healthy, `/ready` 200, scheduler `running`, `127.0.0.1:18081` loopback 전용. `~/.config/talkabout`·헬스 로그 없음(알림 타이머 미설치로 보임). 롤백용 이전 이미지 `talkabout:aafd347b…`가 서버에 남아 있음. **배포는 하지 않았다.**
+- **병합·배포 대기**: 사용자가 PR 병합과 mcp-box 배포를 요청했으나 세션 규칙상 main 병합은 직접 할 수 없다. 병합 순서 **#66 → #64 → #65 → #67**(#66이 러너 수정을 main에 넣어야 #64·#65의 `test_workspace_paths` 실패가 풀림). 병합 후 #64·#65에 main 반영, #67 base를 main으로 변경, 새 이미지 빌드·컨테이너 교체·`/ready` 확인(loopback 유지 가정).
+- **병합 시 주의**: PR #64·#65와 이 브랜치가 모두 이 파일 맨 위에 항목을 추가하므로 병합 순서에 따라 충돌한다. 런북이 링크하는 `deploy/podman/OPERATING.md`의 알림 훅 설명은 PR #65에 있다.
+- **남은 결정**: 러너 600초 제한을 올릴지, R7 P1(작업 유형·평가기 소유·비용 상한·공급자 승인·후보별 격리), 알림 토큰 설정 담당, 외부 노출 범위·운영 DB·계정.
+
 ## 2026-11-09 — 외부 저장소(ai-dev-director) 검토 개선 반영: workspace 경로·런치 정리 강화
 
 - 요청: 외부 저장소(`ai-dev-director`) 정밀 분석에서 도출된 개선을 TalkAbout에 독자 구현으로 반영.

@@ -10,6 +10,8 @@ from talkabout.adapters import AdapterError
 from talkabout.runtime import WorkEvidence, RuntimeTimeout, bounded_call, bounded_call_with_evidence
 from tests.test_work_profile_events import command, change, event, stream, workspace
 
+pytestmark = pytest.mark.usefixtures('fast_repo_guard')
+
 
 class FakeTransport:
     def __init__(self, events, close_ok=True):

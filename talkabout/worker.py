@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import sqlite3
 import threading
 import time
@@ -39,6 +40,39 @@ def transient_sqlite_error(error):
         return (code & 0xFF) in _TRANSIENT_SQLITE_CODES
     text = str(error).lower()
     return 'locked' in text or 'busy' in text
+
+
+# Secrets this process knows about and must never publish. A model reading a file or its
+# own environment can echo them; only values the platform already holds can be masked, so
+# a secret that merely sits in some file the agent read is NOT covered by this.
+_OUTPUT_SECRET_ENV = ('OPENAI_API_KEY', 'CODEX_API_KEY', 'ANTHROPIC_API_KEY', 'XAI_API_KEY',
+                      'TALKABOUT_TOKEN', 'TALKABOUT_DATABASE_URL')
+# A short value would shred ordinary prose, and a placeholder longer than the value could
+# push a message past its size limit.
+MIN_REDACTED_SECRET_LENGTH = 16
+MAX_CONTRIBUTION_CHARS = 16000
+
+
+def output_secrets(runtime):
+    values = set(getattr(runtime, 'blocked_values', None) or ())
+    values.update(os.environ.get(name) or '' for name in _OUTPUT_SECRET_ENV)
+    return {value for value in values if isinstance(value, str) and len(value) >= MIN_REDACTED_SECRET_LENGTH}
+
+
+def redact_output(runtime, text):
+    """Mask known secret values in agent output before it is stored or sent.
+
+    Applied once, before the result is journaled, so the value never reaches the local
+    journal or the room. Fails closed: a non-text result raises instead of passing through.
+    A result that was already saved is replayed byte for byte and is not rewritten here
+    (an idempotency replay with a different body would conflict), so results saved by an
+    older version are re-sent as they were.
+    """
+    from .content_framing import redact_sensitive
+    redacted = redact_sensitive(text, output_secrets(runtime))
+    if redacted != text:
+        redacted = redacted[:MAX_CONTRIBUTION_CHARS]
+    return redacted
 
 
 def reservation_id(room_id, task_id, attempt, generation, membership_revision, purpose="task"):
@@ -801,6 +835,7 @@ class Worker:
                     else:
                         # Retain the legacy call boundary for existing adapters and tests.
                         text, evidence = bounded_call(self.runtime, context, cancel, timeout), None
+                    text = redact_output(self.runtime, text)
                     # Persist only the helper-validated terminal aggregate, together with
                     # the result and completed intent, before any network request.
                     result = {"client_message_id": f"{tid}:{task['attempt']}", "text": text,

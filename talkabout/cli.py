@@ -76,9 +76,12 @@ def work_workspace_preflight(kind, codex_transport, frozen_workspace):
     The runtime factory independently validates again before launch.
     """
     from .agent_runtime import _validated_work_workspace
+    from .work_repo import check_clean_repo
     checked = _validated_work_workspace(kind, codex_transport, frozen_workspace)
     if str(checked) != frozen_workspace:
         raise ValueError('runtime_work_workspace_mismatch')
+    # Before any grant: the directory must be a clean git root, so a turn can be undone.
+    check_clean_repo(checked)
 
 
 def accept_room(client, room_id, parser):
@@ -466,6 +469,12 @@ def main():
                             raise SystemExit('worker_failed: '+guidance['code']+': '+guidance['reason']['ko']+' / '+guidance['reason']['en']) from None
                         raise SystemExit('worker_failed: result retained as uncertain; inspect status, do not blindly rerun') from None
                     print(result)
+                    if args.work_profile:
+                        # Local evidence only: what git sees against the starting commit. It is
+                        # not sent to the server, not a sandbox report, and cannot see ignored files.
+                        observation = getattr(source_runtime, 'last_workspace_observation', None)
+                        if observation:
+                            print(json.dumps({'work_repo_observation': observation}, ensure_ascii=False), flush=True)
                     safe_drain=callable(getattr(worker,'safe_to_continue_after',None)) and worker.safe_to_continue_after(result)
                     if safe_drain:report('idle')
                     if result in {'uncertain', 'stale', 'unavailable', 'heartbeat_failed', 'runtime_timeout'} and not safe_drain:

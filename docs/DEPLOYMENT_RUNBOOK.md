@@ -17,6 +17,15 @@ This runbook grants no authorization to push, create a PR, merge or deploy. Thes
 3. 전용 PostgreSQL DB/schema, 백업/복구 책임과 secret 전달. DB 생성/권한 부여·영구 password·실제 human/agent credential은 별도 승인 전 실행하지 않습니다.
 4. 공개 포트·방화벽·TLS·전역 패키지·새 서비스 계정·권한 확대·자동기동·지속 설정·새 비용은 정확한 변경과 위험을 보고해 승인받은 뒤 적용합니다. 이 runbook은 이를 자동 설치하지 않습니다.
 
+### 노출 범위와 TLS 전제 (2026-11-10, 위협 점검 F1-a)
+
+- **loopback을 벗어나는 접속(사설망·VPN·공개)은 TLS 종단 없이 열지 않습니다.** 서버는 TLS를 직접 처리하지 않습니다. 로그인 비밀번호와 세션 쿠키가 평문 HTTP로 오가게 됩니다.
+- 세션 쿠키의 `Secure` 속성은 **요청이 `https`로 들어올 때만** 붙습니다(`api.py`의 `request.url.scheme` 판정). TLS를 프록시에서 종단하면 프록시가 원래 scheme을 앱에 전달해야 하며, 그렇지 않으면 쿠키가 `Secure` 없이 발급됩니다. 이 전달은 이 저장소가 설정하지 않으므로 **프록시 구성에서 검증해야 합니다** `[unverified]`.
+- 컨테이너 앱은 컨테이너 안에서 `0.0.0.0:8080`에 bind하고, 외부 격리는 **호스트의 게시 주소가 `127.0.0.1`인 것**에만 의존합니다(`deploy/podman`). 게시 주소를 `0.0.0.0`이나 LAN 주소로 바꾸지 않습니다.
+- `TrustedHostMiddleware`의 허용 host는 `127.0.0.1`·`localhost`·`::1`로 **고정**되어 있습니다(`container.py`). 이름이나 LAN IP로 접속하면 거절됩니다. 이름 기반 접속이 필요하면 허용 host를 설정하는 코드 변경이 먼저 필요하며, DNS rebinding 방어(`Host` 검사)를 약화시키지 않아야 합니다.
+- 같은 호스트의 다른 OS 사용자는 loopback 포트에 도달할 수 있습니다. 인증이 필요하지만 `/health`·`/ready`·정적 파일·로그인 시도는 열려 있고, 로그인 실패 제한은 `workspace:username` 단위(메모리 보관)입니다. 공유 호스트에서는 이 점을 위험으로 취급합니다.
+- 알림·감시 훅(`TALKABOUT_ALERT_COMMAND`)과 `healthcheck.sh`는 [deploy/podman/OPERATING.md](../deploy/podman/OPERATING.md)를 따릅니다.
+
 ## Packaging
 
 wheel에는 schema.sql과 web assets가 포함됩니다. 빌드용 dependency는 pip의 격리 환경에 설치합니다. 전역 Python이나 다른 앱 venv는 변경하지 않습니다.
@@ -49,6 +58,15 @@ serve는 foreground에서 127.0.0.1:8080에 bind하고 concurrency 16, graceful 
 ## English
 
 This is deployment preparation for a private prototype. Verify the approved private connection and host key before use. The dedicated app path/runtime identity, access scope, PostgreSQL allocation/backup/secrets and persistent security settings require precise decisions. Public ports/firewall/TLS, global packages, service accounts, permanent credentials, auto-start and new costs require additional approval. Real AI calls are not implied by deploying code.
+
+### Exposure and TLS prerequisites (2026-11-10, threat review F1-a)
+
+- **Do not open access beyond loopback (private network, VPN, public) without TLS termination.** The server does not handle TLS; passwords and session cookies would travel in clear text.
+- The session cookie gets `Secure` **only when the request arrives as `https`** (`request.url.scheme` in `api.py`). If TLS ends at a proxy, the proxy must pass the original scheme to the app; otherwise the cookie is issued without `Secure`. This repository does not configure that, so **verify it in the proxy setup** `[unverified]`.
+- The container app binds `0.0.0.0:8080` inside the container; outside isolation relies **only on the host publish address being `127.0.0.1`** (`deploy/podman`). Do not change it to `0.0.0.0` or a LAN address.
+- `TrustedHostMiddleware` allows only `127.0.0.1`, `localhost` and `::1` (fixed in `container.py`). Access by name or LAN IP is refused. Name-based access needs a code change that makes the allowed hosts configurable, without weakening the `Host` check that blocks DNS rebinding.
+- Other OS users on the same host can reach a loopback port. Authentication is required, but `/health`, `/ready`, static files and login attempts are open, and the failed-login limit is per `workspace:username` and held in memory. Treat that as a risk on a shared host.
+- For the alert hook (`TALKABOUT_ALERT_COMMAND`) and `healthcheck.sh`, see [deploy/podman/OPERATING.md](../deploy/podman/OPERATING.md).
 
 Build the wheel in isolation and use an app-private venv. Record source SHA and wheel hash. The Windows dependency snapshot is not a Linux compatibility claim. CLI validates loopback PostgreSQL settings with a bounded connect timeout; preflight is read-only and serve never initializes schema/accounts automatically. /ready checks scheduler and PostgreSQL schema; /health reports process state. Fixture readiness cannot be mistaken for a production DB.
 
