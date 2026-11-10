@@ -5,7 +5,14 @@
 - **변경** ([agent_runtime.py](../talkabout/agent_runtime.py) `StructuredRuntime._run`): work-profile 모든 turn이 launch 직전 `_validated_work_workspace`를 다시 실행하고, 최초 확정 경로와 다르면 `runtime_work_workspace_invalid`로 fail-closed. 기존에는 worker `pre_grant_preflight`(`cli run` 경로)만 매 step 재검증했고 런타임 자체는 첫 검증 결과를 재사용했음.
 - **테스트**: `test_workspace_is_revalidated_on_every_turn` 추가(검증 후 디렉터리 삭제 → `runtime_work_workspace_missing`). 전체 Python **2114 passed / 144 skipped / 0 failed**(오프라인 uv, `requirements.lock.txt`).
 - **한계**: 경로 형태 검사일 뿐, 검사~launch 사이 TOCTOU는 여전함. 이번 환경에서 이전 로그의 실패 1건(`test_mcp_stdio_process_interoperability`)은 skip 또는 통과로 관찰됨(원인 미확인).
-- **남은 후속**: bounded pipe 출력(설계 필요), POSIX `/proc` fail-closed.
+- **남은 후속**: POSIX `/proc` fail-closed. (bounded pipe 출력은 아래 항목으로 반영)
+
+## 2026-11-11 — bounded pipe 출력 반영 (11-09 미반영 후속 2/3)
+
+- 설계: [BOUNDED_PIPE_OUTPUT_PLAN.md](BOUNDED_PIPE_OUTPUT_PLAN.md)(승인 후 구현).
+- **변경**: `processes.BoundedCapture` 신규 — stdout/stderr를 pipe로 받는 reader thread가 청크마다 합계 한도를 강제, 초과분은 저장하지 않고 읽기를 멈춰 자식이 가득 찬 pipe에서 블록됨(파일 증가 없음). `adapters.execute_bounded`(2 MiB)와 `StructuredRuntime._check_codex_exec_auth`(256 KiB)가 임시 파일+`fstat` 폴링 대신 사용. 에러 코드·"합계 한도" 의미 유지. 손자가 pipe를 잡은 경우 0.25초 후 job을 중지해 EOF를 확보.
+- **테스트**: 신규 `tests/test_bounded_capture.py`(stdout/stderr 폭주 시 임시 파일 미생성·종료 시간·thread 잔존 없음 포함), `test_agent_runtime.py`의 가짜 supervisor를 pipe 방식에 맞게 수정.
+- **한계**: stdout 외 파일(workspace)에 쓰는 양은 범위 밖. `test_process_cleanup.py`가 부하가 큰 실행에서 2회 실패(15초 예산 초과로 추정, 원인 미확정; 변경 없는 main은 12회 0실패, 변경 후 단독 반복 16회 0실패).
 
 ## 2026-11-09 — 외부 저장소(ai-dev-director) 검토 개선 반영: workspace 경로·런치 정리 강화
 

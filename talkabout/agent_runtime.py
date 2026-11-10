@@ -29,7 +29,7 @@ import uuid
 
 from .adapters import AdapterError, execute_bounded
 from .content_framing import information_marker
-from .processes import ProcessSupervisor, ProcessCleanupError
+from .processes import BoundedCapture, ProcessSupervisor, ProcessCleanupError
 from .runtime import WorkEvidence
 from .trial_observation import OBSERVATION_STAGES, TrialRecordError, safe_io_failure
 from .workspace_paths import has_linked_component
@@ -1005,29 +1005,31 @@ class StructuredRuntime:
     def _check_codex_exec_auth(self, cancel, supervisor):
         # login status may print its diagnostic to stderr. Read only its mode;
         # do not expose or persist the original output (which can contain a key hint).
-        with tempfile.TemporaryFile() as source, tempfile.TemporaryFile() as output, tempfile.TemporaryFile() as errors:
+        with tempfile.TemporaryFile() as source:
             try:
                 process = supervisor.start([self.executable, 'login', 'status'], cancel,
-                    deadline=self._deadline, stdin=source, stdout=output, stderr=errors,
-                    cwd=self._workspace.name, env=self._environment(), shell=False)
+                    deadline=self._deadline, stdin=source, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                    bufsize=0, cwd=self._workspace.name, env=self._environment(), shell=False)
             except (OSError, ProcessCleanupError):
                 raise AdapterError('runtime_unavailable') from None
+            capture = BoundedCapture(process, MAX_LINE)
             try:
                 while process.poll() is None:
                     if cancel.is_set():
                         raise AdapterError('runtime_cancelled')
                     if time.monotonic() >= self._deadline:
                         raise AdapterError('runtime_timeout')
-                    if os.fstat(output.fileno()).st_size + os.fstat(errors.fileno()).st_size > MAX_LINE:
+                    if capture.exceeded:
                         raise AdapterError('runtime_output_limit')
                     time.sleep(.01)
+                if not capture.settle(supervisor) or capture.failed:
+                    raise AdapterError('runtime_auth_required')
                 if process.returncode != 0:
                     raise AdapterError('runtime_auth_required')
-                if os.fstat(output.fileno()).st_size + os.fstat(errors.fileno()).st_size > MAX_LINE:
+                if capture.exceeded:
                     raise AdapterError('runtime_output_limit')
-                output.seek(0); errors.seek(0)
                 try:
-                    status = (output.read(MAX_LINE) + b'\n' + errors.read(MAX_LINE)).decode('utf-8')
+                    status = (bytes(capture.stdout) + b'\n' + bytes(capture.stderr)).decode('utf-8')
                 except UnicodeError:
                     raise AdapterError('runtime_invalid_output') from None
                 native = bool(re.search(r'(?m)^Logged in using ChatGPT\s*$', status))
@@ -1037,6 +1039,7 @@ class StructuredRuntime:
             finally:
                 if supervisor.stop() is not True:
                     raise AdapterError('runtime_cleanup_unconfirmed')
+                capture.settle(supervisor)
 
     def _codex_exec(self, prompt):
         work = _WorkItems() if self.work_profile else None

@@ -1,5 +1,6 @@
 """Synthetic protocol tests. Never launch installed providers or read credentials."""
 import io
+import subprocess
 import json
 import os
 import queue
@@ -1023,8 +1024,9 @@ def test_codex_exec_auth_metadata_is_finite_and_fail_closed(monkeypatch, tmp_pat
         def start(self, command, cancel, **kwargs):
             assert command == [sys.executable, 'login', 'status']
             assert kwargs['shell'] is False
-            kwargs['stderr'].write(status.encode()); kwargs['stderr'].flush()
-            return type('Process', (), {'poll': lambda self: 0, 'returncode': 0})()
+            assert kwargs['stdout'] is subprocess.PIPE and kwargs['stderr'] is subprocess.PIPE
+            return type('Process', (), {'poll': lambda self: 0, 'returncode': 0, 'stdout': io.BytesIO(),
+                                        'stderr': io.BytesIO(status.encode())})()
         def stop(self):
             return True
     if expected:

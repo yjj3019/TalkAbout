@@ -1,4 +1,4 @@
-# Bounded pipe 출력 설계안 (초안 — 승인 전, 코드 변경 없음)
+# Bounded pipe 출력 설계안 (2026-11-11 승인·구현됨 — [SESSION_LOG](SESSION_LOG.md) 참조)
 
 작성: 2026-11-11. 11-09 SESSION_LOG "미반영 후속 1"의 근본 해결안. 대상은 Windows(`os.name == 'nt'`)이며 POSIX는 범위 밖(현재도 `runtime_containment_unsupported`).
 
