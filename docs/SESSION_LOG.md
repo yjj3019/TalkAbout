@@ -1,5 +1,12 @@
 # TalkAbout session log
 
+## 2026-11-11 — turn 사이 workspace 재검증 반영 (11-09 미반영 후속 1/3)
+
+- **변경** ([agent_runtime.py](../talkabout/agent_runtime.py) `StructuredRuntime._run`): work-profile 모든 turn이 launch 직전 `_validated_work_workspace`를 다시 실행하고, 최초 확정 경로와 다르면 `runtime_work_workspace_invalid`로 fail-closed. 기존에는 worker `pre_grant_preflight`(`cli run` 경로)만 매 step 재검증했고 런타임 자체는 첫 검증 결과를 재사용했음.
+- **테스트**: `test_workspace_is_revalidated_on_every_turn` 추가(검증 후 디렉터리 삭제 → `runtime_work_workspace_missing`). 전체 Python **2114 passed / 144 skipped / 0 failed**(오프라인 uv, `requirements.lock.txt`).
+- **한계**: 경로 형태 검사일 뿐, 검사~launch 사이 TOCTOU는 여전함. 이번 환경에서 이전 로그의 실패 1건(`test_mcp_stdio_process_interoperability`)은 skip 또는 통과로 관찰됨(원인 미확인).
+- **남은 후속**: bounded pipe 출력(설계 필요), POSIX `/proc` fail-closed.
+
 ## 2026-11-09 — 외부 저장소(ai-dev-director) 검토 개선 반영: workspace 경로·런치 정리 강화
 
 - 요청: 외부 저장소(`ai-dev-director`) 정밀 분석에서 도출된 개선을 TalkAbout에 독자 구현으로 반영.

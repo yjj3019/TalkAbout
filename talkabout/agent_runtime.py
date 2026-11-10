@@ -1488,6 +1488,12 @@ class StructuredRuntime:
                 raise AdapterError('runtime_outcome_unknown')
             if self._room_id is not None and self._room_id != room_id:
                 raise AdapterError('runtime_room_mismatch')
+            if self.work_workspace is not None:
+                # Re-check every turn: the directory may have been swapped for a link or
+                # removed since the first turn. Path-shape check only; TOCTOU remains.
+                if _validated_work_workspace(self.kind, self.codex_transport,
+                                             str(self.work_workspace)) != Path(self.work_workspace):
+                    raise AdapterError('runtime_work_workspace_invalid')
             self.last_observation = self.last_observation_error = None
             self.native_launch_state = 'not_requested'
             self._deadline = min(time.monotonic() + self.timeout, self.run_deadline if self.run_deadline is not None else float('inf'))
