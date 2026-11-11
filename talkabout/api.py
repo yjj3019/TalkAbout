@@ -432,6 +432,9 @@ def create_app(store, start_scheduler=True, allow_fixture_bearer=False, allowed_
                     return room_stream(request, credential, room_id)
                 if operation == "interventions":
                     return core.interventions(credential, room_id)
+                if operation == "search":
+                    return core.room_search(credential, room_id, request.query_params.get("q"),
+                                           request.query_params.get("limit"))
                 if operation == "diagnostics":
                     return core.room_diagnostics(credential, room_id)
                 if operation == "fence":

@@ -1,5 +1,10 @@
 # TalkAbout session log
 
+## 2026-11-11 — agent-tincan 후속 반영: R-09 방 메시지 검색(사람 전용, 읽기 전용)
+
+- **반영**: [search.py](../talkabout/search.py) + [core.py](../talkabout/core.py) `room_search` + api `GET rooms/{id}/search` — `read_start_seq` 이후 가시 메시지에서만 매칭(단어 전부 AND·대소문자 무시·구두점만 → 0건), 최신순, limit 1..50(기본 20), q ≤4096B, 사전/검증 아님, 상태·event·cursor 무변경, 사람(room:read) 전용. [tests/test_room_search.py](../tests/test_room_search.py) 8건 통과.
+- **검증**: 신규 8건 추가. 전체 Python 회귀(no postgres) 갱신 후 커밋. 실제 브라우저 UI·공급자 상호운용 **NOTRUN**.
+
 ## 2026-11-11 — agent-tincan(MIT) 정밀 검토 → 독립 구현 반영 3종 + 프레이밍 헤더
 
 - **검토**: `mvanhorn/agent-tincan@b07895d9`(Go, MIT, ~15.9만 줄)를 6개 영역 병렬 정밀 검토(relay/identity/store/cli/wake/process) + 원문 라인 검증. 보고서 [analysis/agent-tincan-review-2026-11-11/](../analysis/agent-tincan-review-2026-11-11/00-SOURCE-MANIFEST.md). 클론은 gitignore 대상 `.analysis-repos/agent-tincan/`.

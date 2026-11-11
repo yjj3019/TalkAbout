@@ -1873,6 +1873,26 @@ class Core(Participation):
         controls = [{"kind": "control", **copy.deepcopy(c)} for c in room["controls"].values() if c.get("requested_seq", 0) >= member["read_start_seq"]]
         return sorted(messages + controls, key=lambda item: item["created_at"])
 
+    def room_search(self, token, room_id, query, limit=None):
+        """Read-only visible-message search for humans: no mutation, no model call."""
+        from .search import DEFAULT_LIMIT, SearchError, room_search
+        actor, rooms, _ = self.store.snapshot(token)
+        require(room_id in rooms, "not_found", 404)
+        room = rooms[room_id]
+        member = authorize(actor, room, "room:read", human=True)
+        if limit is not None:
+            if isinstance(limit, str):
+                try:
+                    limit = int(limit)
+                except ValueError:
+                    require(False, "invalid_search", 422)
+            require(type(limit) is int, "invalid_search", 422)
+        try:
+            return room_search(room["messages"].values(), viewer_floor=member["read_start_seq"],
+                              query=query, limit=DEFAULT_LIMIT if limit is None else limit)
+        except SearchError:
+            raise Problem("invalid_search", 422) from None
+
     def room_diagnostics(self, token, room_id):
         """Read-only waiting-reason projection: no mutation, no event, no model call."""
         actor, rooms, _ = self.store.snapshot(token)
