@@ -1,5 +1,12 @@
 # TalkAbout session log
 
+## 2026-11-11 — agent-tincan(MIT) 정밀 검토 → 독립 구현 반영 3종 + 프레이밍 헤더
+
+- **검토**: `mvanhorn/agent-tincan@b07895d9`(Go, MIT, ~15.9만 줄)를 6개 영역 병렬 정밀 검토(relay/identity/store/cli/wake/process) + 원문 라인 검증. 보고서 [analysis/agent-tincan-review-2026-11-11/](../analysis/agent-tincan-review-2026-11-11/00-SOURCE-MANIFEST.md). 클론은 gitignore 대상 `.analysis-repos/agent-tincan/`.
+- **반영(clean-room, 아이디어만 자체 구현)**: ① [reply_cues.py](../talkabout/reply_cues.py) — 회신 분류(진행 단서≠최종, 결과 단서 우선, explicit_final 우선, 280B·개행 2 초과는 final). ② [text_budget.py](../talkabout/text_budget.py) — 공정 몫 예산 + 예약 통지(통지가 예산 안, UTF-8 경계, 불가 시 fail-closed). ③ [chained_log.py](../talkabout/chained_log.py) — (prev,hash) 연결 무결성 검증(순수 + sqlite3). ④ api.py 응답에 `X-Frame-Options: DENY` 추가(CSP와 2중).
+- **테스트**: 신규 29건 + 정적 값 1건(합계 30) 통과. 기존 API/회귀 무변경으로 유지. 실제 공급자·브라우저·tailnet 상호운용 **NOTRUN**. worker/room 경로 연결은 미적용(기존 state-first 감사·R3 계약 보존, 후속 관문).
+- **미반영(설계 후보)**: 2단계 lease+claim-lapsed 툼스톤, reply generation+전용 seen, 검색 가시성, handback/failover, 요청별 0700 스테이징 — analysis/agent-tincan-review-2026-11-11/02-TALKABOUT-GAPS.md.
+
 ## 2026-11-11 — mcp-box 운영 인스턴스 업그레이드 `6bc8aad` → `18442f5` (PR #68 병합분)
 
 - **대상 확정**: 배포 대상은 rhel-storage가 아니라 `mcp-box`의 기존 운영 인스턴스(rootless Podman, loopback `127.0.0.1:18081`). 이 서버에는 podman 5.7.0·cgroup v2·egress가 있어 11-06 rhel-storage에서 막혔던 조건은 해당 없음(기존 "podman 없음" 메모는 사실과 달랐음). 8080은 다른 서비스가 사용.

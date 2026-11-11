@@ -39,6 +39,7 @@ def test_work_plan_module_is_served_while_setup_is_locked_and_has_javascript_mim
     assert "createWorkPlanView" in response.text
     assert response.headers["cache-control"] == "public, max-age=0, must-revalidate"
     assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers["x-frame-options"] == "DENY"
     assert "script-src 'self'" in response.headers["content-security-policy"]
     assert client.get("/").status_code == 200
     assert client.get("/web/app.mjs").status_code == 200
