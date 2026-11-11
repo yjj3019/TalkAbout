@@ -15,7 +15,7 @@ from .text_files import (claim_proof, filter_refs, public_task, token_hash, vali
 from .domain import (AGENT_PERMISSIONS, EVENT_CAPACITY, HUMAN_PERMISSIONS, KEY_CAPACITY,
                      PLAN_DISPATCH_BYTE_RESERVE, PLAN_DISPATCH_KEY_RESERVE,
                      PLAN_DISPATCH_START_BYTE_SLACK, PLAN_DISPATCH_START_EVENT_SLACK,
-                     PLAN_DISPATCH_STATE_BYTE_SLACK, ROOM_BYTE_CAPACITY, CommittedProblem, Problem, active, authorize,
+                     PLAN_DISPATCH_STATE_BYTE_SLACK, ROOM_BYTE_CAPACITY, CommittedProblem, DELIVERABLES, Problem, active, authorize,
                      cancel_tasks, cancel_stale_turn_requests, deliverable_artifact_kind, digest, emit, fencing, grant_reservation,
                      ident, message, new_room, reservation_outcome, resolve_uncertain, start_reservation,
                      record_task_event, replay, require, room_byte_size, save_response, schedule, participant_permissions,
@@ -279,6 +279,9 @@ def control_parameters(action, parameters, room, member):
         ranges = {"messages": (1, 200), "attempts": (1, 3), "lease": (5, 60), "task_seconds": (5, 180), "rounds": (1, 3)}
         require(all(type(limits[k]) is int and low <= limits[k] <= high for k, (low, high) in ranges.items()) and limits["lease"] <= limits["task_seconds"], "invalid_limits", 422)
         parameters = {"limits": limits}
+    elif action == "change_deliverable":
+        require(set(parameters) == {"deliverable"} and isinstance(parameters["deliverable"], str)
+                and parameters["deliverable"] in DELIVERABLES, "invalid_deliverable", 422)
     elif action == "pin":
         message_id = parameters.get("message_id")
         require(set(parameters) == {"message_id"} and isinstance(message_id, str) and message_id in room["messages"] and room["messages"][message_id]["seq"] >= member["read_start_seq"], "not_found", 404)
@@ -1276,7 +1279,7 @@ class Core(Participation):
                 if verb != "approve":
                     require(len(room["controls"]) < 128, "control_capacity", 429)
                     action = body.get("action")
-                    require(action in {"start", "pause", "resume", "close", "change_topic", "change_mode", "change_limits", "pin", "hold_dispatch", "release_dispatch"}, "unsupported_control", 422)
+                    require(action in {"start", "pause", "resume", "close", "change_topic", "change_mode", "change_limits", "change_deliverable", "pin", "hold_dispatch", "release_dispatch"}, "unsupported_control", 422)
                     parameters = control_parameters(action, body.get("parameters", {}), room, member)
                     reason = body.get("reason", "")
                     require(isinstance(reason, str) and len(reason) <= 512, "invalid_reason", 422)
@@ -1325,6 +1328,10 @@ class Core(Participation):
                         room["topic"] = text
                     elif action == "change_mode":
                         room["mode"] = control["parameters"]["mode"]
+                    elif action == "change_deliverable":
+                        deliverable = control["parameters"].get("deliverable")
+                        require(deliverable in DELIVERABLES, "invalid_deliverable", 422)
+                        room["deliverable"] = deliverable
                     elif action == "change_limits":
                         room["limits"] = copy.deepcopy(control["parameters"]["limits"])
                     elif action == "pin":
@@ -1333,7 +1340,7 @@ class Core(Participation):
                     if action not in {"pin", "hold_dispatch", "release_dispatch"}:
                         room["generation"] += 1
                         cancel_tasks(room)
-                    if action in {"change_topic", "change_mode"}:
+                    if action in {"change_topic", "change_mode", "change_deliverable"}:
                         room.pop("mode_progress", None)
                         room.pop("creation_artifact_id", None)
                         room["mode_status"] = "running"

@@ -1,5 +1,10 @@
 # TalkAbout session log
 
+## 2026-11-11 — 클래스 룸 실현 증분: 조율 control `change_deliverable`(산출물 종류 방향 전환)
+
+- **결손**: 사람이 조율 중 방의 산출물 종류(문서 analysis / 코드 change_proposal)를 바꿀 경로가 없음(생성 시 고정).
+- **반영**: [core.py](../talkabout/core.py) — control 액션 세트에 `change_deliverable` 추가(사람 전용 승인 흐름 재사용, `DELIVERABLES` 검증, 적용 시 deliverable 교체 + 생성 대상 초기화, change_topic/change_mode와 동일 리셋 계약). [tests/test_control_change_deliverable.py](../tests/test_control_change_deliverable.py) 4건.
+
 ## 2026-11-11 — 클래스 룸(단톡방) 플랫폼 실현 증분: 사람 조율 현황 투영 `production`
 
 - **배경**: 사용자 요구 — 사람이 AI 에이전트를 단톡방(클래스 룸)에 초대·조율하며, 에이전트들이 토론하고 산출물(문서/코드)을 생성하는 플랫폼. 방/초대/3모드(자유 토론·구조 토론·공동 창작)/산출물(텍스트·코드 패치)·채택·조율 control은 기존 구현으로 존재.
