@@ -1873,6 +1873,15 @@ class Core(Participation):
         controls = [{"kind": "control", **copy.deepcopy(c)} for c in room["controls"].values() if c.get("requested_seq", 0) >= member["read_start_seq"]]
         return sorted(messages + controls, key=lambda item: item["created_at"])
 
+    def room_production(self, token, room_id):
+        """Read-only human coordination projection: no mutation, no model call."""
+        from .production import room_production
+        actor, rooms, _ = self.store.snapshot(token)
+        require(room_id in rooms, "not_found", 404)
+        room = rooms[room_id]
+        member = authorize(actor, room, "room:read", human=True)
+        return room_production(room, membership_revision=member["revision"])
+
     def room_search(self, token, room_id, query, limit=None):
         """Read-only visible-message search for humans: no mutation, no model call."""
         from .search import DEFAULT_LIMIT, SearchError, room_search

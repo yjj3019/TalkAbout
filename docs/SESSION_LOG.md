@@ -1,5 +1,11 @@
 # TalkAbout session log
 
+## 2026-11-11 — 클래스 룸(단톡방) 플랫폼 실현 증분: 사람 조율 현황 투영 `production`
+
+- **배경**: 사용자 요구 — 사람이 AI 에이전트를 단톡방(클래스 룸)에 초대·조율하며, 에이전트들이 토론하고 산출물(문서/코드)을 생성하는 플랫폼. 방/초대/3모드(자유 토론·구조 토론·공동 창작)/산출물(텍스트·코드 패치)·채택·조율 control은 기존 구현으로 존재.
+- **이번 반영**: [production.py](../talkabout/production.py) + [core.py](../talkabout/core.py) `room_production` + api `GET rooms/{id}/production` — 사람(room:read) 전용·무변경·합성 테스트. 고정 어휘의 `open_human_decisions`(승인 대기 control · 공동 창작 초안 채택 대기 · 재개/종료 · dispatch 해제), 산출물 요약(id·revision·버전 수·ai_generated·채택 버전, 내용 무포함). [tests/test_room_production.py](../tests/test_room_production.py) 7건.
+- **실현 남은 관문**: 실제 에이전트 런타임(MCP worker)·브라우저 UI·공급자 상호운용 **NOTRUN**, 실행(패치 적용)은 미구현으로 유지.
+
 ## 2026-11-11 — agent-tincan 후속 반영: R-09 방 메시지 검색(사람 전용, 읽기 전용)
 
 - **반영**: [search.py](../talkabout/search.py) + [core.py](../talkabout/core.py) `room_search` + api `GET rooms/{id}/search` — `read_start_seq` 이후 가시 메시지에서만 매칭(단어 전부 AND·대소문자 무시·구두점만 → 0건), 최신순, limit 1..50(기본 20), q ≤4096B, 사전/검증 아님, 상태·event·cursor 무변경, 사람(room:read) 전용. [tests/test_room_search.py](../tests/test_room_search.py) 8건 통과.
