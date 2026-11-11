@@ -1,5 +1,10 @@
 # TalkAbout session log
 
+## 2026-11-11 — 클래스 룸 실현 증분: 사용자 시나리오 계약 테스트(조율→토론→문서 산출물→채택)
+
+- **결손**: 사용자 요구(클래스 룸: 초대·조율·토론·산출물)를 하나의 시나리오로 꿰는 계약이 없음.
+- **반영**: [tests/test_classroom_scenario.py](../tests/test_classroom_scenario.py) — 에이전트가 연 방 → 사람 핸드오버 → `change_deliverable`(문서 analysis) → researcher/creator/reviewer 토론·창작 → `production`(채택 대기) → `search`(초안 검색) → 산출물 채택 → adopted·closed까지 E2E 계약(합성 픽스처, 공급자 NOTRUN). 1건.
+
 ## 2026-11-11 — 클래스 룸 실현 증분: 조율 control `change_deliverable`(산출물 종류 방향 전환)
 
 - **결손**: 사람이 조율 중 방의 산출물 종류(문서 analysis / 코드 change_proposal)를 바꿀 경로가 없음(생성 시 고정).
