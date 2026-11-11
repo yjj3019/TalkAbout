@@ -7,6 +7,7 @@ coordination projection and adopts; the room records the produced document and
 closes. Synthetic fixtures only (no provider/browser acceptance).
 """
 from conftest import LocalClient
+from talkabout.worker import Journal, Worker
 from talkabout.domain import AGENT_PERMISSIONS
 from test_modes_handover import accept_body
 
@@ -103,6 +104,39 @@ def test_classroom_story_mcp_code_proposal_submission_and_human_adoption(fixture
     final = client.request("GET", f"rooms/{rid}")
     adopted = next(a for a in final["artifacts"] if a["id"] == art["id"])
     assert adopted["adopted"] == art["versions"][-1]["id"]
+
+
+def test_classroom_story_worker_runtime_submits_code_patch(fixture, tmp_path):
+    """Scenario 5: a reference Worker (SyntheticRuntime subclass) claims a change_proposal
+    creator task and submits a code patch the human then adopts."""
+    from talkabout.worker import SyntheticRuntime
+    store, core, _ = fixture
+    room = core.create("fixture-a", {"topic": "코드 산출물 수업", "mode": "co_creation", "deliverable": "change_proposal"}, "story-worker")
+    core.accept_handover("fixture-human", room["id"], "accept", accept_body(room))
+    rid = room["id"]
+
+    class PatchRuntime(SyntheticRuntime):
+        def run(self, context, cancel):
+            if context.get("purpose") == "creator":
+                return "--- a/main.py\n+++ b/main.py\n@@ -1 +1 @@\n-old\n+new\n"
+            return f"참여 발언: {context.get('topic')}"
+
+    journal = Journal(tmp_path / "worker.sqlite")
+    worker = Worker(LocalClient(store, "fixture-a"), journal, PatchRuntime())
+    for _ in range(12):
+        worker.step()
+    client = LocalClient(store, "fixture-human")
+    current = client.request("GET", f"rooms/{rid}")
+    assert current["mode_status"] == "awaiting_adoption"
+    artifact = current["artifacts"][0]
+    assert artifact["versions"][-1]["text"].startswith("--- a/")
+    assert artifact["versions"][-1]["ai_generated"] is True
+    body = {"generation": current["generation"], "membership_revision": current["membership_revision"],
+            "expected_revision": artifact["revision"], "version_id": artifact["versions"][-1]["id"]}
+    client.request("POST", f"rooms/{rid}/artifacts/{artifact['id']}/adoptions", body=body, key="adopt-worker")
+    final = client.request("GET", f"rooms/{rid}")
+    assert final["mode_status"] == "adopted" and final["state"] == "closed"
+    assert final["artifacts"][0]["adopted"] == artifact["versions"][-1]["id"]
 
 
 def test_classroom_story_human_moderated_co_creation_wall_to_wall(fixture):

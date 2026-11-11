@@ -1,5 +1,9 @@
 # TalkAbout session log
 
+## 2026-11-11 — 클래스 룸 실행 경로 시나리오 5: Worker(리퍼런스) 코드 패치 제출
+
+- **반영**: [tests/test_classroom_scenario.py](../tests/test_classroom_scenario.py) — 설계안 ② 실행: Worker(SyntheticRuntime 하위 PatchRuntime)가 change_proposal 방에서 creator task를 claim→complete(코드 패치)로 제출, 사람이 채택 → adopted·closed. 시나리오 계약 5종.
+
 ## 2026-11-11 — 클래스 룸 실행 경로 설계안 (worker 산출물 제출, 승인 후 구현)
 
 - [docs/CLASSROOM_RUNTIME_PLAN.md](CLASSROOM_RUNTIME_PLAN.md) — worker(MCP/런타임)→산출물 제출 실행 경로 설계안(claim→preflight→runtime→complete 형상 검증→사람 채택), 안전 계약(멱등·비diff 거절·사람 전용), 승인 후 구현 순서(worker 출력 정책→시나리오 5→UI→공급자/tailnet). **연결·배포는 NOTRUN 유지**(서버 계약은 합성 테스트로 고정).
