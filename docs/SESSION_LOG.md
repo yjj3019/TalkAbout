@@ -1,5 +1,9 @@
 # TalkAbout session log
 
+## 2026-11-11 — 클래스 룸 실현 증분: 자유 토론 수업 시나리오 계약
+
+- **반영**: [tests/test_classroom_scenario.py](../tests/test_classroom_scenario.py)에 자유 토론 수업 시나리오 추가 — 사람이 방(free_discussion) 개설 → 에이전트 두 명 초대 → 각자 발언(턴 요청→claim→완료) → 사람 조언(advice) → `production`(결정 없음) → 사람 close → closed. 1건(시나리오 계약 총 2건).
+
 ## 2026-11-11 — 클래스 룸 실현 증분: 사용자 시나리오 계약 테스트(조율→토론→문서 산출물→채택)
 
 - **결손**: 사용자 요구(클래스 룸: 초대·조율·토론·산출물)를 하나의 시나리오로 꿰는 계약이 없음.

@@ -7,6 +7,7 @@ coordination projection and adopts; the room records the produced document and
 closes. Synthetic fixtures only (no provider/browser acceptance).
 """
 from conftest import LocalClient
+from talkabout.domain import AGENT_PERMISSIONS
 from test_modes_handover import accept_body
 
 
@@ -25,7 +26,41 @@ def _run_phases(core, rid):
     return roles
 
 
-def test_classroom_story_human_moderated_co_creation_wall_to_wall(fixture):
+def _free_turn(core, rid, token, text, key):
+    room = core.read(token, rid)
+    newroom = core.read(token, rid)
+    core.mutation(token, rid, "turn-requests", key,
+                 {"generation": newroom["generation"], "membership_revision": newroom["membership_revision"]})
+    task = next(t for t in core.read(token, rid)["tasks"] if t["state"] == "queued")
+    claimed = core.mutation(token, rid, f"tasks/{task['id']}/claim", key + "-claim",
+                           {"generation": task["generation"], "membership_revision": task["membership_revision"]})
+    core.mutation(token, rid, f"tasks/{task['id']}/complete", key + "-complete",
+                 {"attempt": claimed["attempt"], "generation": claimed["generation"],
+                  "membership_revision": claimed["membership_revision"],
+                  "result": {"client_message_id": key + "-msg", "text": text, "reply_to": None, "mentions": []}})
+
+
+def test_classroom_story_free_discussion_opinions_then_human_close(fixture):
+    store, core, _ = fixture
+    room = core.create("fixture-human", {"topic": "수업 주제 정하기", "mode": "free_discussion"}, "story-free")
+    rid = room["id"]
+    for pid in ("a", "b"):
+        member = core.mutation("fixture-human", rid, "memberships", f"invite-{pid}",
+                              {"principal_id": pid, "permissions": sorted(AGENT_PERMISSIONS), "status": "pending"})
+        core.accept("fixture-" + pid, rid, "accept", {"expected_revision": member["revision"], "acknowledge_private": True})
+    _free_turn(core, rid, "fixture-a", "주제 A가 좋아", "ta")
+    _free_turn(core, rid, "fixture-b", "주제 B로 결정", "tb")
+    core.mutation("fixture-human", rid, "messages", "adv",
+                 {"text": "두 의견 정리해서 마무리해줘", "kind": "advice", "client_message_id": "adv"})
+    current = core.read("fixture-human", rid)
+    texts = [m["text"] for m in current["messages"]]
+    assert "주제 A가 좋아" in texts and "주제 B로 결정" in texts and "두 의견 정리해서 마무리해줘" in texts
+    control = core.mutation("fixture-human", rid, "controls", "close-free",
+                          {"action": "close", "expected_revision": current["room_revision"]})
+    core.mutation("fixture-human", rid, f'controls/{control["id"]}/approve', "close-free-approve", {})
+    final = core.read("fixture-human", rid)
+    assert final["state"] == "closed"
+    assert core.room_production("fixture-human", rid)["open_human_decisions"] == []
     store, core, _ = fixture
     room = core.create("fixture-a", {"topic": "수업 산출물 만들기", "mode": "co_creation"}, "story-room")
     core.accept_handover("fixture-human", room["id"], "accept", accept_body(room))
