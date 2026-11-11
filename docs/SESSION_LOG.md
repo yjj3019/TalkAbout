@@ -1,5 +1,9 @@
 # TalkAbout session log
 
+## 2026-11-11 — 클래스 룸 조율 패널 웹 모듈(브라우저 셸 구현, 자동화 수용 NOTRUN)
+
+- **구현**: [talkabout/web/classroom-panel.mjs](../talkabout/web/classroom-panel.mjs) — 셸(`app.mjs` import + `maybeMountClassroomPanel` 배선, `/web/` 제공)에 조율 패널(생산 상태·사람 결정·조율 버튼·채택·검색) 추가. 동작은 폐쇄 카탈로그(PANEL_ACTIONS/PANEL_READS)에 결속. [tests/test_classroom_panel_asset.py](../tests/test_classroom_panel_asset.py) 4건(제공·결속·셸 배선·실행/적용 부재). 브라우저 자동화 수용·실제 연결·패치 적용은 **NOTRUN**.
+
 ## 2026-11-11 — 클래스 룸 조율 패널(브라우저) 설계안 + 합성 계약
 
 - [docs/CLASSROOM_UI_PLAN.md](CLASSROOM_UI_PLAN.md) — 조율 패널 5구획 설계 + 폐쇄 카탈로그(PANEL_ACTIONS 12·PANEL_READS 5)·사람 전용(승인/채택/종료)·읽기 전용 폴링. [talkabout/classroom_panel.py](../talkabout/classroom_panel.py) + [tests/test_classroom_panel.py](../tests/test_classroom_panel.py) 4건. 브라우저 자동화 수용·실제 연결·패치 적용은 **NOTRUN**(승인 후).

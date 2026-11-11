@@ -1,4 +1,4 @@
-import {ViewState,labels} from './state.mjs';import {createWorkPlanView,WORK_PLAN_LABELS} from './work-plan.mjs';import {createCollaborationBoard} from './collaboration-board.mjs';import {createHandoffSummaryView} from './handoff-summary.mjs';
+import {ViewState,labels} from './state.mjs';import {maybeMountClassroomPanel} from './classroom-panel.mjs';import {createWorkPlanView,WORK_PLAN_LABELS} from './work-plan.mjs';import {createCollaborationBoard} from './collaboration-board.mjs';import {createHandoffSummaryView} from './handoff-summary.mjs';
 const view=new ViewState();let csrf=null,user=null,readController=null,listEpoch=0,authEpoch=0,liveSource=null;
 const HTTP_RUNTIMES=['deepseek','xai','openrouter','groq','together','mistral','openai','ollama','lmstudio','compatible'];
 const REAL_RUNTIMES=['codex','claude','grok',...HTTP_RUNTIMES];
@@ -36,6 +36,7 @@ function renderWorkPlan(room){
  else module.render();
 }
 function renderCollaborationBoard(room){
+ maybeMountClassroomPanel(api, room, user);
  const container=el('collaboration-board-container');if(!container||!room||!user)return;
  if(!collaborationBoard)collaborationBoard=createCollaborationBoard({api,document,getContext:()=>user?{room:view.room,user,isOwner:view.room?.can_resolve_uncertain===true,authTicket:authEpoch,viewTicket:workPlanTicket}:null});
  if(collaborationRoomId!==room.id||collaborationMountTicket!==workPlanTicket){collaborationBoard.mount(container);collaborationRoomId=room.id;collaborationMountTicket=workPlanTicket;}else collaborationBoard.render();

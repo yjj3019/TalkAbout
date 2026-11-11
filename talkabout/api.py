@@ -175,7 +175,7 @@ def create_app(store, start_scheduler=True, allow_fixture_bearer=False, allowed_
 
     @app.get("/web/{name}")
     def asset(request: Request, name: str):
-        require(name in {"app.mjs", "work-plan.mjs", "collaboration-board.mjs", "handoff-summary.mjs", "state.mjs", "style.css", "favicon.svg", "connect-agent.ps1"}, "not_found", 404)
+        require(name in {"app.mjs", "work-plan.mjs", "collaboration-board.mjs", "handoff-summary.mjs", "state.mjs", "classroom-panel.mjs", "style.css", "favicon.svg", "connect-agent.ps1"}, "not_found", 404)
         return static_file(request, Path(__file__).parent / "web" / name)
 
     def room_stream(request, credential, room_id):
