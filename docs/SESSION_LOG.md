@@ -32,6 +32,14 @@
 - **POSIX `/proc` 열거 fail-closed**: `_proc_stat(strict=True)`는 pid 소멸(ENOENT/ESRCH)만 `None`, 권한·I/O·파싱 오류는 예외로 올리고 `_proc_group_members`가 `None`(→`process_exit_unconfirmed`)을 반환. 이전에는 읽을 수 없는 항목을 "이미 없음"으로 건너뛰어 그룹이 비었다고 잘못 증명할 수 있었음. 플랫폼 독립 모의 테스트 `tests/test_proc_group_members.py`로 고정. 실제 Linux 동작은 CI의 POSIX 잡(`test_posix_containment.py`)에서만 검증 가능 — 이 환경에서는 9건 skip.
 - **남은 항목**: 배포(rhel-storage)는 egress 443 개방·cgroup v1 승인·대상 커밋 재확정이 필요한 사용자 조치.
 
+## 2026-11-09 — 세션 마감: 이력 점검과 문서 정리 (코드 변경 없음)
+
+- 요청: "이력 체크" → "지금까지 내용 마무리, 서비스 시작 단계" → "정리 제안으로 진행".
+- 점검: `main`은 `origin/main`과 동기화, 마지막 커밋 `35997ac`. 추적되지 않는 `analysis/external/`은 의도적으로 제외 유지.
+- 정리: [STATUS.md](STATUS.md) 확인일·기준 커밋을 11-09/`35997ac`로 갱신하고 §1.1 추가(수치는 11-09 세션 기록 인용, 재측정 아님). `.claude/`를 `.gitignore`에 추가.
+- 서비스 시작 준비 판정: 코드·합성 회귀·CI는 준비됨. 운영 배포·계정·MFA·TLS와 S2 실제 시험은 미완료. 배포 대상(mcp-box 또는 rhel-storage)·공개 범위·운영 DB/계정은 **사용자 결정 대기**이며 배포는 수행하지 않았다.
+- 권고(미실행): mcp-box 사설망 시범 운영부터 시작, 먼저 읽기 전용으로 이미지·`/ready`·백업 타이머 확인.
+
 ## 2026-11-09 — 외부 저장소(ai-dev-director) 검토 개선 반영: workspace 경로·런치 정리 강화
 
 - 요청: 외부 저장소(`ai-dev-director`) 정밀 분석에서 도출된 개선을 TalkAbout에 독자 구현으로 반영.
