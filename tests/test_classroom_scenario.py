@@ -83,6 +83,28 @@ def test_classroom_story_free_discussion_opinions_then_human_close(fixture):
     assert core.room_production("fixture-human", rid)["open_human_decisions"] == []
 
 
+def test_classroom_story_mcp_code_proposal_submission_and_human_adoption(fixture):
+    store, core, _ = fixture
+    room = core.create("fixture-a", {"topic": "코드 산출물 제출", "mode": "co_creation", "deliverable": "change_proposal"}, "story-mcp")
+    core.accept_handover("fixture-human", room["id"], "accept", accept_body(room))
+    rid = room["id"]
+    room = store.rooms[rid]
+    artifact = core.mutation("fixture-a", rid, "artifacts", "mcp-patch",
+                           {"generation": room["generation"], "membership_revision": room["members"]["a"]["revision"],
+                            "text": "--- a/main.py\n+++ b/main.py\n@@ -1 +1 @@\n-old\n+new\n", "sources": [], "caption": ""})
+    assert artifact["versions"][-1]["text"].startswith("--- a/")
+    client = LocalClient(store, "fixture-human")
+    current = client.request("GET", f"rooms/{rid}")
+    art = next(a for a in current["artifacts"] if a["id"] == artifact["id"])
+    assert art["versions"][-1]["ai_generated"] is True
+    body = {"generation": current["generation"], "membership_revision": current["membership_revision"],
+            "expected_revision": art["revision"], "version_id": art["versions"][-1]["id"]}
+    client.request("POST", f"rooms/{rid}/artifacts/{art['id']}/adoptions", body=body, key="adopt-mcp")
+    final = client.request("GET", f"rooms/{rid}")
+    adopted = next(a for a in final["artifacts"] if a["id"] == art["id"])
+    assert adopted["adopted"] == art["versions"][-1]["id"]
+
+
 def test_classroom_story_human_moderated_co_creation_wall_to_wall(fixture):
     store, core, _ = fixture
     room = core.create("fixture-a", {"topic": "수업 산출물 만들기", "mode": "co_creation"}, "story-room")
