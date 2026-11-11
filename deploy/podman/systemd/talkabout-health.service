@@ -4,6 +4,8 @@ Documentation=file:///%h/TalkAbout/deploy/podman/OPERATING.md
 
 [Service]
 Type=oneshot
+# Optional: put TALKABOUT_ALERT_COMMAND=... here to enable transition alerts. Absent = no alert.
+EnvironmentFile=-%h/.config/talkabout/alert.env
 ExecStart=/bin/sh %h/bin/talkabout-healthcheck
 StandardOutput=append:%h/backups/talkabout/health.log
 StandardError=append:%h/backups/talkabout/health.log

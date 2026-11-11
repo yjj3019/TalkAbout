@@ -32,6 +32,15 @@
 - **POSIX `/proc` 열거 fail-closed**: `_proc_stat(strict=True)`는 pid 소멸(ENOENT/ESRCH)만 `None`, 권한·I/O·파싱 오류는 예외로 올리고 `_proc_group_members`가 `None`(→`process_exit_unconfirmed`)을 반환. 이전에는 읽을 수 없는 항목을 "이미 없음"으로 건너뛰어 그룹이 비었다고 잘못 증명할 수 있었음. 플랫폼 독립 모의 테스트 `tests/test_proc_group_members.py`로 고정. 실제 Linux 동작은 CI의 POSIX 잡(`test_posix_containment.py`)에서만 검증 가능 — 이 환경에서는 9건 skip.
 - **남은 항목**: 배포(rhel-storage)는 egress 443 개방·cgroup v1 승인·대상 커밋 재확정이 필요한 사용자 조치.
 
+## 2026-11-10 — mcp-box 점검·복구와 스케줄러 영구 종료 결함 수정
+
+- **점검(읽기 전용, mcp-box)**: `talkabout-auto-app`(이미지 `6bc8aad`)이 unhealthy, `/health` 200 / `/ready` 503. 헬스 로그상 11-01 배포 후 약 3.6일(11-05 새벽 추정)까지 ready, 이후 약 5일 연속 not ready(연속 실패 13,251). DB는 정상, 앱 로그에 오류 없음. 백업 타이머는 정상(`talkabout-*.dump` 11-01~11-08, sha256 일치). 같은 서버의 ShowBox 백업 FAIL은 TalkAbout과 무관.
+- **조치(승인됨)**: 수동 백업 `talkabout-20261109T150339Z.dump`(sha256 OK) 후 `talkabout-auto-app`만 재시작 → `/ready` 200, healthy. SIGTERM이 10초 안에 끝나지 않아 SIGKILL로 종료됨. 재시작 전 `/health` 본문을 받지 못해 **당시 `scheduler` 값은 미확인**.
+- **원인 후보(미확정)**: `talkabout/api.py`의 스케줄러가 틱 예외 시 `failed`로 표시하고 **영구 종료**(재시도 없음) → `/ready` 영구 503. 구조상 이번 증상과 일치하나 이번 장애의 원인이었다는 증거는 없다 `[unverified]`.
+- **수정(브랜치 `fix/scheduler-recovery`, 미병합·미배포)**: 틱 실패 시 `failed`(503 유지) + 최대 30초 백오프 재시도, 성공 시 `running` 복귀, 로그는 예외 클래스명만. `/ready` 503 본문에 `scheduler` 추가(200 본문 불변). `healthcheck.sh`는 실패 시 `/ready`·`/health` 본문 기록과 전이 시점 알림 훅(`TALKABOUT_ALERT_COMMAND`, 기본 꺼짐) 추가, 유닛에 선택적 `EnvironmentFile`.
+- **테스트**: 신규 `test_deployment_readiness.py` 2건(복구·지속 실패)은 수정 전 코드에서 실패함을 확인, 수정 후 통과. 신규 `test_healthcheck_script.py` 3건(실제 `sh`+가짜 서버)은 Bash 환경에서 통과(PowerShell PATH에는 `sh`가 없어 건너뜀). 표준 러너: Python 2113 passed / 138 skipped / 1 failed, Node 431 passed. 실패 1건 `test_workspace_paths.py::test_plain_absolute_directory_has_no_linked_component`는 단독 실행 시 통과하는 환경 의존 항목으로, 이번 변경 파일과 무관하나 원인은 미확인.
+- **미완/후속**: (1) 재발 감시 — mcp-box `health.log`를 며칠 뒤 확인(시간 의존). (2) 알림 채널 선택·`alert.env` 설정은 운영자 결정. (3) 새 이미지 빌드·mcp-box 재배포는 별도 승인. (4) 서비스 시작 대상·공개 범위·운영 DB/계정은 결정 대기.
+
 ## 2026-11-09 — 외부 저장소(ai-dev-director) 검토 개선 반영: workspace 경로·런치 정리 강화
 
 - 요청: 외부 저장소(`ai-dev-director`) 정밀 분석에서 도출된 개선을 TalkAbout에 독자 구현으로 반영.

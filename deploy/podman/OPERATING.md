@@ -87,6 +87,8 @@ A crash between persistent container creation and startup can leave a dormant on
 - rootless 재부팅 자동 복구는 사용자 linger와 `podman-restart.service`가 필요합니다.
   `loginctl show-user "$USER" --property=Linger` → `yes`, `systemctl --user enable --now podman-restart.service`.
 - 상태 확인은 `curl -fsS http://127.0.0.1:18081/ready`입니다. `healthcheck.sh`는 5분 타이머로 결과만 기록하며 **자동 재시작하지 않습니다**(DB 단절 뒤 무한 재시작을 피하기 위해 운영자가 판단).
+- **스케줄러 복구와 503 진단(2026-11-10):** 틱 예외로 스케줄러가 영구 종료되어 `/ready`가 503에 머물던 구조를 고쳤다. 이제 예외 시 `scheduler=failed`(`/ready` 503 유지)로 표시하고 최대 30초 백오프로 재시도하며, 성공하면 `running`/200으로 돌아온다. 로그에는 예외 **클래스명**만 남긴다. 503 본문에는 `scheduler` 상태가 추가되고 200 본문은 그대로다. `healthcheck.sh`는 실패 시 `/ready`·`/health` 본문도 `health.log`에 기록한다. 이 변경은 새 이미지와 호스트 스크립트 재설치 전까지 운영 인스턴스에 적용되지 않는다.
+- **알림 훅(기본 꺼짐):** `TALKABOUT_ALERT_COMMAND`를 `~/.config/talkabout/alert.env`에 넣으면(`EnvironmentFile=-`, 없으면 무시) `ready`↔`not_ready` **전이 때만** 실행된다(5분마다가 아님). 환경변수 `TALKABOUT_ALERT_STATE`·`TALKABOUT_ALERT_MESSAGE`가 전달되고 명령 실패는 종료 코드에 영향이 없다. 알림 채널(이메일·Slack 등)은 운영자가 정해야 하며 이 저장소는 목적지를 설정하지 않는다. 상태 파일은 `~/.local/state/talkabout/health.state`.
 
 ### 백업
 
