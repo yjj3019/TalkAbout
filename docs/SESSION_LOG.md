@@ -1,5 +1,9 @@
 # TalkAbout session log
 
+## 2026-11-11 — 클래스 룸 조율 패널(브라우저) 설계안 + 합성 계약
+
+- [docs/CLASSROOM_UI_PLAN.md](CLASSROOM_UI_PLAN.md) — 조율 패널 5구획 설계 + 폐쇄 카탈로그(PANEL_ACTIONS 12·PANEL_READS 5)·사람 전용(승인/채택/종료)·읽기 전용 폴링. [talkabout/classroom_panel.py](../talkabout/classroom_panel.py) + [tests/test_classroom_panel.py](../tests/test_classroom_panel.py) 4건. 브라우저 자동화 수용·실제 연결·패치 적용은 **NOTRUN**(승인 후).
+
 ## 2026-11-11 — 클래스 룸 실행 경로 시나리오 5: Worker(리퍼런스) 코드 패치 제출
 
 - **반영**: [tests/test_classroom_scenario.py](../tests/test_classroom_scenario.py) — 설계안 ② 실행: Worker(SyntheticRuntime 하위 PatchRuntime)가 change_proposal 방에서 creator task를 claim→complete(코드 패치)로 제출, 사람이 채택 → adopted·closed. 시나리오 계약 5종.
