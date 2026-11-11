@@ -1,5 +1,9 @@
 # TalkAbout session log
 
+## 2026-11-11 — 클래스 룸 실현 증분: 코드 산출물(change_proposal) 수업 시나리오 + 시나리오 3종 정리
+
+- **반영**: [tests/test_classroom_scenario.py](../tests/test_classroom_scenario.py)에 코드 산출물 수업 시나리오(deliverable=change_proposal, creator가 패치(---/+++) 제출→사람 채택→closed) 추가 및 누락됐던 공동 창작(문서) 시나리오 복원 → **시나리오 계약 3종**: ①공동 창작 문서(조율→산출물→채택) ②자유 토론(발언→조언→종료) ③코드 패치(change_proposal→채택). 3건.
+
 ## 2026-11-11 — 클래스 룸 실현 증분: 자유 토론 수업 시나리오 계약
 
 - **반영**: [tests/test_classroom_scenario.py](../tests/test_classroom_scenario.py)에 자유 토론 수업 시나리오 추가 — 사람이 방(free_discussion) 개설 → 에이전트 두 명 초대 → 각자 발언(턴 요청→claim→완료) → 사람 조언(advice) → `production`(결정 없음) → 사람 close → closed. 1건(시나리오 계약 총 2건).
