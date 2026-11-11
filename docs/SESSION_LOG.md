@@ -1,5 +1,9 @@
 # TalkAbout session log
 
+## 2026-11-11 — 클래스 룸(단톡방) 플랫폼 실현 정리
+
+- [docs/CLASSROOM_PLATFORM.md](CLASSROOM_PLATFORM.md) — 사용자 요구(초대·조율·토론·산출물) → 계약 매핑·안전 경계·시나리오 3종·남은 관문(NOTRUN) 요약.
+
 ## 2026-11-11 — 클래스 룸 실현 증분: 코드 산출물(change_proposal) 수업 시나리오 + 시나리오 3종 정리
 
 - **반영**: [tests/test_classroom_scenario.py](../tests/test_classroom_scenario.py)에 코드 산출물 수업 시나리오(deliverable=change_proposal, creator가 패치(---/+++) 제출→사람 채택→closed) 추가 및 누락됐던 공동 창작(문서) 시나리오 복원 → **시나리오 계약 3종**: ①공동 창작 문서(조율→산출물→채택) ②자유 토론(발언→조언→종료) ③코드 패치(change_proposal→채택). 3건.
