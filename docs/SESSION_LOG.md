@@ -1,5 +1,9 @@
 # TalkAbout session log
 
+## 2026-11-11 — 클래스 룸 실행 경로 설계안 (worker 산출물 제출, 승인 후 구현)
+
+- [docs/CLASSROOM_RUNTIME_PLAN.md](CLASSROOM_RUNTIME_PLAN.md) — worker(MCP/런타임)→산출물 제출 실행 경로 설계안(claim→preflight→runtime→complete 형상 검증→사람 채택), 안전 계약(멱등·비diff 거절·사람 전용), 승인 후 구현 순서(worker 출력 정책→시나리오 5→UI→공급자/tailnet). **연결·배포는 NOTRUN 유지**(서버 계약은 합성 테스트로 고정).
+
 ## 2026-11-11 — 클래스 룸(단톡방) 플랫폼 실현 정리
 
 - [docs/CLASSROOM_PLATFORM.md](CLASSROOM_PLATFORM.md) — 사용자 요구(초대·조율·토론·산출물) → 계약 매핑·안전 경계·시나리오 3종·남은 관문(NOTRUN) 요약.
