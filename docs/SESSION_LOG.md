@@ -1,5 +1,37 @@
 # TalkAbout session log
 
+## 2026-11-11 — mcp-box 운영 인스턴스 업그레이드 `6bc8aad` → `18442f5` (PR #68 병합분)
+
+- **대상 확정**: 배포 대상은 rhel-storage가 아니라 `mcp-box`의 기존 운영 인스턴스(rootless Podman, loopback `127.0.0.1:18081`). 이 서버에는 podman 5.7.0·cgroup v2·egress가 있어 11-06 rhel-storage에서 막혔던 조건은 해당 없음(기존 "podman 없음" 메모는 사실과 달랐음). 8080은 다른 서비스가 사용.
+- **절차**: 새 릴리스 디렉터리 `~/talkabout-release-18442f5a`에 정확한 커밋 체크아웃 → `podman build --format=docker --build-arg SOURCE_SHA=<40자>` → 네트워크 없는 격리 import 점검 → 컷오버 직전 `~/bin/talkabout-backup`(체크섬 OK) → 현재 앱을 `talkabout-auto-app-rollback-6bc8aad6`로 이름 변경해 보존 → 기존과 동일한 제한(read-only·cap-drop all·no-new-privileges·512m·pids 128·tmpfs·secret `talkabout-auto-db-url`·loopback publish·`--restart=unless-stopped`)으로 새 앱 기동. `/ready` 미확인 시 자동 롤백하는 스크립트로 실행.
+- **결과(관측)**: 새 앱 healthy, `/ready`=ready, 이미지 revision 라벨 `18442f5ae139…`, 로그 오류 0건, DB 행 수 전후 동일(principals 3·rooms 1·events 4), 다른 서비스(rc-prod 등) 무영향. 실행 중 중단은 컨테이너 교체 구간(수십 초).
+- **중간 중단 1회(변경 없음)**: 스크립트가 `io.talkabout.installation` 라벨을 요구했으나 운영 컨테이너에는 `project` 라벨만 있어 변경 전에 안전하게 중단 → 실제 라벨 구성에 맞게 수정 후 재실행.
+- **미적용(선택)**: `talkabout/schema.sql`의 신규 인덱스 2건(`cursors_principal_id`, `cursors_expires_at`)은 상시 앱(DML 전용 `talkabout_app`)이 만들 수 없고 `init-db`(소유자 권한)로만 적용됨. readiness 검사는 인덱스를 요구하지 않아 앱 동작에는 영향 없음(성능 개선만). 적용 여부는 별도 결정.
+- **롤백 방법**: `podman stop talkabout-auto-app && podman rename talkabout-auto-app talkabout-auto-app-new && podman rename talkabout-auto-app-rollback-6bc8aad6 talkabout-auto-app && podman start talkabout-auto-app` 후 `/ready` 확인. schema 변경이 추가형 인덱스뿐이라 이전 이미지와 호환(인덱스는 미적용 상태).
+- **정리 대기**: 롤백용 컨테이너 2개(`…-rollback-6bc8aad6`, `…-rollback-aafd347b`)와 구 이미지·릴리스 디렉터리는 런북 정책(최근 1~2개 보존)에 따라 자동 정리하지 않음.
+- **남은 점검**: 배포 후 장시간 관측(다음 05분 헬스 타이머·03:30 백업 타이머가 새 이미지에서 정상 동작하는지)은 아직 하지 않음. 설치된 `~/bin/talkabout-backup`·`healthcheck`는 저장소의 신규 `backup.sh`/`healthcheck.sh`와 다른 구버전이며 이번에 교체하지 않음.
+
+## 2026-11-11 — turn 사이 workspace 재검증 반영 (11-09 미반영 후속 1/3)
+
+- **변경** ([agent_runtime.py](../talkabout/agent_runtime.py) `StructuredRuntime._run`): work-profile 모든 turn이 launch 직전 `_validated_work_workspace`를 다시 실행하고, 최초 확정 경로와 다르면 `runtime_work_workspace_invalid`로 fail-closed. 기존에는 worker `pre_grant_preflight`(`cli run` 경로)만 매 step 재검증했고 런타임 자체는 첫 검증 결과를 재사용했음.
+- **테스트**: `test_workspace_is_revalidated_on_every_turn` 추가(검증 후 디렉터리 삭제 → `runtime_work_workspace_missing`). 전체 Python **2114 passed / 144 skipped / 0 failed**(오프라인 uv, `requirements.lock.txt`).
+- **한계**: 경로 형태 검사일 뿐, 검사~launch 사이 TOCTOU는 여전함. 이번 환경에서 이전 로그의 실패 1건(`test_mcp_stdio_process_interoperability`)은 skip 또는 통과로 관찰됨(원인 미확인).
+- **남은 후속**: POSIX `/proc` fail-closed. (bounded pipe 출력은 아래 항목으로 반영)
+
+## 2026-11-11 — bounded pipe 출력 반영 (11-09 미반영 후속 2/3)
+
+- 설계: [BOUNDED_PIPE_OUTPUT_PLAN.md](BOUNDED_PIPE_OUTPUT_PLAN.md)(승인 후 구현).
+- **변경**: `processes.BoundedCapture` 신규 — stdout/stderr를 pipe로 받는 reader thread가 청크마다 합계 한도를 강제, 초과분은 저장하지 않고 읽기를 멈춰 자식이 가득 찬 pipe에서 블록됨(파일 증가 없음). `adapters.execute_bounded`(2 MiB)와 `StructuredRuntime._check_codex_exec_auth`(256 KiB)가 임시 파일+`fstat` 폴링 대신 사용. 에러 코드·"합계 한도" 의미 유지. 손자가 pipe를 잡은 경우 0.25초 후 job을 중지해 EOF를 확보.
+- **테스트**: 신규 `tests/test_bounded_capture.py`(stdout/stderr 폭주 시 임시 파일 미생성·종료 시간·thread 잔존 없음 포함), `test_agent_runtime.py`의 가짜 supervisor를 pipe 방식에 맞게 수정.
+- **한계**: stdout 외 파일(workspace)에 쓰는 양은 범위 밖.
+- **성능(측정)**: `execute_bounded` 12회 중앙값, main→pipe: tiny 1096→1085 ms, 1.5 MiB 1회 쓰기 1148→1245 ms, 1.5 MiB를 1 KiB씩 1179→1237 ms. 프로세스 기동(~1 s)이 지배적이고 범위가 겹침(단일 머신·단일 세션 측정).
+
+## 2026-11-11 — 미해결 항목 정리: 테스트 불안정 원인 확정 · POSIX `/proc` 엄격 열거
+
+- **`test_process_cleanup.py` 불안정 — 변경 없는 main에서도 재현**(6병렬 pytest, 36회 중 3회 실패). 원인은 테스트의 빡빡한 시간 제한: `test_fast_stderr_and_combined_output_limit`가 자식 Python 기동에 3 s만 주어 부하 시 `runtime_timeout`이 먼저 발생, fixture 테스트의 `communicate(timeout=15)` 초과. 두 제한을 60 s로 상향(한도 초과 경로는 조기 종료라 정상 시간 불변). 동일 조건 재측정: 36회 중 1회 — 남은 1건은 `stop_windows_job`의 5 s 종료 확인 예산 초과(`process_exit_unconfirmed`)로 과부하(8코어에 6병렬) 시 fail-closed가 의도대로 동작한 것이며 안전 예산은 테스트를 위해 완화하지 않음.
+- **POSIX `/proc` 열거 fail-closed**: `_proc_stat(strict=True)`는 pid 소멸(ENOENT/ESRCH)만 `None`, 권한·I/O·파싱 오류는 예외로 올리고 `_proc_group_members`가 `None`(→`process_exit_unconfirmed`)을 반환. 이전에는 읽을 수 없는 항목을 "이미 없음"으로 건너뛰어 그룹이 비었다고 잘못 증명할 수 있었음. 플랫폼 독립 모의 테스트 `tests/test_proc_group_members.py`로 고정. 실제 Linux 동작은 CI의 POSIX 잡(`test_posix_containment.py`)에서만 검증 가능 — 이 환경에서는 9건 skip.
+- **남은 항목**: 배포(rhel-storage)는 egress 443 개방·cgroup v1 승인·대상 커밋 재확정이 필요한 사용자 조치.
+
 ## 2026-11-09 — 세션 마감: 이력 점검과 문서 정리 (코드 변경 없음)
 
 - 요청: "이력 체크" → "지금까지 내용 마무리, 서비스 시작 단계" → "정리 제안으로 진행".

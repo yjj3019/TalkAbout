@@ -38,7 +38,7 @@ def test_no_descendants_survive_cli_parent_exit(mode, tmp_path):
     parent = ManagedProcess([sys.executable, '-m', 'tests.runtime_process_fixture', mode, str(pidfile)],
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     try:
-        stdout, stderr = parent.process.communicate(timeout=15)
+        stdout, stderr = parent.process.communicate(timeout=60)  # cold imports slow under load
         assert parent.process.returncode == 0, stderr.decode(errors='replace')
         if mode in {'launch_failure', 'timeout_before_launch', 'timeout_before_resume',
                     'timeout_after_launch', 'timeout_cold_start'}:
@@ -89,7 +89,9 @@ def test_fast_stderr_and_combined_output_limit():
     for program in ["import sys; sys.stderr.write('x'*2200000)",
                     "import sys; sys.stdout.write('x'*1100000); sys.stderr.write('x'*1100000)"]:
         with pytest.raises(AdapterError, match='runtime_output_limit'):
-            execute_bounded([sys._base_executable, '-c', program], '', threading.Event(), 3)
+            # Generous timeout: it only bounds a stuck child, since the limit ends the call early;
+            # under load a cold Python start can exceed a few seconds and mask the limit.
+            execute_bounded([sys._base_executable, '-c', program], '', threading.Event(), 60)
 
 
 def test_shutdown_during_slow_report_prevents_late_runtime_launch():
