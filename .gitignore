@@ -16,3 +16,4 @@ dist/
 .tmp-verify/
 .tmp-perf/
 .analysis-repos/
+.claude/
