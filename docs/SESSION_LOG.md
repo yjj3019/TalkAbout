@@ -1,5 +1,12 @@
 # TalkAbout session log
 
+## 2026-11-23 — munder-difflin(MIT) 정밀 검토 → 개선점 도출 보고서 (분석만, 적용은 별도 요청 시)
+
+- **검토**: `HarnessMD/munder-difflin` @ `d86ab7ac`(Electron 멀티에이전트 데스크톱 하네스, MIT, 5,561 tracked · 1,485 커밋 · `.git` 팩 467MB)를 4개 영역 병렬 정밀 검토(메인 프로세스/렌더러/CI·테스트·릴리스/위생). 클론은 gitignore 대상 `.analysis-repos/munder-difflin/`.
+- **산출물**: [analysis/munder-difflin-review-2026-11-23/00-SOURCE-MANIFEST.md](../analysis/munder-difflin-review-2026-11-23/00-SOURCE-MANIFEST.md) · [01-FINDINGS.md](../analysis/munder-difflin-review-2026-11-23/01-FINDINGS.md)(44건: High 5·Medium 20·Low 19) · [02-IMPROVEMENTS.md](../analysis/munder-difflin-review-2026-11-23/02-IMPROVEMENTS.md)(P0 5 · P1 6 · P2 5 · P3 5).
+- **주요 High**: CI에 테스트 115개 미편입 + `continue-on-error` Build 게이트 무력화 / IPC ~230 핸들러 sender 무검증 / OTLP 무인증 / 웹훅 0.0.0.0 바인드 / command_history 평문 / 브랜치 371개 방치 + 중복 블롭 133.5MB / 모놀리스 index.ts 484KB. **코드·문자열·테스트 복사 없음(클린룸)**, 원 회신 저장소 미수정.
+- **검증**: 각 발견을 원문 라인 증거 + 재현 방법으로 고정(01-FINDINGS 참조). TalkAbout 트리 변경 없음(문서 3건 추가뿐).
+
 ## 2026-11-11 — 클래스 룸 조율 패널 웹 모듈(브라우저 셸 구현, 자동화 수용 NOTRUN)
 
 - **구현**: [talkabout/web/classroom-panel.mjs](../talkabout/web/classroom-panel.mjs) — 셸(`app.mjs` import + `maybeMountClassroomPanel` 배선, `/web/` 제공)에 조율 패널(생산 상태·사람 결정·조율 버튼·채택·검색) 추가. 동작은 폐쇄 카탈로그(PANEL_ACTIONS/PANEL_READS)에 결속. [tests/test_classroom_panel_asset.py](../tests/test_classroom_panel_asset.py) 4건(제공·결속·셸 배선·실행/적용 부재). 브라우저 자동화 수용·실제 연결·패치 적용은 **NOTRUN**.
